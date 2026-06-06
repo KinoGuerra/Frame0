@@ -20,105 +20,196 @@ const teams = [
   {
     id: "belgrano",
     name: "Belgrano de Córdoba",
+    legalName: "Club Atlético Belgrano",
+    abbreviation: "CAB",
     shortName: "Belgrano",
     initials: "BEL",
     colors: ["#58aee8", "#111827"],
+    shirtColors: ["#58aee8", "#111827", "#ffffff"],
     city: "Córdoba Capital",
     captain: "Matías Rojas",
-    delegate: "Delegado: Hernán Suárez",
+    delegate: "Hernán Suárez",
+    contact: "351555555",
     topScorer: "Pablo Heredia",
     mostSanctioned: "Iván Molina",
-    players: ["Pablo Heredia", "Iván Molina", "Franco Nieto", "Agustín Peralta", "Juan Sosa", "Lucas Arce", "Tomás Ferreyra", "Martín Quiroga"],
+    players: [
+      { number: 1, name: "Pablo Heredia", age: 28, goals: 6, yellow: 1, red: 0 },
+      { number: 4, name: "Iván Molina", age: 31, goals: 0, yellow: 4, red: 1 },
+      { number: 7, name: "Franco Nieto", age: 24, goals: 3, yellow: 0, red: 0 },
+      { number: 9, name: "Agustín Peralta", age: 27, goals: 5, yellow: 2, red: 0 },
+      { number: 10, name: "Juan Sosa", age: 25, goals: 2, yellow: 1, red: 0 },
+      { number: 14, name: "Lucas Arce", age: 29, goals: 0, yellow: 2, red: 0 },
+      { number: 18, name: "Tomás Ferreyra", age: 23, goals: 1, yellow: 0, red: 0 },
+      { number: 22, name: "Martín Quiroga", age: 32, goals: 0, yellow: 1, red: 0 }
+    ],
     founded: "Equipo invitado",
     description: "Plantel competitivo de la zona norte, fuerte en pelota parada y transiciones rápidas."
   },
   {
     id: "instituto",
-    name: "Instituto de Córdoba",
+    name: "Instituto Atlético Central Córdoba",
+    legalName: "Instituto Atlético Central Córdoba",
+    abbreviation: "IACC",
     shortName: "Instituto",
     initials: "INS",
     colors: ["#e11d48", "#ffffff"],
+    shirtColors: ["#e11d48", "#ffffff"],
     city: "Alta Córdoba",
     captain: "Lucas Gómez",
-    delegate: "Delegada: Camila Torres",
+    delegate: "Ignacio Cerutti",
+    contact: "351444444",
     topScorer: "Lucas Gómez",
     mostSanctioned: "Emanuel Pérez",
-    players: ["Lucas Gómez", "Emanuel Pérez", "Mateo Roldán", "Facundo Vega", "Joaquín Ruiz", "Nicolás Castro", "Alan Moreno", "Brian Díaz"],
+    players: [
+      { number: 1, name: "Lucas Gómez", age: 30, goals: 4, yellow: 1, red: 0 },
+      { number: 2, name: "Emanuel Pérez", age: 29, goals: 0, yellow: 5, red: 1 },
+      { number: 5, name: "Mateo Roldán", age: 22, goals: 1, yellow: 2, red: 0 },
+      { number: 8, name: "Facundo Vega", age: 26, goals: 2, yellow: 1, red: 0 },
+      { number: 11, name: "Joaquín Ruiz", age: 24, goals: 3, yellow: 0, red: 0 },
+      { number: 13, name: "Nicolás Castro", age: 28, goals: 0, yellow: 2, red: 0 },
+      { number: 17, name: "Alan Moreno", age: 25, goals: 1, yellow: 1, red: 0 },
+      { number: 20, name: "Brian Díaz", age: 27, goals: 0, yellow: 0, red: 0 }
+    ],
     founded: "Equipo invitado",
     description: "Equipo intenso, con presión alta y buen volumen ofensivo por las bandas."
   },
   {
     id: "boca",
     name: "Boca Juniors",
+    legalName: "Club Atlético Boca Juniors",
+    abbreviation: "CABJ",
     shortName: "Boca",
     initials: "BOC",
     colors: ["#0033a0", "#f7c600"],
+    shirtColors: ["#0033a0", "#f7c600"],
     city: "Buenos Aires",
     captain: "Nicolás Vega",
-    delegate: "Delegado: Rodrigo Méndez",
+    delegate: "Rodrigo Méndez",
+    contact: "351333333",
     topScorer: "Nicolás Vega",
     mostSanctioned: "Lautaro Silva",
-    players: ["Nicolás Vega", "Lautaro Silva", "Diego Romero", "Matías Ocampo", "Enzo Farías", "Bruno Acosta", "Santiago Leiva", "Kevin Torres"],
+    players: [
+      { number: 1, name: "Nicolás Vega", age: 29, goals: 5, yellow: 1, red: 0 },
+      { number: 3, name: "Lautaro Silva", age: 27, goals: 0, yellow: 4, red: 0 },
+      { number: 6, name: "Diego Romero", age: 31, goals: 1, yellow: 2, red: 0 },
+      { number: 9, name: "Matías Ocampo", age: 25, goals: 3, yellow: 1, red: 0 },
+      { number: 10, name: "Enzo Farías", age: 24, goals: 2, yellow: 0, red: 0 },
+      { number: 15, name: "Bruno Acosta", age: 28, goals: 0, yellow: 1, red: 1 },
+      { number: 18, name: "Santiago Leiva", age: 23, goals: 1, yellow: 0, red: 0 },
+      { number: 21, name: "Kevin Torres", age: 26, goals: 0, yellow: 2, red: 0 }
+    ],
     founded: "Equipo invitado",
     description: "Conjunto ordenado, de bloque compacto y buen rendimiento en partidos cerrados."
   },
   {
     id: "river",
     name: "River Plate",
+    legalName: "Club Atlético River Plate",
+    abbreviation: "CARP",
     shortName: "River",
     initials: "RIV",
     colors: ["#ffffff", "#d71920"],
+    shirtColors: ["#ffffff", "#d71920", "#111827"],
     city: "Buenos Aires",
     captain: "Santiago Arias",
-    delegate: "Delegado: Gabriel Núñez",
+    delegate: "Gabriel Núñez",
+    contact: "351222222",
     topScorer: "Santiago Arias",
     mostSanctioned: "Ramiro Luna",
-    players: ["Santiago Arias", "Ramiro Luna", "Federico Vera", "Ignacio Campos", "Ezequiel Ríos", "Gonzalo Medina", "Manuel Cabrera", "Andrés Godoy"],
+    players: [
+      { number: 1, name: "Santiago Arias", age: 27, goals: 4, yellow: 1, red: 0 },
+      { number: 4, name: "Ramiro Luna", age: 30, goals: 0, yellow: 4, red: 1 },
+      { number: 6, name: "Federico Vera", age: 25, goals: 1, yellow: 2, red: 0 },
+      { number: 8, name: "Ignacio Campos", age: 26, goals: 2, yellow: 1, red: 0 },
+      { number: 10, name: "Ezequiel Ríos", age: 24, goals: 3, yellow: 0, red: 0 },
+      { number: 14, name: "Gonzalo Medina", age: 28, goals: 0, yellow: 2, red: 0 },
+      { number: 19, name: "Manuel Cabrera", age: 22, goals: 1, yellow: 1, red: 0 },
+      { number: 23, name: "Andrés Godoy", age: 29, goals: 0, yellow: 0, red: 0 }
+    ],
     founded: "Equipo invitado",
     description: "Equipo de posesión, salida limpia y mucha llegada desde segunda línea."
   },
   {
     id: "real",
     name: "Real Madrid",
+    legalName: "Real Madrid Club de Fútbol",
+    abbreviation: "RMA",
     shortName: "Real Madrid",
     initials: "RMA",
     colors: ["#ffffff", "#d4af37"],
+    shirtColors: ["#ffffff", "#d4af37", "#4f46e5"],
     city: "Madrid",
     captain: "Federico Luna",
-    delegate: "Delegado: Daniel Ortega",
+    delegate: "Daniel Ortega",
+    contact: "351666666",
     topScorer: "Federico Luna",
     mostSanctioned: "Álvaro Martín",
-    players: ["Federico Luna", "Álvaro Martín", "Mario Benítez", "Rafael Gil", "Hugo Blanco", "Carlos Méndez", "Sergio Vidal", "Pablo Costa"],
+    players: [
+      { number: 1, name: "Federico Luna", age: 28, goals: 5, yellow: 1, red: 0 },
+      { number: 2, name: "Álvaro Martín", age: 30, goals: 0, yellow: 4, red: 0 },
+      { number: 5, name: "Mario Benítez", age: 31, goals: 1, yellow: 2, red: 0 },
+      { number: 7, name: "Rafael Gil", age: 25, goals: 4, yellow: 0, red: 0 },
+      { number: 10, name: "Hugo Blanco", age: 27, goals: 2, yellow: 1, red: 0 },
+      { number: 12, name: "Carlos Méndez", age: 24, goals: 0, yellow: 3, red: 1 },
+      { number: 16, name: "Sergio Vidal", age: 29, goals: 1, yellow: 1, red: 0 },
+      { number: 20, name: "Pablo Costa", age: 26, goals: 0, yellow: 0, red: 0 }
+    ],
     founded: "Equipo invitado",
     description: "Plantel equilibrado, con buen manejo de tiempos y pegada desde media distancia."
   },
   {
     id: "barcelona",
     name: "Barcelona",
+    legalName: "Fútbol Club Barcelona",
+    abbreviation: "FCB",
     shortName: "Barcelona",
     initials: "BAR",
     colors: ["#a50044", "#004d98"],
+    shirtColors: ["#a50044", "#004d98", "#fbbf24"],
     city: "Barcelona",
     captain: "Julián Paredes",
-    delegate: "Delegado: Sebastián Rivas",
+    delegate: "Sebastián Rivas",
+    contact: "351777777",
     topScorer: "Julián Paredes",
     mostSanctioned: "Maxi Salas",
-    players: ["Julián Paredes", "Maxi Salas", "Pedro Font", "Axel Ramos", "Cristian Díaz", "Leo Suárez", "Marcos Peña", "Adrián Vera"],
+    players: [
+      { number: 1, name: "Julián Paredes", age: 26, goals: 6, yellow: 0, red: 0 },
+      { number: 3, name: "Maxi Salas", age: 28, goals: 1, yellow: 4, red: 1 },
+      { number: 5, name: "Pedro Font", age: 30, goals: 0, yellow: 2, red: 0 },
+      { number: 8, name: "Axel Ramos", age: 24, goals: 3, yellow: 1, red: 0 },
+      { number: 10, name: "Cristian Díaz", age: 27, goals: 5, yellow: 0, red: 0 },
+      { number: 11, name: "Leo Suárez", age: 25, goals: 2, yellow: 1, red: 0 },
+      { number: 17, name: "Marcos Peña", age: 23, goals: 1, yellow: 0, red: 0 },
+      { number: 22, name: "Adrián Vera", age: 29, goals: 0, yellow: 2, red: 0 }
+    ],
     founded: "Equipo invitado",
     description: "Equipo asociado, de pases cortos y ataques elaborados por dentro."
   },
   {
     id: "manchester",
     name: "Manchester United",
+    legalName: "Manchester United Football Club",
+    abbreviation: "MUFC",
     shortName: "Man. United",
     initials: "MUN",
     colors: ["#da291c", "#111827"],
+    shirtColors: ["#da291c", "#111827", "#ffffff"],
     city: "Manchester",
     captain: "Bruno Silva",
-    delegate: "Delegado: Mauro Gutiérrez",
+    delegate: "Mauro Gutiérrez",
+    contact: "351888888",
     topScorer: "Bruno Silva",
     mostSanctioned: "Tomás Brown",
-    players: ["Bruno Silva", "Tomás Brown", "Alan Smith", "Franco Gómez", "Miguel Torres", "Javier Ruiz", "Nico Herrera", "Damián López"],
+    players: [
+      { number: 1, name: "Bruno Silva", age: 29, goals: 4, yellow: 1, red: 0 },
+      { number: 4, name: "Tomás Brown", age: 31, goals: 0, yellow: 5, red: 1 },
+      { number: 6, name: "Alan Smith", age: 27, goals: 1, yellow: 2, red: 0 },
+      { number: 8, name: "Franco Gómez", age: 25, goals: 2, yellow: 1, red: 0 },
+      { number: 9, name: "Miguel Torres", age: 24, goals: 3, yellow: 0, red: 0 },
+      { number: 12, name: "Javier Ruiz", age: 28, goals: 0, yellow: 3, red: 0 },
+      { number: 18, name: "Nico Herrera", age: 23, goals: 1, yellow: 1, red: 0 },
+      { number: 21, name: "Damián López", age: 30, goals: 0, yellow: 0, red: 0 }
+    ],
     founded: "Equipo invitado",
     description: "Equipo físico, vertical y peligroso cuando encuentra espacios para correr."
   }
@@ -186,9 +277,66 @@ function getTeamStanding(teamId) {
   return standings.find((row) => row.teamId === teamId);
 }
 
+function renderShirt(team) {
+  const [primary, secondary, accent = "#ffffff"] = team.shirtColors;
+
+  return `
+    <div class="shirt-preview" style="--shirt-primary: ${primary}; --shirt-secondary: ${secondary}; --shirt-accent: ${accent};" aria-label="Camiseta de ${team.name}">
+      <div class="shirt-sleeve left"></div>
+      <div class="shirt-body"></div>
+      <div class="shirt-sleeve right"></div>
+    </div>
+  `;
+}
+
+function renderRoster(team) {
+  return team.players.map((player) => `
+    <tr>
+      <td>${player.number}</td>
+      <td>${player.name}</td>
+      <td>${player.age}</td>
+    </tr>
+  `).join("");
+}
+
+function getPlayerStats(team, statType) {
+  if (statType === "goals") {
+    return team.players
+      .filter((player) => player.goals > 0)
+      .sort((a, b) => b.goals - a.goals)
+      .map((player) => ({ name: player.name, value: player.goals }));
+  }
+
+  return team.players
+    .filter((player) => player.yellow > 0 || player.red > 0)
+    .sort((a, b) => (b.yellow + b.red) - (a.yellow + a.red))
+    .map((player) => ({ name: player.name, value: `${player.yellow}A / ${player.red}R` }));
+}
+
+function renderPlayerStats(team, statType = "goals") {
+  const rows = getPlayerStats(team, statType);
+
+  if (!rows.length) {
+    return `
+      <tr>
+        <td colspan="2">Sin registros disponibles</td>
+      </tr>
+    `;
+  }
+
+  return rows.map((row) => `
+      <tr>
+        <td>${row.name}</td>
+        <td>${row.value}</td>
+      </tr>
+  `).join("");
+}
+
 function renderTeamDetail() {
   const team = getTeam(selectedTeamId);
   const standing = getTeamStanding(selectedTeamId);
+  const goalsAgainst = Math.max(0, standing.g * 2 + standing.e - standing.dg);
+  const goalsFor = goalsAgainst + standing.dg;
 
   teamDetailView.innerHTML = `
     <button class="back-to-division" type="button" data-back-to-division>
@@ -199,40 +347,101 @@ function renderTeamDetail() {
       ${renderTeamBadge(team)}
       <div>
         <p class="section-kicker mb-1">Información del equipo</p>
-        <h2>${team.name}</h2>
+        <h2>${team.legalName}</h2>
         <p>${team.description}</p>
       </div>
     </div>
-    <div class="team-detail-stats">
-      <div class="team-detail-stat">
-        <span>Delegado</span>
-        <strong>${team.delegate}</strong>
+
+    <section class="team-id-card">
+      <div class="team-id-main">
+        ${renderTeamBadge(team)}
+        <div class="team-id-data">
+          <span>Nombre del equipo</span>
+          <strong>${team.legalName}</strong>
+          <span>Abreviatura</span>
+          <strong>${team.abbreviation}</strong>
+          <span>Delegado</span>
+          <strong>${team.delegate}</strong>
+          <span>Contacto</span>
+          <strong>${team.contact}</strong>
+        </div>
       </div>
-      <div class="team-detail-stat">
-        <span>Partidos jugados</span>
-        <strong>${standing.pj}</strong>
+
+      <div class="team-kit-panel">
+        <div class="kit-swatches">
+          ${team.shirtColors.slice(0, 3).map((color) => `<span style="background: ${color};"></span>`).join("")}
+        </div>
+        ${renderShirt(team)}
       </div>
-      <div class="team-detail-stat">
-        <span>Goleador</span>
-        <strong>${team.topScorer}</strong>
-      </div>
-      <div class="team-detail-stat">
-        <span>Más sanciones</span>
-        <strong>${team.mostSanctioned}</strong>
-      </div>
-    </div>
-    <div class="players-list">
-      <h3>Jugadores</h3>
-      <div class="players-grid">
-        ${team.players.map((player, index) => `
-          <div class="player-pill">
-            <span>${player}</span>
-            <small>#${index + 1}</small>
+    </section>
+
+    <section class="team-metrics">
+      <div><span>Jugadores</span><strong>${team.players.length}</strong></div>
+      <div><span>PJ</span><strong>${standing.pj}</strong></div>
+      <div><span>PG</span><strong>${standing.g}</strong></div>
+      <div><span>PE</span><strong>${standing.e}</strong></div>
+      <div><span>PP</span><strong>${standing.p}</strong></div>
+      <div><span>GF</span><strong>${goalsFor}</strong></div>
+      <div><span>GC</span><strong>${goalsAgainst}</strong></div>
+    </section>
+
+    <div class="team-detail-grid">
+      <section class="division-table-panel">
+        <div class="division-section-heading">
+          <p class="section-kicker mb-1">Plantel</p>
+          <h2>Jugadores</h2>
+        </div>
+        <div class="table-responsive">
+          <table class="table frame-table roster-table mb-0">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Apellido y Nombre</th>
+                <th>Edad</th>
+              </tr>
+            </thead>
+            <tbody>${renderRoster(team)}</tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="division-table-panel">
+        <div class="fixture-toolbar">
+          <div class="division-section-heading">
+            <p class="section-kicker mb-1">Estadísticas</p>
+            <h2>Detalle</h2>
           </div>
-        `).join("")}
-      </div>
+          <label class="fixture-select-label" for="teamStatSelect">
+            Tipo
+            <select id="teamStatSelect" class="form-select form-select-sm" data-team-stat-select>
+              <option value="goals">Goleadores</option>
+              <option value="sanctions">Sanciones</option>
+            </select>
+          </label>
+        </div>
+        <div class="table-responsive">
+          <table class="table frame-table player-stats-table mb-0">
+            <thead>
+              <tr>
+                <th>Jugador</th>
+                <th>Cantidad</th>
+              </tr>
+            </thead>
+            <tbody id="teamStatsBody">${renderPlayerStats(team)}</tbody>
+          </table>
+        </div>
+      </section>
     </div>
   `;
+}
+
+function updateTeamStats(statType) {
+  const team = getTeam(selectedTeamId);
+  const statsBody = document.querySelector("#teamStatsBody");
+
+  if (statsBody) {
+    statsBody.innerHTML = renderPlayerStats(team, statType);
+  }
 }
 
 function renderStandings() {
@@ -375,6 +584,13 @@ teamDetailView.addEventListener("click", (event) => {
   if (!backButton) return;
 
   showDivisionTables();
+});
+
+teamDetailView.addEventListener("change", (event) => {
+  const statSelect = event.target.closest("[data-team-stat-select]");
+  if (!statSelect) return;
+
+  updateTeamStats(statSelect.value);
 });
 
 standingsBody.addEventListener("click", (event) => {
