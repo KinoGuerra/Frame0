@@ -53,7 +53,8 @@ body {
 
 .frame-logo img {
   width: 112px;
-  height: 112px;
+  height: auto;
+  aspect-ratio: 1;
   object-fit: contain;
   border-radius: 50%;
   filter: drop-shadow(0 0 14px rgba(29, 183, 255, 0.34));
@@ -1481,7 +1482,7 @@ body {
 
 @media (max-width: 991.98px) {
   .frame-header .navbar {
-    min-height: 164px;
+    min-height: 150px;
   }
 
   .frame-header .container-fluid {
@@ -1505,7 +1506,7 @@ body {
   }
 
   .dashboard-shell {
-    padding-top: 190px;
+    padding-top: 176px;
   }
 
   .sidebar-panel {
@@ -1634,19 +1635,20 @@ body {
 
 @media (max-width: 575.98px) {
   .frame-logo img {
-    width: 82px;
-    height: 82px;
+    width: 64px;
+    height: auto;
   }
 
   .header-shortcuts {
-    justify-content: flex-start;
-    gap: 0.35rem 0.75rem;
-    font-size: 0.8rem;
+    justify-content: center;
+    gap: 0.28rem 0.5rem;
+    font-size: 0.72rem;
   }
 
   .frame-title {
-    font-size: clamp(1.8rem, 9vw, 3rem);
-    white-space: normal;
+    font-size: clamp(1.65rem, 8.5vw, 2.4rem);
+    line-height: 1;
+    white-space: nowrap;
   }
 
   .dashboard-shell {
@@ -1660,5 +1662,16 @@ body {
 
   .quick-stats {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 380px) {
+  .frame-title {
+    font-size: clamp(1.45rem, 8vw, 2rem);
+    white-space: normal;
+  }
+
+  .header-shortcuts {
+    font-size: 0.68rem;
   }
 }
