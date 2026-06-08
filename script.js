@@ -40,7 +40,14 @@ const teams = [
       { number: 10, name: "Juan Sosa", age: 25, goals: 2, yellow: 1, red: 0 },
       { number: 14, name: "Lucas Arce", age: 29, goals: 0, yellow: 2, red: 0 },
       { number: 18, name: "Tomás Ferreyra", age: 23, goals: 1, yellow: 0, red: 0 },
-      { number: 22, name: "Martín Quiroga", age: 32, goals: 0, yellow: 1, red: 0 }
+      { number: 22, name: "Martín Quiroga", age: 32, goals: 0, yellow: 1, red: 0 },
+      { number: 2, name: "Emiliano Díaz", age: 26, goals: 0, yellow: 1, red: 0 },
+      { number: 5, name: "Rodrigo Ponce", age: 30, goals: 1, yellow: 2, red: 0 },
+      { number: 6, name: "Maximiliano Acuña", age: 28, goals: 0, yellow: 0, red: 0 },
+      { number: 11, name: "Germán Salvatierra", age: 24, goals: 2, yellow: 1, red: 0 },
+      { number: 15, name: "Ezequiel Molina", age: 27, goals: 0, yellow: 3, red: 0 },
+      { number: 19, name: "Nahuel Ortiz", age: 23, goals: 1, yellow: 0, red: 0 },
+      { number: 21, name: "Sebastián Roldán", age: 29, goals: 0, yellow: 1, red: 0 }
     ],
     founded: "Equipo invitado",
     description: "Plantel competitivo de la zona norte, fuerte en pelota parada y transiciones rápidas."
@@ -68,7 +75,14 @@ const teams = [
       { number: 11, name: "Joaquín Ruiz", age: 24, goals: 3, yellow: 0, red: 0 },
       { number: 13, name: "Nicolás Castro", age: 28, goals: 0, yellow: 2, red: 0 },
       { number: 17, name: "Alan Moreno", age: 25, goals: 1, yellow: 1, red: 0 },
-      { number: 20, name: "Brian Díaz", age: 27, goals: 0, yellow: 0, red: 0 }
+      { number: 20, name: "Brian Díaz", age: 27, goals: 0, yellow: 0, red: 0 },
+      { number: 3, name: "Gonzalo Alarcón", age: 25, goals: 0, yellow: 1, red: 0 },
+      { number: 4, name: "Ramiro Juárez", age: 31, goals: 0, yellow: 2, red: 0 },
+      { number: 6, name: "Sebastián Vera", age: 26, goals: 1, yellow: 0, red: 0 },
+      { number: 9, name: "Ignacio Cerutti", age: 29, goals: 2, yellow: 1, red: 0 },
+      { number: 14, name: "Mauricio Cabrera", age: 28, goals: 0, yellow: 3, red: 0 },
+      { number: 18, name: "Franco Bustos", age: 24, goals: 1, yellow: 0, red: 0 },
+      { number: 22, name: "Tomás Navarro", age: 23, goals: 0, yellow: 1, red: 0 }
     ],
     founded: "Equipo invitado",
     description: "Equipo intenso, con presión alta y buen volumen ofensivo por las bandas."
@@ -96,7 +110,14 @@ const teams = [
       { number: 10, name: "Enzo Farías", age: 24, goals: 2, yellow: 0, red: 0 },
       { number: 15, name: "Bruno Acosta", age: 28, goals: 0, yellow: 1, red: 1 },
       { number: 18, name: "Santiago Leiva", age: 23, goals: 1, yellow: 0, red: 0 },
-      { number: 21, name: "Kevin Torres", age: 26, goals: 0, yellow: 2, red: 0 }
+      { number: 21, name: "Kevin Torres", age: 26, goals: 0, yellow: 2, red: 0 },
+      { number: 2, name: "Agustín Ledesma", age: 23, goals: 0, yellow: 1, red: 0 },
+      { number: 5, name: "Gabriel Moyano", age: 30, goals: 0, yellow: 2, red: 0 },
+      { number: 8, name: "Lucas Ceballos", age: 27, goals: 1, yellow: 1, red: 0 },
+      { number: 11, name: "Julián Molina", age: 24, goals: 2, yellow: 0, red: 0 },
+      { number: 13, name: "Fernando Salas", age: 29, goals: 0, yellow: 3, red: 0 },
+      { number: 16, name: "Matías Barrera", age: 25, goals: 1, yellow: 0, red: 0 },
+      { number: 22, name: "Tomás Herrera", age: 22, goals: 0, yellow: 1, red: 0 }
     ],
     founded: "Equipo invitado",
     description: "Conjunto ordenado, de bloque compacto y buen rendimiento en partidos cerrados."
@@ -124,7 +145,14 @@ const teams = [
       { number: 10, name: "Ezequiel Ríos", age: 24, goals: 3, yellow: 0, red: 0 },
       { number: 14, name: "Gonzalo Medina", age: 28, goals: 0, yellow: 2, red: 0 },
       { number: 19, name: "Manuel Cabrera", age: 22, goals: 1, yellow: 1, red: 0 },
-      { number: 23, name: "Andrés Godoy", age: 29, goals: 0, yellow: 0, red: 0 }
+      { number: 23, name: "Andrés Godoy", age: 29, goals: 0, yellow: 0, red: 0 },
+      { number: 2, name: "Pablo Giménez", age: 26, goals: 0, yellow: 1, red: 0 },
+      { number: 3, name: "Leandro Morales", age: 28, goals: 0, yellow: 2, red: 0 },
+      { number: 7, name: "Franco Mercado", age: 24, goals: 2, yellow: 0, red: 0 },
+      { number: 9, name: "Nicolás Suárez", age: 27, goals: 3, yellow: 1, red: 0 },
+      { number: 15, name: "Juan Maldonado", age: 30, goals: 0, yellow: 3, red: 0 },
+      { number: 18, name: "Alan Pereyra", age: 23, goals: 1, yellow: 0, red: 0 },
+      { number: 21, name: "Marcos Toledo", age: 25, goals: 0, yellow: 1, red: 0 }
     ],
     founded: "Equipo invitado",
     description: "Equipo de posesión, salida limpia y mucha llegada desde segunda línea."
@@ -152,7 +180,14 @@ const teams = [
       { number: 10, name: "Hugo Blanco", age: 27, goals: 2, yellow: 1, red: 0 },
       { number: 12, name: "Carlos Méndez", age: 24, goals: 0, yellow: 3, red: 1 },
       { number: 16, name: "Sergio Vidal", age: 29, goals: 1, yellow: 1, red: 0 },
-      { number: 20, name: "Pablo Costa", age: 26, goals: 0, yellow: 0, red: 0 }
+      { number: 20, name: "Pablo Costa", age: 26, goals: 0, yellow: 0, red: 0 },
+      { number: 3, name: "Joaquín Serrano", age: 24, goals: 0, yellow: 1, red: 0 },
+      { number: 4, name: "Esteban Castro", age: 29, goals: 0, yellow: 2, red: 0 },
+      { number: 6, name: "Martín Salcedo", age: 27, goals: 1, yellow: 1, red: 0 },
+      { number: 9, name: "Lucas Fernández", age: 25, goals: 3, yellow: 0, red: 0 },
+      { number: 13, name: "Diego Ibarra", age: 31, goals: 0, yellow: 3, red: 0 },
+      { number: 17, name: "Nahuel Pérez", age: 23, goals: 1, yellow: 0, red: 0 },
+      { number: 22, name: "Rodrigo Álvarez", age: 28, goals: 0, yellow: 1, red: 0 }
     ],
     founded: "Equipo invitado",
     description: "Plantel equilibrado, con buen manejo de tiempos y pegada desde media distancia."
@@ -180,7 +215,14 @@ const teams = [
       { number: 10, name: "Cristian Díaz", age: 27, goals: 5, yellow: 0, red: 0 },
       { number: 11, name: "Leo Suárez", age: 25, goals: 2, yellow: 1, red: 0 },
       { number: 17, name: "Marcos Peña", age: 23, goals: 1, yellow: 0, red: 0 },
-      { number: 22, name: "Adrián Vera", age: 29, goals: 0, yellow: 2, red: 0 }
+      { number: 22, name: "Adrián Vera", age: 29, goals: 0, yellow: 2, red: 0 },
+      { number: 2, name: "Federico Sosa", age: 26, goals: 0, yellow: 1, red: 0 },
+      { number: 4, name: "Bruno Medina", age: 30, goals: 0, yellow: 2, red: 0 },
+      { number: 6, name: "Lautaro Giménez", age: 25, goals: 1, yellow: 1, red: 0 },
+      { number: 9, name: "Mateo Almirón", age: 24, goals: 3, yellow: 0, red: 0 },
+      { number: 13, name: "Germán Páez", age: 31, goals: 0, yellow: 3, red: 0 },
+      { number: 16, name: "Tomás Quiroga", age: 23, goals: 1, yellow: 0, red: 0 },
+      { number: 19, name: "Iván Cabrera", age: 28, goals: 0, yellow: 1, red: 0 }
     ],
     founded: "Equipo invitado",
     description: "Equipo asociado, de pases cortos y ataques elaborados por dentro."
@@ -208,7 +250,14 @@ const teams = [
       { number: 9, name: "Miguel Torres", age: 24, goals: 3, yellow: 0, red: 0 },
       { number: 12, name: "Javier Ruiz", age: 28, goals: 0, yellow: 3, red: 0 },
       { number: 18, name: "Nico Herrera", age: 23, goals: 1, yellow: 1, red: 0 },
-      { number: 21, name: "Damián López", age: 30, goals: 0, yellow: 0, red: 0 }
+      { number: 21, name: "Damián López", age: 30, goals: 0, yellow: 0, red: 0 },
+      { number: 2, name: "Cristian Romero", age: 27, goals: 0, yellow: 1, red: 0 },
+      { number: 5, name: "Pablo Núñez", age: 29, goals: 0, yellow: 2, red: 0 },
+      { number: 7, name: "Emiliano Torres", age: 24, goals: 2, yellow: 0, red: 0 },
+      { number: 10, name: "Joaquín López", age: 25, goals: 3, yellow: 1, red: 0 },
+      { number: 14, name: "Matías Robles", age: 31, goals: 0, yellow: 3, red: 0 },
+      { number: 17, name: "Agustín Arias", age: 23, goals: 1, yellow: 0, red: 0 },
+      { number: 22, name: "Santiago Molina", age: 28, goals: 0, yellow: 1, red: 0 }
     ],
     founded: "Equipo invitado",
     description: "Equipo físico, vertical y peligroso cuando encuentra espacios para correr."
@@ -328,8 +377,44 @@ function renderPlayerStats(team, statType = "goals") {
       <tr>
         <td>${row.name}</td>
         <td>${row.value}</td>
-      </tr>
+    </tr>
   `).join("");
+}
+
+function getTeamMatches(teamId) {
+  return Object.entries(fixtures).flatMap(([dateNumber, matches]) =>
+    matches
+      .filter((match) => match.home === teamId || match.away === teamId)
+      .map((match) => ({ ...match, dateNumber }))
+  );
+}
+
+function getMatchResultClass(match, teamId) {
+  if (match.homeGoals === null || match.awayGoals === null) return "match-pending";
+  if (match.homeGoals === match.awayGoals) return "match-draw";
+
+  const isHome = match.home === teamId;
+  const won = isHome ? match.homeGoals > match.awayGoals : match.awayGoals > match.homeGoals;
+  return won ? "match-win" : "match-loss";
+}
+
+function renderTeamMatches(teamId) {
+  return getTeamMatches(teamId).map((match) => {
+    const isHome = match.home === teamId;
+    const rival = getTeam(isHome ? match.away : match.home);
+    const hasResult = match.homeGoals !== null && match.awayGoals !== null;
+    const resultText = hasResult ? `${match.homeGoals} - ${match.awayGoals}` : "";
+
+    return `
+      <tr>
+        <td>Fecha ${match.dateNumber}</td>
+        <td>
+          <span class="fixture-team">${renderTeamBadge(rival, "small")} ${rival.shortName}</span>
+        </td>
+        <td class="team-match-result ${getMatchResultClass(match, teamId)}">${resultText}</td>
+      </tr>
+    `;
+  }).join("");
 }
 
 function renderTeamDetail() {
@@ -405,6 +490,26 @@ function renderTeamDetail() {
         </div>
       </section>
 
+      <div class="team-side-tables">
+      <section class="division-table-panel">
+        <div class="division-section-heading">
+          <p class="section-kicker mb-1">Calendario</p>
+          <h2>Partidos</h2>
+        </div>
+        <div class="table-responsive">
+          <table class="table frame-table team-matches-table mb-0">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Rival</th>
+                <th>Resultado</th>
+              </tr>
+            </thead>
+            <tbody>${renderTeamMatches(team.id)}</tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="division-table-panel">
         <div class="fixture-toolbar">
           <div class="division-section-heading">
@@ -431,6 +536,7 @@ function renderTeamDetail() {
           </table>
         </div>
       </section>
+      </div>
     </div>
   `;
 }
