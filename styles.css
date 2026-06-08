@@ -558,6 +558,86 @@ body {
   text-align: center;
 }
 
+.admin-teams-toolbar {
+  top: -1rem;
+}
+
+.admin-teams-panel {
+  overflow: hidden;
+}
+
+.admin-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: -1rem -1rem 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid rgba(110, 120, 132, 0.24);
+  background: linear-gradient(180deg, rgba(222, 246, 255, 0.96), rgba(248, 252, 255, 0.94));
+}
+
+.admin-filter-field {
+  display: grid;
+  gap: 0.35rem;
+  color: #1f2d3d;
+  font-weight: 950;
+}
+
+.admin-filter-field span {
+  color: var(--frame-blue);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.admin-filter-field .form-select {
+  min-height: 42px;
+  border-color: rgba(116, 141, 166, 0.42);
+  border-radius: 6px;
+  font-weight: 850;
+}
+
+.admin-filter-field .form-select:disabled {
+  background-color: #e4e9ee;
+  color: #7b8794;
+  cursor: not-allowed;
+}
+
+.admin-teams-table {
+  min-width: 760px;
+}
+
+.admin-teams-table th:nth-child(1),
+.admin-teams-table td:nth-child(1) {
+  width: 70px;
+  min-width: 70px;
+  text-align: center;
+}
+
+.admin-teams-table th:nth-child(2),
+.admin-teams-table td:nth-child(2) {
+  width: 260px;
+  min-width: 260px;
+}
+
+.admin-teams-table th:nth-child(3),
+.admin-teams-table td:nth-child(3) {
+  width: 220px;
+  min-width: 220px;
+}
+
+.admin-teams-table th:nth-child(4),
+.admin-teams-table td:nth-child(4) {
+  width: 100px;
+  min-width: 100px;
+  text-align: center;
+}
+
+.admin-empty-row {
+  height: 132px;
+  color: #66758a;
+  text-align: center;
+}
+
 .player-status {
   display: inline-flex;
   align-items: center;
@@ -604,6 +684,272 @@ body {
 .table-actions button:hover,
 .table-actions button:focus {
   background: #e6f7ff;
+}
+
+.observer-panel {
+  margin-top: 0;
+}
+
+.observer-matches-table {
+  min-width: 760px;
+}
+
+.observer-matches-table th:nth-child(1),
+.observer-matches-table td:nth-child(1) {
+  width: 128px;
+  min-width: 128px;
+}
+
+.observer-matches-table th:nth-child(2),
+.observer-matches-table td:nth-child(2),
+.observer-matches-table th:nth-child(4),
+.observer-matches-table td:nth-child(4) {
+  width: 210px;
+  min-width: 210px;
+}
+
+.observer-matches-table th:nth-child(3),
+.observer-matches-table td:nth-child(3) {
+  width: 110px;
+  min-width: 110px;
+  text-align: center;
+}
+
+.observer-matches-table th:nth-child(5),
+.observer-matches-table td:nth-child(5) {
+  width: 86px;
+  min-width: 86px;
+  text-align: center;
+}
+
+.observer-scoreboard {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid rgba(110, 120, 132, 0.34);
+  border-top: 5px solid var(--frame-blue);
+  border-bottom: 5px solid var(--frame-cyan);
+  border-radius: 8px;
+  padding: 1rem;
+  background: linear-gradient(180deg, #bceeff 0%, #ffffff 100%);
+  box-shadow: 0 14px 28px rgba(17, 32, 51, 0.08);
+}
+
+.score-team {
+  display: grid;
+  justify-items: center;
+  gap: 0.45rem;
+  color: #11202f;
+  font-weight: 950;
+  text-align: center;
+}
+
+.score-controls-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.score-control {
+  display: grid;
+  grid-template-columns: 34px 54px 34px;
+  justify-items: center;
+  align-items: center;
+  gap: 0.25rem;
+  color: #101d2c;
+}
+
+.score-control button,
+.goal-counter button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(9, 93, 206, 0.25);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--frame-blue);
+  font-weight: 950;
+}
+
+.score-control strong {
+  min-width: 54px;
+  border-radius: 8px;
+  padding: 0.25rem 0.5rem;
+  background: #061827;
+  color: #ffffff;
+  font-size: 1.65rem;
+  line-height: 1;
+  text-align: center;
+}
+
+.score-control span {
+  grid-column: 1 / -1;
+  color: #495567;
+  font-size: 0.74rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.observer-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.observer-player-table {
+  min-width: 720px;
+}
+
+.observer-player-table th:nth-child(1),
+.observer-player-table td:nth-child(1) {
+  width: 230px;
+  min-width: 230px;
+}
+
+.observer-player-table th:nth-child(2),
+.observer-player-table td:nth-child(2) {
+  width: 58px;
+  min-width: 58px;
+  text-align: center;
+}
+
+.observer-player-table th:nth-child(3),
+.observer-player-table td:nth-child(3) {
+  width: 150px;
+  min-width: 150px;
+  text-align: center;
+}
+
+.observer-player-table th:nth-child(4),
+.observer-player-table td:nth-child(4) {
+  width: 140px;
+  min-width: 140px;
+  text-align: center;
+}
+
+.observer-player-table th:nth-child(5),
+.observer-player-table td:nth-child(5) {
+  width: 72px;
+  min-width: 72px;
+  text-align: center;
+}
+
+.event-actions,
+.goal-counter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.event-btn,
+.observation-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(110, 120, 132, 0.26);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #687386;
+}
+
+.event-btn.player-of-match {
+  color: #0a66d8;
+}
+
+.event-btn.yellow-card {
+  color: #d5a500;
+}
+
+.event-btn.red-card {
+  color: #d72638;
+}
+
+.event-btn.is-selected,
+.observation-btn.is-selected {
+  border-color: rgba(9, 93, 206, 0.45);
+  background: #061827;
+  color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(29, 183, 255, 0.18);
+}
+
+.event-btn.yellow-card.is-selected {
+  background: #f4c430;
+  color: #111827;
+}
+
+.event-btn.red-card.is-selected {
+  background: #d72638;
+}
+
+.goal-counter {
+  min-width: 112px;
+}
+
+.goal-counter strong {
+  min-width: 20px;
+  color: #102033;
+}
+
+.goal-ball-icon {
+  color: #0a66d8;
+  font-size: 0.82rem;
+}
+
+.profile-loader-shell {
+  display: grid;
+  min-height: 540px;
+  place-items: center;
+}
+
+.admin-placeholder-panel {
+  min-height: 420px;
+}
+
+.observer-edit-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.observer-save-btn {
+  width: auto;
+  min-width: 126px;
+  margin-top: 0;
+  padding-right: 1rem;
+  padding-left: 1rem;
+}
+
+.observer-save-btn.is-saved {
+  background: linear-gradient(135deg, #2ed573, #168a42);
+}
+
+.observation-btn.has-observation {
+  border-color: rgba(213, 165, 0, 0.55);
+  background: #f4c430;
+  color: #111827;
+  box-shadow: 0 0 0 3px rgba(244, 196, 48, 0.2);
+}
+
+.observation-textarea {
+  min-height: 132px;
+  border-color: rgba(116, 141, 166, 0.4);
+  border-radius: 6px;
+  font-weight: 650;
+}
+
+.observation-textarea:focus {
+  border-color: var(--frame-sky);
+  box-shadow: 0 0 0 0.2rem rgba(29, 183, 255, 0.18);
 }
 
 .division-empty {
@@ -1517,8 +1863,8 @@ body {
 
 .login-tabs {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.5rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
   margin-bottom: 1rem;
   padding: 0.25rem;
   border-radius: 8px;
@@ -1527,8 +1873,12 @@ body {
 
 .login-tabs .nav-link {
   width: 100%;
+  min-height: 38px;
+  padding: 0.45rem 0.35rem;
   color: var(--frame-blue);
+  font-size: 0.9rem;
   font-weight: 900;
+  white-space: nowrap;
 }
 
 .login-tabs .nav-link.active {
@@ -1676,6 +2026,11 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .observer-edit-grid,
+  .observer-scoreboard {
+    grid-template-columns: 1fr;
+  }
+
   .team-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1727,6 +2082,33 @@ body {
 
   .fixture-toolbar {
     flex-direction: column;
+  }
+
+  .admin-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .score-controls-wrap {
+    width: 100%;
+    justify-content: space-evenly;
+  }
+
+  .observer-edit-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .observer-save-btn {
+    width: 100%;
+  }
+
+  .score-control {
+    grid-template-columns: 32px 48px 32px;
+  }
+
+  .score-control strong {
+    min-width: 48px;
+    font-size: 1.45rem;
   }
 
   .loader-logo {

@@ -368,13 +368,18 @@
           <div class="modal-body">
             <ul class="nav nav-pills login-tabs" id="loginRoleTabs" role="tablist">
               <li class="nav-item" role="presentation">
-                <button class="nav-link" id="delegado-tab" data-bs-toggle="pill" data-bs-target="#delegado-pane" type="button" role="tab" aria-controls="delegado-pane" aria-selected="false" data-role="Delegado">
-                  Delegado
+                <button class="nav-link active" id="administrador-tab" data-bs-toggle="pill" data-bs-target="#administrador-pane" type="button" role="tab" aria-controls="administrador-pane" aria-selected="true" data-role="Administrador">
+                  Administrador
                 </button>
               </li>
               <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="administrador-tab" data-bs-toggle="pill" data-bs-target="#administrador-pane" type="button" role="tab" aria-controls="administrador-pane" aria-selected="true" data-role="Administrador">
-                  Administrador
+                <button class="nav-link" id="veedor-tab" data-bs-toggle="pill" data-bs-target="#veedor-pane" type="button" role="tab" aria-controls="veedor-pane" aria-selected="false" data-role="Veedor">
+                  Veedor
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="delegado-tab" data-bs-toggle="pill" data-bs-target="#delegado-pane" type="button" role="tab" aria-controls="delegado-pane" aria-selected="false" data-role="Delegado">
+                  Delegado
                 </button>
               </li>
             </ul>
@@ -386,6 +391,9 @@
                 </div>
                 <div class="tab-pane fade show active" id="administrador-pane" role="tabpanel" aria-labelledby="administrador-tab" tabindex="0">
                   <p>Acceso para gestión del torneo, divisiones, calendario, resultados y usuarios delegados.</p>
+                </div>
+                <div class="tab-pane fade" id="veedor-pane" role="tabpanel" aria-labelledby="veedor-tab" tabindex="0">
+                  <p>Acceso para cargar resultados, incidencias, goles, tarjetas y observaciones del partido.</p>
                 </div>
               </div>
 
@@ -409,6 +417,31 @@
                 Ingresar
               </button>
             </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="observationModal" tabindex="-1" aria-labelledby="observationModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content login-modal">
+          <div class="modal-header">
+            <div class="login-brand">
+              <img src="assets/frame0-logo.png" alt="Logo Frame0">
+              <div>
+                <p class="section-kicker mb-1">Veedor</p>
+                <h2 class="modal-title fs-5" id="observationModalLabel">Observación disciplinaria</h2>
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <label for="observationText" class="form-label">Detalle de la observación</label>
+            <textarea class="form-control observation-textarea" id="observationText" rows="5" placeholder="Escribí la observación del jugador..."></textarea>
+            <button class="btn btn-login-submit w-100 mt-3" type="button" id="saveObservation">
+              <i class="bi bi-check2-circle"></i>
+              Guardar observación
+            </button>
           </div>
         </div>
       </div>

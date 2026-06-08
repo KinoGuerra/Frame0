@@ -16,9 +16,13 @@ const sidebarContent = document.querySelector("#sidebarContent");
 const contentShell = document.querySelector("#contentShell");
 const passwordInput = document.querySelector("#password");
 const passwordToggle = document.querySelector("[data-password-toggle]");
+const observationModalElement = document.querySelector("#observationModal");
+const observationText = document.querySelector("#observationText");
+const saveObservationButton = document.querySelector("#saveObservation");
 
 let divisionLoadTimer;
 let selectedTeamId = null;
+let activeObservationButton = null;
 
 const teams = [
   {
@@ -300,6 +304,13 @@ const fixtures = {
     { status: "A disputar", home: "river", away: "instituto", homeGoals: null, awayGoals: null }
   ]
 };
+
+const observerMatches = [
+  { id: "v-1", date: "08/06/2026", home: "belgrano", away: "instituto", homeGoals: 2, awayGoals: 1 },
+  { id: "v-2", date: "08/06/2026", home: "boca", away: "river", homeGoals: 1, awayGoals: 1 },
+  { id: "v-3", date: "08/06/2026", home: "real", away: "barcelona", homeGoals: null, awayGoals: null },
+  { id: "v-4", date: "08/06/2026", home: "manchester", away: "belgrano", homeGoals: null, awayGoals: null }
+];
 
 function getTeam(teamId) {
   return teams.find((team) => team.id === teamId);
@@ -669,6 +680,43 @@ function getActiveLoginRole() {
   return activeTab ? activeTab.dataset.role : "Delegado";
 }
 
+function renderProfileLoader(roleName) {
+  return `
+    <div class="profile-loader-shell" role="status" aria-live="polite">
+      <div class="division-loader">
+        <div class="loader-stage" aria-hidden="true">
+          <img src="assets/frame0-logo.png" alt="" class="loader-logo">
+          <div class="ball-track">
+            <div class="soccer-spinner"></div>
+          </div>
+        </div>
+        <span>Cargando ${roleName}...</span>
+      </div>
+    </div>
+  `;
+}
+
+function showContentLoader(sectionName, callback) {
+  contentShell.innerHTML = renderProfileLoader(sectionName);
+  window.setTimeout(callback, 650);
+}
+
+function showProfileLoader(roleName, callback) {
+  sidebarContent.innerHTML = `
+    <div class="sidebar-main admin-sidebar-main">
+      <div>
+        <div class="sidebar-heading">
+          <i class="bi bi-hourglass-split"></i>
+          <h2>Acceso</h2>
+        </div>
+      </div>
+    </div>
+  `;
+  contentShell.innerHTML = renderProfileLoader(roleName);
+  document.body.classList.add("admin-view");
+  window.setTimeout(callback, 800);
+}
+
 function getAdminMetrics() {
   const categories = [
     {
@@ -702,6 +750,13 @@ function getAdminMetrics() {
     averagePlayers,
     totalPlayers: totalTeams * averagePlayers
   };
+}
+
+function getAdminDivisionMap() {
+  return getAdminMetrics().categories.reduce((map, category) => {
+    map[category.name] = category.divisions.map((division) => division.name);
+    return map;
+  }, {});
 }
 
 function renderAdminSummaryList(items) {
@@ -879,6 +934,184 @@ function renderDelegatePlayers(team) {
   `;
 }
 
+function getObserverMatch(matchId) {
+  return observerMatches.find((match) => match.id === matchId);
+}
+
+function renderObserverMatchRows() {
+  return observerMatches.map((match) => {
+    const homeTeam = getTeam(match.home);
+    const awayTeam = getTeam(match.away);
+    const score = match.homeGoals === null || match.awayGoals === null ? "" : `${match.homeGoals} - ${match.awayGoals}`;
+
+    return `
+      <tr>
+        <td>${match.date}</td>
+        <td>
+          <span class="fixture-team">${renderTeamBadge(homeTeam, "small")} ${homeTeam.shortName}</span>
+        </td>
+        <td>${score}</td>
+        <td>
+          <span class="fixture-team">${renderTeamBadge(awayTeam, "small")} ${awayTeam.shortName}</span>
+        </td>
+        <td>
+          <div class="table-actions">
+            <button type="button" aria-label="Editar partido" data-observer-edit-match="${match.id}">
+              <i class="bi bi-pencil-fill"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderObserverMatches() {
+  return `
+    <div class="section-toolbar admin-toolbar">
+      <div>
+        <p class="section-kicker section-brand mb-1">Frame0</p>
+        <h2 class="section-title mb-0">Partidos del día</h2>
+      </div>
+    </div>
+
+    <section class="division-table-panel observer-panel">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Veedor</p>
+        <h2>Fecha 08/06/2026</h2>
+      </div>
+      <div class="table-responsive">
+        <table class="table frame-table observer-matches-table mb-0">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Equipo 1</th>
+              <th>Marcador</th>
+              <th>Equipo 2</th>
+              <th>Editar</th>
+            </tr>
+          </thead>
+          <tbody>${renderObserverMatchRows()}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderScoreCounter(label, value, key) {
+  const score = value === null ? 0 : value;
+
+  return `
+    <div class="score-control" aria-label="${label}">
+      <button type="button" data-score-dec="${key}" aria-label="Restar gol"><i class="bi bi-dash-lg"></i></button>
+      <strong data-score-value="${key}">${score}</strong>
+      <button type="button" data-score-inc="${key}" aria-label="Sumar gol"><i class="bi bi-plus-lg"></i></button>
+      <span>${label}</span>
+    </div>
+  `;
+}
+
+function renderObserverPlayerRows(team) {
+  return team.players.map((player) => `
+    <tr>
+      <td>${player.name}</td>
+      <td>${player.number}</td>
+      <td>
+        <div class="event-actions">
+          <button class="event-btn player-of-match" type="button" aria-label="Jugador del partido">
+            <i class="bi bi-star-fill"></i>
+          </button>
+          <button class="event-btn yellow-card" type="button" aria-label="Tarjeta amarilla">
+            <i class="bi bi-square-fill"></i>
+          </button>
+          <button class="event-btn red-card" type="button" aria-label="Tarjeta roja">
+            <i class="bi bi-square-fill"></i>
+          </button>
+        </div>
+      </td>
+      <td>
+        <div class="goal-counter">
+          <button type="button" data-goal-dec aria-label="Restar gol"><i class="bi bi-dash-lg"></i></button>
+          <span><i class="bi bi-circle-fill goal-ball-icon"></i></span>
+          <strong data-goal-value>0</strong>
+          <button type="button" data-goal-inc aria-label="Sumar gol"><i class="bi bi-plus-lg"></i></button>
+        </div>
+      </td>
+      <td>
+        <button class="observation-btn" type="button" data-observation aria-label="Agregar observación disciplinaria">
+          <i class="bi bi-file-earmark-text-fill"></i>
+        </button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderObserverPlayersTable(team, sideLabel) {
+  return `
+    <section class="division-table-panel observer-team-panel">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">${sideLabel}</p>
+        <h2>${team.shortName}</h2>
+      </div>
+      <div class="table-responsive">
+        <table class="table frame-table observer-player-table mb-0">
+          <thead>
+            <tr>
+              <th>Apellido y nombre</th>
+              <th>#</th>
+              <th>Incidencias</th>
+              <th>Goles</th>
+              <th>Obs.</th>
+            </tr>
+          </thead>
+          <tbody>${renderObserverPlayerRows(team)}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderObserverEditMatch(matchId) {
+  const match = getObserverMatch(matchId);
+  if (!match) return renderObserverMatches();
+
+  const homeTeam = getTeam(match.home);
+  const awayTeam = getTeam(match.away);
+
+  return `
+    <div class="observer-edit-toolbar">
+      <button class="back-to-division" type="button" data-observer-back>
+        <i class="bi bi-arrow-left"></i>
+        Volver a partidos
+      </button>
+      <button class="btn btn-ingreso observer-save-btn" type="button" data-observer-save>
+        <i class="bi bi-save-fill"></i>
+        Guardar
+      </button>
+    </div>
+
+    <section class="observer-scoreboard">
+      <div class="score-team">
+        ${renderTeamBadge(homeTeam)}
+        <strong>${homeTeam.shortName}</strong>
+      </div>
+      <div class="score-controls-wrap">
+        ${renderScoreCounter(homeTeam.shortName, match.homeGoals, "home")}
+        ${renderScoreCounter(awayTeam.shortName, match.awayGoals, "away")}
+      </div>
+      <div class="score-team">
+        ${renderTeamBadge(awayTeam)}
+        <strong>${awayTeam.shortName}</strong>
+      </div>
+    </section>
+
+    <div class="observer-edit-grid">
+      ${renderObserverPlayersTable(homeTeam, "Equipo 1")}
+      ${renderObserverPlayersTable(awayTeam, "Equipo 2")}
+    </div>
+  `;
+}
+
 function renderAdminHome() {
   const metrics = getAdminMetrics();
   const divisions = metrics.categories.flatMap((category) =>
@@ -962,6 +1195,108 @@ function renderAdminHome() {
   `;
 }
 
+function renderAdminActionView(actionName) {
+  return `
+    <div class="section-toolbar admin-toolbar">
+      <div>
+        <p class="section-kicker section-brand mb-1">Frame0</p>
+        <h2 class="section-title mb-0">${actionName}</h2>
+      </div>
+    </div>
+    <section class="division-table-panel admin-placeholder-panel">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Administrador</p>
+        <h2>${actionName}</h2>
+      </div>
+    </section>
+  `;
+}
+
+function renderAdminTeamRows(hasCompletedFilters) {
+  if (!hasCompletedFilters) {
+    return `
+      <tr>
+        <td colspan="4" class="admin-empty-row">Seleccioná categoría y división para visualizar equipos.</td>
+      </tr>
+    `;
+  }
+
+  return teams.map((team, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>
+        <span class="fixture-team">${renderTeamBadge(team, "small")} ${team.shortName}</span>
+      </td>
+      <td>${team.delegate}</td>
+      <td>
+        <div class="table-actions">
+          <button type="button" aria-label="Editar ${team.shortName}">
+            <i class="bi bi-pencil-fill"></i>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderAdminTeamsView(selectedCategory = "", selectedDivision = "") {
+  const divisionMap = getAdminDivisionMap();
+  const categories = Object.keys(divisionMap);
+  const divisions = selectedCategory ? divisionMap[selectedCategory] : [];
+  const hasCompletedFilters = Boolean(selectedCategory && selectedDivision);
+
+  return `
+    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Administrador</p>
+        <h2>Equipos</h2>
+      </div>
+      <button class="btn btn-ingreso delegate-add-player" type="button">
+        <i class="bi bi-plus-lg"></i>
+        Cargar nuevo equipo
+      </button>
+    </div>
+
+    <section class="division-table-panel admin-teams-panel">
+      <div class="admin-filter-grid" aria-label="Filtros obligatorios de equipos">
+        <label class="admin-filter-field">
+          <span>Categoría</span>
+          <select class="form-select" data-admin-team-category>
+            <option value="">Seleccionar categoría</option>
+            ${categories.map((category) => `
+              <option value="${category}" ${category === selectedCategory ? "selected" : ""}>${category}</option>
+            `).join("")}
+          </select>
+        </label>
+
+        <label class="admin-filter-field">
+          <span>División</span>
+          <select class="form-select" data-admin-team-division ${selectedCategory ? "" : "disabled"}>
+            <option value="">Seleccionar división</option>
+            ${divisions.map((division) => `
+              <option value="${division}" ${division === selectedDivision ? "selected" : ""}>${division}</option>
+            `).join("")}
+          </select>
+        </label>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table frame-table admin-teams-table mb-0">
+          <thead>
+            <tr>
+              <th>N&deg;</th>
+              <th>Equipo</th>
+              <th>Delegado</th>
+              <th>Editar</th>
+            </tr>
+          </thead>
+          <tbody>${renderAdminTeamRows(hasCompletedFilters)}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
 function enterDelegateView(team) {
   sidebarContent.innerHTML = `
     <div class="sidebar-main admin-sidebar-main">
@@ -1001,19 +1336,19 @@ function enterAdminView() {
           <h2>Acciones</h2>
         </div>
         <div class="admin-actions">
-          <button class="division-link" type="button">
+          <button class="division-link" type="button" data-admin-action="Equipos">
             <i class="bi bi-shield-fill-check"></i>
             Equipos
           </button>
-          <button class="division-link" type="button">
+          <button class="division-link" type="button" data-admin-action="Delegados">
             <i class="bi bi-person-badge-fill"></i>
             Delegados
           </button>
-          <button class="division-link" type="button">
+          <button class="division-link" type="button" data-admin-action="Jugadores">
             <i class="bi bi-people-fill"></i>
             Jugadores
           </button>
-          <button class="division-link" type="button">
+          <button class="division-link" type="button" data-admin-action="Configuraciones">
             <i class="bi bi-gear-fill"></i>
             Configuraciones
           </button>
@@ -1026,6 +1361,31 @@ function enterAdminView() {
     </div>
   `;
   contentShell.innerHTML = renderAdminHome();
+  document.body.classList.add("admin-view");
+}
+
+function enterObserverView() {
+  sidebarContent.innerHTML = `
+    <div class="sidebar-main admin-sidebar-main">
+      <div>
+        <div class="sidebar-heading">
+          <i class="bi bi-clipboard2-check-fill"></i>
+          <h2>Acciones</h2>
+        </div>
+        <div class="admin-actions">
+          <button class="division-link" type="button" data-observer-matches>
+            <i class="bi bi-calendar2-week-fill"></i>
+            Partidos
+          </button>
+        </div>
+      </div>
+      <button class="btn btn-ingreso w-100" type="button" data-admin-logout>
+        <i class="bi bi-box-arrow-left"></i>
+        Salir
+      </button>
+    </div>
+  `;
+  contentShell.innerHTML = renderObserverMatches();
   document.body.classList.add("admin-view");
 }
 
@@ -1047,10 +1407,30 @@ sidebarContent.addEventListener("click", (event) => {
   const logoutButton = event.target.closest("[data-admin-logout]");
   const delegatePlayersButton = event.target.closest("[data-delegate-players]");
   const delegateHomeButton = event.target.closest("[data-delegate-home]");
+  const observerMatchesButton = event.target.closest("[data-observer-matches]");
+  const adminActionButton = event.target.closest("[data-admin-action]");
 
   if (delegatePlayersButton || delegateHomeButton) {
     const team = getTeam(sidebarContent.dataset.delegateTeam);
-    contentShell.innerHTML = delegatePlayersButton ? renderDelegatePlayers(team) : renderDelegateHome(team);
+    const sectionName = delegatePlayersButton ? "Jugadores" : "Resumen";
+    showContentLoader(sectionName, () => {
+      contentShell.innerHTML = delegatePlayersButton ? renderDelegatePlayers(team) : renderDelegateHome(team);
+    });
+    return;
+  }
+
+  if (observerMatchesButton) {
+    showContentLoader("Partidos", () => {
+      contentShell.innerHTML = renderObserverMatches();
+    });
+    return;
+  }
+
+  if (adminActionButton) {
+    const actionName = adminActionButton.dataset.adminAction;
+    showContentLoader(actionName, () => {
+      contentShell.innerHTML = actionName === "Equipos" ? renderAdminTeamsView() : renderAdminActionView(actionName);
+    });
     return;
   }
 
@@ -1058,6 +1438,107 @@ sidebarContent.addEventListener("click", (event) => {
 
   window.location.href = "index.html#home";
   window.location.reload();
+});
+
+contentShell.addEventListener("click", (event) => {
+  const editButton = event.target.closest("[data-observer-edit-match]");
+  const observerBackButton = event.target.closest("[data-observer-back]");
+  const scoreIncButton = event.target.closest("[data-score-inc]");
+  const scoreDecButton = event.target.closest("[data-score-dec]");
+  const goalIncButton = event.target.closest("[data-goal-inc]");
+  const goalDecButton = event.target.closest("[data-goal-dec]");
+  const eventButton = event.target.closest(".event-btn");
+  const observationButton = event.target.closest("[data-observation]");
+  const observerSaveButton = event.target.closest("[data-observer-save]");
+
+  if (editButton) {
+    const matchId = editButton.dataset.observerEditMatch;
+    showContentLoader("Detalle del partido", () => {
+      contentShell.innerHTML = renderObserverEditMatch(matchId);
+    });
+    return;
+  }
+
+  if (observerBackButton) {
+    showContentLoader("Partidos", () => {
+      contentShell.innerHTML = renderObserverMatches();
+    });
+    return;
+  }
+
+  if (scoreIncButton || scoreDecButton) {
+    const key = scoreIncButton ? scoreIncButton.dataset.scoreInc : scoreDecButton.dataset.scoreDec;
+    const valueElement = contentShell.querySelector(`[data-score-value="${key}"]`);
+    const currentValue = Number(valueElement.textContent);
+    const nextValue = Math.max(0, currentValue + (scoreIncButton ? 1 : -1));
+    valueElement.textContent = nextValue;
+    return;
+  }
+
+  if (goalIncButton || goalDecButton) {
+    const goalCounter = (goalIncButton || goalDecButton).closest(".goal-counter");
+    const valueElement = goalCounter.querySelector("[data-goal-value]");
+    const currentValue = Number(valueElement.textContent);
+    const nextValue = Math.max(0, currentValue + (goalIncButton ? 1 : -1));
+    valueElement.textContent = nextValue;
+    return;
+  }
+
+  if (eventButton) {
+    eventButton.classList.toggle("is-selected");
+    return;
+  }
+
+  if (observerSaveButton) {
+    observerSaveButton.classList.add("is-saved");
+    observerSaveButton.innerHTML = `<i class="bi bi-check2-circle"></i> Guardado`;
+    window.setTimeout(() => {
+      observerSaveButton.classList.remove("is-saved");
+      observerSaveButton.innerHTML = `<i class="bi bi-save-fill"></i> Guardar`;
+    }, 1600);
+    return;
+  }
+
+  if (observationButton) {
+    activeObservationButton = observationButton;
+    observationText.value = observationButton.dataset.observationText || "";
+    const observationModal = bootstrap.Modal.getOrCreateInstance(observationModalElement);
+    observationModal.show();
+  }
+});
+
+contentShell.addEventListener("change", (event) => {
+  const categorySelect = event.target.closest("[data-admin-team-category]");
+  const divisionSelect = event.target.closest("[data-admin-team-division]");
+
+  if (categorySelect) {
+    const category = categorySelect.value;
+    showContentLoader("Equipos", () => {
+      contentShell.innerHTML = renderAdminTeamsView(category, "");
+    });
+    return;
+  }
+
+  if (divisionSelect) {
+    const category = contentShell.querySelector("[data-admin-team-category]")?.value || "";
+    const division = divisionSelect.value;
+    showContentLoader("Equipos", () => {
+      contentShell.innerHTML = renderAdminTeamsView(category, division);
+    });
+  }
+});
+
+saveObservationButton.addEventListener("click", () => {
+  if (!activeObservationButton) return;
+
+  const text = observationText.value.trim();
+  activeObservationButton.dataset.observationText = text;
+  activeObservationButton.classList.toggle("has-observation", Boolean(text));
+
+  const observationModal = bootstrap.Modal.getInstance(observationModalElement);
+  if (observationModal) {
+    observationModal.hide();
+  }
 });
 
 document.querySelectorAll("[data-scroll-team]").forEach((button) => {
@@ -1114,7 +1595,20 @@ loginForm.addEventListener("submit", (event) => {
       modalInstance.hide();
     }
 
-    enterAdminView();
+    showProfileLoader("Administrador", enterAdminView);
+    loginForm.reset();
+    return;
+  }
+
+  if (username.toLowerCase() === "veedor" && password === "123456") {
+    const modalElement = document.querySelector("#loginModal");
+    const modalInstance = bootstrap.Modal.getInstance(modalElement);
+
+    if (modalInstance) {
+      modalInstance.hide();
+    }
+
+    showProfileLoader("Veedor", enterObserverView);
     loginForm.reset();
     return;
   }
@@ -1129,7 +1623,7 @@ loginForm.addEventListener("submit", (event) => {
       modalInstance.hide();
     }
 
-    enterDelegateView(team);
+    showProfileLoader("Delegado", () => enterDelegateView(team));
     loginForm.reset();
     return;
   }
