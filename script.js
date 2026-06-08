@@ -1302,7 +1302,7 @@ function enterDelegateView(team) {
     <div class="sidebar-main admin-sidebar-main">
       <div>
         <div class="sidebar-heading">
-          <i class="bi bi-person-badge-fill"></i>
+          <i class="bi bi-sliders2-vertical"></i>
           <h2>Acciones</h2>
         </div>
         <div class="admin-actions">
@@ -1369,7 +1369,7 @@ function enterObserverView() {
     <div class="sidebar-main admin-sidebar-main">
       <div>
         <div class="sidebar-heading">
-          <i class="bi bi-clipboard2-check-fill"></i>
+          <i class="bi bi-sliders2-vertical"></i>
           <h2>Acciones</h2>
         </div>
         <div class="admin-actions">
