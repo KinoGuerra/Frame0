@@ -160,6 +160,13 @@ body {
   flex-direction: column;
 }
 
+#sidebarContent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 100%;
+}
+
 @media (min-width: 992px) and (max-width: 1199.98px) {
   .sidebar-panel {
     width: calc(25% - 1.25rem);
@@ -482,6 +489,121 @@ body {
   background: #303740;
   color: #ffffff;
   font-family: "Coiny", "Arial Black", Impact, sans-serif;
+}
+
+.delegate-metrics {
+  margin-bottom: 1rem;
+}
+
+.delegate-players-toolbar {
+  position: sticky;
+  top: -1rem;
+  z-index: 3;
+  align-items: center;
+  margin: -1rem -1rem 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid rgba(110, 120, 132, 0.22);
+  background: linear-gradient(180deg, rgba(215, 242, 255, 0.96), rgba(245, 251, 255, 0.92));
+  backdrop-filter: blur(12px);
+}
+
+.delegate-add-player {
+  width: auto;
+  min-width: 160px;
+  margin-top: 0;
+}
+
+.delegate-players-table {
+  min-width: 780px;
+}
+
+.delegate-players-table th:nth-child(1),
+.delegate-players-table td:nth-child(1) {
+  width: 70px;
+  min-width: 70px;
+  text-align: center;
+}
+
+.delegate-players-table th:nth-child(2),
+.delegate-players-table td:nth-child(2) {
+  width: 230px;
+  min-width: 230px;
+}
+
+.delegate-players-table th:nth-child(3),
+.delegate-players-table td:nth-child(3) {
+  width: 120px;
+  min-width: 120px;
+  text-align: center;
+}
+
+.delegate-players-table th:nth-child(4),
+.delegate-players-table td:nth-child(4) {
+  width: 130px;
+  min-width: 130px;
+  text-align: center;
+}
+
+.delegate-players-table th:nth-child(5),
+.delegate-players-table td:nth-child(5) {
+  width: 70px;
+  min-width: 70px;
+  text-align: center;
+}
+
+.delegate-players-table th:nth-child(6),
+.delegate-players-table td:nth-child(6) {
+  width: 120px;
+  min-width: 120px;
+  text-align: center;
+}
+
+.player-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.76rem;
+  font-weight: 950;
+}
+
+.player-status.habilitado {
+  background: #dff7e8;
+  color: #188a42;
+}
+
+.player-status.suspendido {
+  background: #ffe2e7;
+  color: #d72638;
+}
+
+.player-status.inhabilitado {
+  background: #fff4c7;
+  color: #9a7600;
+}
+
+.table-actions {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.table-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(110, 120, 132, 0.28);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--frame-blue);
+}
+
+.table-actions button:hover,
+.table-actions button:focus {
+  background: #e6f7ff;
 }
 
 .division-empty {

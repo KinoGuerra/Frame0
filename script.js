@@ -713,6 +713,172 @@ function renderAdminSummaryList(items) {
   `).join("");
 }
 
+function getTeamFromUsername(username) {
+  const normalizedUsername = username.trim().toLowerCase();
+
+  return teams.find((team) =>
+    team.id.toLowerCase() === normalizedUsername ||
+    team.shortName.toLowerCase() === normalizedUsername ||
+    team.name.toLowerCase().includes(normalizedUsername) ||
+    team.legalName.toLowerCase().includes(normalizedUsername)
+  );
+}
+
+function getTeamStatusCounts(team) {
+  return team.players.reduce((counts, player) => {
+    const status = player.red > 0 ? "suspended" : player.yellow >= 4 ? "disabled" : "enabled";
+    counts[status] += 1;
+    return counts;
+  }, { enabled: 0, suspended: 0, disabled: 0 });
+}
+
+function getTeamRecord(teamId) {
+  return getTeamMatches(teamId).reduce((record, match) => {
+    if (match.homeGoals === null || match.awayGoals === null) return record;
+
+    record.played += 1;
+    if (match.homeGoals === match.awayGoals) {
+      record.drawn += 1;
+      return record;
+    }
+
+    const isHome = match.home === teamId;
+    const won = isHome ? match.homeGoals > match.awayGoals : match.awayGoals > match.homeGoals;
+    if (won) {
+      record.won += 1;
+    } else {
+      record.lost += 1;
+    }
+
+    return record;
+  }, { played: 0, won: 0, drawn: 0, lost: 0 });
+}
+
+function getPlayerStatus(player) {
+  if (player.red > 0) return "Suspendido";
+  if (player.yellow >= 4) return "Inhabilitado";
+  return "Habilitado";
+}
+
+function renderDelegateHome(team) {
+  const record = getTeamRecord(team.id);
+  const statusCounts = getTeamStatusCounts(team);
+
+  return `
+    <div class="section-toolbar admin-toolbar">
+      <div>
+        <p class="section-kicker section-brand mb-1">Frame0</p>
+        <h2 class="section-title mb-0">${team.legalName}</h2>
+      </div>
+    </div>
+
+    <section class="quick-stats admin-quick-stats" aria-label="Métricas del equipo">
+      <div class="quick-stat">
+        <i class="bi bi-calendar-check-fill"></i>
+        <div class="quick-stat-content">
+          <strong>${record.played}</strong>
+          <div class="quick-stat-copy"><span>Jugados</span><small>Partidos disputados</small></div>
+        </div>
+      </div>
+      <div class="quick-stat">
+        <i class="bi bi-trophy-fill"></i>
+        <div class="quick-stat-content">
+          <strong>${record.won}</strong>
+          <div class="quick-stat-copy"><span>Ganados</span><small>Victorias del equipo</small></div>
+        </div>
+      </div>
+      <div class="quick-stat">
+        <i class="bi bi-dash-circle-fill"></i>
+        <div class="quick-stat-content">
+          <strong>${record.drawn}</strong>
+          <div class="quick-stat-copy"><span>Empatados</span><small>Partidos igualados</small></div>
+        </div>
+      </div>
+      <div class="quick-stat">
+        <i class="bi bi-x-circle-fill"></i>
+        <div class="quick-stat-content">
+          <strong>${record.lost}</strong>
+          <div class="quick-stat-copy"><span>Perdidos</span><small>Derrotas registradas</small></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="team-metrics delegate-metrics">
+      <div><span>Habilitados</span><strong>${statusCounts.enabled}</strong></div>
+      <div><span>Suspendidos</span><strong>${statusCounts.suspended}</strong></div>
+      <div><span>Inhabilitados</span><strong>${statusCounts.disabled}</strong></div>
+      <div><span>Jugadores</span><strong>${team.players.length}</strong></div>
+    </section>
+
+    <section class="division-table-panel">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Calendario</p>
+        <h2>Partidos del equipo</h2>
+      </div>
+      <div class="table-responsive">
+        <table class="table frame-table team-matches-table mb-0">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Rival</th>
+              <th>Resultado</th>
+            </tr>
+          </thead>
+          <tbody>${renderTeamMatches(team.id)}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderDelegatePlayers(team) {
+  return `
+    <div class="fixture-toolbar delegate-players-toolbar">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Delegado</p>
+        <h2>Jugadores de ${team.shortName}</h2>
+      </div>
+      <button class="btn btn-ingreso delegate-add-player" type="button">
+        <i class="bi bi-plus-lg"></i>
+        Agregar jugador
+      </button>
+    </div>
+    <section class="division-table-panel">
+      <div class="table-responsive">
+        <table class="table frame-table delegate-players-table mb-0">
+          <thead>
+            <tr>
+              <th>Num</th>
+              <th>Apellido y nombre</th>
+              <th>Fecha nac.</th>
+              <th>Estado</th>
+              <th>#</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${team.players.map((player, index) => `
+              <tr>
+                <td>${index + 1}</td>
+                <td>${player.name}</td>
+                <td>${String(10 + (index % 20)).padStart(2, "0")}/03/${1990 + (index % 15)}</td>
+                <td><span class="player-status ${getPlayerStatus(player).toLowerCase()}">${getPlayerStatus(player)}</span></td>
+                <td>${player.number}</td>
+                <td>
+                  <div class="table-actions">
+                    <button type="button" aria-label="Editar ${player.name}"><i class="bi bi-pencil-fill"></i></button>
+                    <button type="button" aria-label="Eliminar ${player.name}"><i class="bi bi-trash-fill"></i></button>
+                  </div>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
 function renderAdminHome() {
   const metrics = getAdminMetrics();
   const divisions = metrics.categories.flatMap((category) =>
@@ -796,6 +962,36 @@ function renderAdminHome() {
   `;
 }
 
+function enterDelegateView(team) {
+  sidebarContent.innerHTML = `
+    <div class="sidebar-main admin-sidebar-main">
+      <div>
+        <div class="sidebar-heading">
+          <i class="bi bi-person-badge-fill"></i>
+          <h2>Acciones</h2>
+        </div>
+        <div class="admin-actions">
+          <button class="division-link" type="button" data-delegate-home>
+            <i class="bi bi-house-fill"></i>
+            Resumen
+          </button>
+          <button class="division-link" type="button" data-delegate-players>
+            <i class="bi bi-people-fill"></i>
+            Jugadores
+          </button>
+        </div>
+      </div>
+      <button class="btn btn-ingreso w-100" type="button" data-admin-logout>
+        <i class="bi bi-box-arrow-left"></i>
+        Salir
+      </button>
+    </div>
+  `;
+  sidebarContent.dataset.delegateTeam = team.id;
+  contentShell.innerHTML = renderDelegateHome(team);
+  document.body.classList.add("admin-view");
+}
+
 function enterAdminView() {
   sidebarContent.innerHTML = `
     <div class="sidebar-main admin-sidebar-main">
@@ -849,6 +1045,15 @@ passwordToggle.addEventListener("click", () => {
 
 sidebarContent.addEventListener("click", (event) => {
   const logoutButton = event.target.closest("[data-admin-logout]");
+  const delegatePlayersButton = event.target.closest("[data-delegate-players]");
+  const delegateHomeButton = event.target.closest("[data-delegate-home]");
+
+  if (delegatePlayersButton || delegateHomeButton) {
+    const team = getTeam(sidebarContent.dataset.delegateTeam);
+    contentShell.innerHTML = delegatePlayersButton ? renderDelegatePlayers(team) : renderDelegateHome(team);
+    return;
+  }
+
   if (!logoutButton) return;
 
   window.location.href = "index.html#home";
@@ -901,12 +1106,7 @@ loginForm.addEventListener("submit", (event) => {
   const password = document.querySelector("#password").value;
   const role = getActiveLoginRole();
 
-  if (role !== "Administrador") {
-    alert("Por ahora sólo está habilitado el ingreso de Administrador.");
-    return;
-  }
-
-  if (username.toLowerCase() === "admin" && password === "123456") {
+  if (role === "Administrador" && username.toLowerCase() === "admin" && password === "123456") {
     const modalElement = document.querySelector("#loginModal");
     const modalInstance = bootstrap.Modal.getInstance(modalElement);
 
@@ -915,6 +1115,21 @@ loginForm.addEventListener("submit", (event) => {
     }
 
     enterAdminView();
+    loginForm.reset();
+    return;
+  }
+
+  const team = getTeamFromUsername(username);
+
+  if (team && password === "123456") {
+    const modalElement = document.querySelector("#loginModal");
+    const modalInstance = bootstrap.Modal.getInstance(modalElement);
+
+    if (modalInstance) {
+      modalInstance.hide();
+    }
+
+    enterDelegateView(team);
     loginForm.reset();
     return;
   }
