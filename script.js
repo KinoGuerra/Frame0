@@ -19,10 +19,31 @@ const passwordToggle = document.querySelector("[data-password-toggle]");
 const observationModalElement = document.querySelector("#observationModal");
 const observationText = document.querySelector("#observationText");
 const saveObservationButton = document.querySelector("#saveObservation");
+const newTeamModalElement = document.querySelector("#newTeamModal");
+const newTeamForm = document.querySelector("#newTeamForm");
+const newTeamName = document.querySelector("#newTeamName");
+const newTeamShortName = document.querySelector("#newTeamShortName");
+const newTeamCategory = document.querySelector("#newTeamCategory");
+const newTeamDivision = document.querySelector("#newTeamDivision");
+const createTeamButton = document.querySelector("#createTeamButton");
+const newDelegateModalElement = document.querySelector("#newDelegateModal");
+const newDelegateForm = document.querySelector("#newDelegateForm");
+const newDelegateLastName = document.querySelector("#newDelegateLastName");
+const newDelegateFirstName = document.querySelector("#newDelegateFirstName");
+const newDelegateContact = document.querySelector("#newDelegateContact");
+const newDelegateCategory = document.querySelector("#newDelegateCategory");
+const newDelegateTeam = document.querySelector("#newDelegateTeam");
+const newDelegateUsername = document.querySelector("#newDelegateUsername");
+const newDelegatePassword = document.querySelector("#newDelegatePassword");
+const delegatePasswordToggle = document.querySelector("[data-delegate-password-toggle]");
+const createDelegateButton = document.querySelector("#createDelegateButton");
 
 let divisionLoadTimer;
 let selectedTeamId = null;
 let activeObservationButton = null;
+let adminSearchTimer;
+
+const ADMIN_PAGE_SIZE = 20;
 
 const teams = [
   {
@@ -310,6 +331,13 @@ const observerMatches = [
   { id: "v-2", date: "08/06/2026", home: "boca", away: "river", homeGoals: 1, awayGoals: 1 },
   { id: "v-3", date: "08/06/2026", home: "real", away: "barcelona", homeGoals: null, awayGoals: null },
   { id: "v-4", date: "08/06/2026", home: "manchester", away: "belgrano", homeGoals: null, awayGoals: null }
+];
+
+const observers = [
+  { name: "Santiago Ferreyra", contact: "351555101", username: "veedor" },
+  { name: "Marcos Bustos", contact: "351555102", username: "veedor.bustos" },
+  { name: "Camila Roldán", contact: "351555103", username: "veedor.roldan" },
+  { name: "Nicolás Peralta", contact: "351555104", username: "veedor.peralta" }
 ];
 
 function getTeam(teamId) {
@@ -757,6 +785,87 @@ function getAdminDivisionMap() {
     map[category.name] = category.divisions.map((division) => division.name);
     return map;
   }, {});
+}
+
+function populateNewTeamCategories() {
+  const divisionMap = getAdminDivisionMap();
+  const categoryOptions = Object.keys(divisionMap).map((category) => `
+    <option value="${category}">${category}</option>
+  `).join("");
+
+  newTeamCategory.innerHTML = `<option value="">Seleccionar categoría</option>${categoryOptions}`;
+}
+
+function populateNewTeamDivisions(category) {
+  const divisions = getAdminDivisionMap()[category] || [];
+  const divisionOptions = divisions.map((division) => `
+    <option value="${division}">${division}</option>
+  `).join("");
+
+  newTeamDivision.innerHTML = `<option value="">Seleccionar división</option>${divisionOptions}`;
+  newTeamDivision.disabled = !category;
+}
+
+function validateNewTeamForm() {
+  const isValid = Boolean(
+    newTeamName.value.trim() &&
+    newTeamShortName.value.trim() &&
+    newTeamCategory.value &&
+    newTeamDivision.value
+  );
+
+  createTeamButton.disabled = !isValid;
+}
+
+function populateNewDelegateCategories() {
+  const categories = getTournamentCategories().map((category) => `
+    <option value="${category.name}">${category.name}</option>
+  `).join("");
+
+  newDelegateCategory.innerHTML = `<option value="">Todas las categorías</option>${categories}`;
+}
+
+function populateNewDelegateTeams(category = "") {
+  const filteredTeams = teams
+    .filter((team) => !category || getTournamentCategories().some(() => true))
+    .sort((a, b) => a.shortName.localeCompare(b.shortName));
+
+  newDelegateTeam.innerHTML = `
+    <option value="">Seleccionar equipo</option>
+    ${filteredTeams.map((team) => `<option value="${team.id}">${team.shortName}</option>`).join("")}
+  `;
+}
+
+function updateDelegateDefaultsFromTeam() {
+  const team = getTeam(newDelegateTeam.value);
+  if (!team) {
+    if (!newDelegatePassword.value.trim()) {
+      newDelegatePassword.value = "123456";
+    }
+    return;
+  }
+
+  if (!newDelegateUsername.value.trim()) {
+    newDelegateUsername.value = team.shortName;
+  }
+
+  if (!newDelegatePassword.value.trim()) {
+    newDelegatePassword.value = "123456";
+  }
+}
+
+function validateNewDelegateForm() {
+  const isValidPhone = /^[0-9]+$/.test(newDelegateContact.value.trim());
+  const isValid = Boolean(
+    newDelegateLastName.value.trim() &&
+    newDelegateFirstName.value.trim() &&
+    isValidPhone &&
+    newDelegateTeam.value &&
+    newDelegateUsername.value.trim() &&
+    newDelegatePassword.value.trim()
+  );
+
+  createDelegateButton.disabled = !isValid;
 }
 
 function renderAdminSummaryList(items) {
@@ -1212,7 +1321,207 @@ function renderAdminActionView(actionName) {
   `;
 }
 
-function renderAdminTeamRows(hasCompletedFilters) {
+function getTournamentCategories() {
+  return getAdminMetrics().categories.map((category) => ({ name: category.name }));
+}
+
+function getTournamentDivisions(selectedCategory = "") {
+  return getAdminMetrics().categories
+    .filter((category) => !selectedCategory || category.name === selectedCategory)
+    .flatMap((category) => category.divisions.map((division) => ({
+      name: division.name,
+      category: category.name
+    })));
+}
+
+function renderAdminCategoryRows() {
+  return getTournamentCategories().map((category, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${category.name}</td>
+      <td>
+        <div class="table-actions">
+          <button type="button" aria-label="Editar categoría ${category.name}">
+            <i class="bi bi-pencil-fill"></i>
+          </button>
+          <button type="button" aria-label="Eliminar categoría ${category.name}">
+            <i class="bi bi-trash-fill"></i>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderAdminCategoriesView() {
+  return `
+    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Torneo</p>
+        <h2>Categorías</h2>
+      </div>
+      <button class="btn btn-ingreso delegate-add-player" type="button">
+        <i class="bi bi-plus-lg"></i>
+        Crear nueva categoría
+      </button>
+    </div>
+
+    <section class="division-table-panel admin-teams-panel">
+      <div class="table-responsive">
+        <table class="table frame-table admin-categories-table mb-0">
+          <thead>
+            <tr>
+              <th>N&deg;</th>
+              <th>Nombre</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>${renderAdminCategoryRows()}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderAdminDivisionRows(selectedCategory = "", page = 1) {
+  const divisions = getTournamentDivisions(selectedCategory);
+
+  if (!divisions.length) {
+    return `
+      <tr>
+        <td colspan="4" class="admin-empty-row">No se encontraron divisiones.</td>
+      </tr>
+    `;
+  }
+
+  const pageInfo = paginateItems(divisions, page, 30);
+
+  return pageInfo.items.map((division, index) => `
+    <tr>
+      <td>${(pageInfo.page - 1) * pageInfo.pageSize + index + 1}</td>
+      <td>${division.name}</td>
+      <td>${division.category}</td>
+      <td>
+        <div class="table-actions">
+          <button type="button" aria-label="Editar división ${division.name}">
+            <i class="bi bi-pencil-fill"></i>
+          </button>
+          <button type="button" aria-label="Eliminar división ${division.name}">
+            <i class="bi bi-trash-fill"></i>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderAdminDivisionsView(selectedCategory = "", page = 1) {
+  const categories = getTournamentCategories();
+  const divisionsPageInfo = paginateItems(getTournamentDivisions(selectedCategory), page, 30);
+
+  return `
+    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Torneo</p>
+        <h2>Divisiones</h2>
+      </div>
+      <button class="btn btn-ingreso delegate-add-player" type="button">
+        <i class="bi bi-plus-lg"></i>
+        Crear nueva división
+      </button>
+    </div>
+
+    <section class="division-table-panel admin-teams-panel">
+      <div class="admin-filter-grid admin-single-filter-grid" aria-label="Filtro de divisiones">
+        <label class="admin-filter-field admin-search-field">
+          <span>Categoría</span>
+          <select class="form-select" data-admin-division-category>
+            <option value="">Todas las categorías</option>
+            ${categories.map((category) => `
+              <option value="${category.name}" ${category.name === selectedCategory ? "selected" : ""}>${category.name}</option>
+            `).join("")}
+          </select>
+        </label>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table frame-table admin-divisions-table mb-0">
+          <thead>
+            <tr>
+              <th>N&deg;</th>
+              <th>Nombre</th>
+              <th>Categoría</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>${renderAdminDivisionRows(selectedCategory, divisionsPageInfo.page)}</tbody>
+        </table>
+      </div>
+      ${renderAdminPagination("tournament-divisions", divisionsPageInfo)}
+    </section>
+  `;
+}
+
+function normalizeSearchText(value) {
+  return value.trim().toLowerCase();
+}
+
+function getEffectiveSearchTerm(value) {
+  const term = value.trim();
+  return term.length >= 3 ? term : "";
+}
+
+function paginateItems(items, page = 1, pageSize = ADMIN_PAGE_SIZE) {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+  const start = (safePage - 1) * pageSize;
+
+  return {
+    items: items.slice(start, start + pageSize),
+    page: safePage,
+    totalPages,
+    totalItems: items.length,
+    pageSize
+  };
+}
+
+function renderAdminPagination(type, pageInfo) {
+  if (pageInfo.totalItems <= pageInfo.pageSize) {
+    return "";
+  }
+
+  return `
+    <div class="admin-pagination" data-admin-pagination="${type}">
+      <span>Página ${pageInfo.page} de ${pageInfo.totalPages}</span>
+      <div>
+        <button type="button" data-admin-page="${type}" data-page="${pageInfo.page - 1}" ${pageInfo.page === 1 ? "disabled" : ""}>
+          <i class="bi bi-chevron-left"></i>
+        </button>
+        <button type="button" data-admin-page="${type}" data-page="${pageInfo.page + 1}" ${pageInfo.page === pageInfo.totalPages ? "disabled" : ""}>
+          <i class="bi bi-chevron-right"></i>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function updateAdminPagination(type, pageInfo) {
+  const pagination = contentShell.querySelector(`[data-admin-pagination="${type}"]`);
+  if (!pagination) return;
+  pagination.outerHTML = renderAdminPagination(type, pageInfo);
+}
+
+function getAdminTeamsForFilters(selectedCategory, selectedDivision) {
+  if (!selectedCategory || !selectedDivision) return [];
+  return [...teams].sort((a, b) => a.shortName.localeCompare(b.shortName));
+}
+
+function getAdminFilteredTeams(searchTerm = "") {
+  const normalizedSearch = normalizeSearchText(searchTerm);
+  return teams.filter((team) => team.shortName.toLowerCase().includes(normalizedSearch));
+}
+
+function renderAdminTeamRows(hasCompletedFilters, searchTerm = "", page = 1) {
   if (!hasCompletedFilters) {
     return `
       <tr>
@@ -1221,9 +1530,21 @@ function renderAdminTeamRows(hasCompletedFilters) {
     `;
   }
 
-  return teams.map((team, index) => `
+  const filteredTeams = getAdminFilteredTeams(searchTerm);
+
+  if (!filteredTeams.length) {
+    return `
+      <tr>
+        <td colspan="4" class="admin-empty-row">No se encontraron equipos para la búsqueda indicada.</td>
+      </tr>
+    `;
+  }
+
+  const pageInfo = paginateItems(filteredTeams, page);
+
+  return pageInfo.items.map((team, index) => `
     <tr>
-      <td>${index + 1}</td>
+      <td>${(pageInfo.page - 1) * ADMIN_PAGE_SIZE + index + 1}</td>
       <td>
         <span class="fixture-team">${renderTeamBadge(team, "small")} ${team.shortName}</span>
       </td>
@@ -1233,17 +1554,21 @@ function renderAdminTeamRows(hasCompletedFilters) {
           <button type="button" aria-label="Editar ${team.shortName}">
             <i class="bi bi-pencil-fill"></i>
           </button>
+          <button type="button" aria-label="Eliminar ${team.shortName}">
+            <i class="bi bi-trash-fill"></i>
+          </button>
         </div>
       </td>
     </tr>
   `).join("");
 }
 
-function renderAdminTeamsView(selectedCategory = "", selectedDivision = "") {
+function renderAdminTeamsView(selectedCategory = "", selectedDivision = "", searchTerm = "", page = 1) {
   const divisionMap = getAdminDivisionMap();
   const categories = Object.keys(divisionMap);
   const divisions = selectedCategory ? divisionMap[selectedCategory] : [];
   const hasCompletedFilters = Boolean(selectedCategory && selectedDivision);
+  const teamPageInfo = paginateItems(hasCompletedFilters ? getAdminFilteredTeams(searchTerm) : [], page);
 
   return `
     <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
@@ -1251,7 +1576,7 @@ function renderAdminTeamsView(selectedCategory = "", selectedDivision = "") {
         <p class="section-kicker mb-1">Administrador</p>
         <h2>Equipos</h2>
       </div>
-      <button class="btn btn-ingreso delegate-add-player" type="button">
+      <button class="btn btn-ingreso delegate-add-player" type="button" data-open-new-team-modal>
         <i class="bi bi-plus-lg"></i>
         Cargar nuevo equipo
       </button>
@@ -1278,6 +1603,11 @@ function renderAdminTeamsView(selectedCategory = "", selectedDivision = "") {
             `).join("")}
           </select>
         </label>
+
+        <label class="admin-filter-field admin-search-field">
+          <span>Buscar equipo</span>
+          <input class="form-control" type="search" value="${searchTerm}" placeholder="Buscar por nombre corto" data-admin-team-search ${hasCompletedFilters ? "" : "disabled"}>
+        </label>
       </div>
 
       <div class="table-responsive">
@@ -1290,9 +1620,346 @@ function renderAdminTeamsView(selectedCategory = "", selectedDivision = "") {
               <th>Editar</th>
             </tr>
           </thead>
-          <tbody>${renderAdminTeamRows(hasCompletedFilters)}</tbody>
+          <tbody data-admin-team-rows>${renderAdminTeamRows(hasCompletedFilters, searchTerm, teamPageInfo.page)}</tbody>
         </table>
       </div>
+      ${hasCompletedFilters ? renderAdminPagination("teams", teamPageInfo) : ""}
+    </section>
+  `;
+}
+
+function getAdminFilteredDelegateTeams(searchTerm = "") {
+  const normalizedSearch = normalizeSearchText(searchTerm);
+  return teams.filter((team) =>
+    team.delegate.toLowerCase().includes(normalizedSearch) ||
+    team.shortName.toLowerCase().includes(normalizedSearch) ||
+    team.contact.toLowerCase().includes(normalizedSearch)
+  );
+}
+
+function renderAdminDelegateRows(hasCompletedFilters, searchTerm = "", page = 1) {
+  if (!hasCompletedFilters) {
+    return `
+      <tr>
+        <td colspan="5" class="admin-empty-row">Seleccioná categoría y división para visualizar delegados.</td>
+      </tr>
+    `;
+  }
+
+  const filteredTeams = getAdminFilteredDelegateTeams(searchTerm);
+
+  if (!filteredTeams.length) {
+    return `
+      <tr>
+        <td colspan="5" class="admin-empty-row">No se encontraron delegados para la búsqueda indicada.</td>
+      </tr>
+    `;
+  }
+
+  const pageInfo = paginateItems(filteredTeams, page);
+
+  return pageInfo.items.map((team, index) => `
+    <tr>
+      <td>${(pageInfo.page - 1) * ADMIN_PAGE_SIZE + index + 1}</td>
+      <td>${team.delegate}</td>
+      <td>
+        <span class="fixture-team">${renderTeamBadge(team, "small")} ${team.shortName}</span>
+      </td>
+      <td>${team.contact}</td>
+      <td>${team.id}</td>
+      <td>
+        <div class="table-actions">
+          <button type="button" aria-label="Editar delegado ${team.delegate}">
+            <i class="bi bi-pencil-fill"></i>
+          </button>
+          <button type="button" aria-label="Eliminar delegado ${team.delegate}">
+            <i class="bi bi-trash-fill"></i>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderAdminDelegatesView(selectedCategory = "", selectedDivision = "", searchTerm = "", page = 1) {
+  const divisionMap = getAdminDivisionMap();
+  const categories = Object.keys(divisionMap);
+  const divisions = selectedCategory ? divisionMap[selectedCategory] : [];
+  const hasCompletedFilters = Boolean(selectedCategory && selectedDivision);
+  const delegatePageInfo = paginateItems(hasCompletedFilters ? getAdminFilteredDelegateTeams(searchTerm) : [], page);
+
+  return `
+    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Administrador</p>
+        <h2>Delegados</h2>
+      </div>
+      <button class="btn btn-ingreso delegate-add-player" type="button" data-open-new-delegate-modal>
+        <i class="bi bi-plus-lg"></i>
+        Cargar nuevo delegado
+      </button>
+    </div>
+
+    <section class="division-table-panel admin-teams-panel">
+      <div class="admin-filter-grid" aria-label="Filtros obligatorios de delegados">
+        <label class="admin-filter-field">
+          <span>Categoría</span>
+          <select class="form-select" data-admin-delegate-category>
+            <option value="">Seleccionar categoría</option>
+            ${categories.map((category) => `
+              <option value="${category}" ${category === selectedCategory ? "selected" : ""}>${category}</option>
+            `).join("")}
+          </select>
+        </label>
+
+        <label class="admin-filter-field">
+          <span>División</span>
+          <select class="form-select" data-admin-delegate-division ${selectedCategory ? "" : "disabled"}>
+            <option value="">Seleccionar división</option>
+            ${divisions.map((division) => `
+              <option value="${division}" ${division === selectedDivision ? "selected" : ""}>${division}</option>
+            `).join("")}
+          </select>
+        </label>
+
+        <label class="admin-filter-field admin-search-field">
+          <span>Buscar delegado</span>
+          <input class="form-control" type="search" value="${searchTerm}" placeholder="Apellido y nombre, equipo o contacto" data-admin-delegate-search ${hasCompletedFilters ? "" : "disabled"}>
+        </label>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table frame-table admin-delegates-table mb-0">
+          <thead>
+            <tr>
+              <th>N&deg;</th>
+              <th>Apellido y nombre</th>
+              <th>Equipo</th>
+              <th>Contacto</th>
+              <th>Usuario</th>
+              <th>Editar</th>
+            </tr>
+          </thead>
+          <tbody data-admin-delegate-rows>${renderAdminDelegateRows(hasCompletedFilters, searchTerm, delegatePageInfo.page)}</tbody>
+        </table>
+      </div>
+      ${hasCompletedFilters ? renderAdminPagination("delegates", delegatePageInfo) : ""}
+    </section>
+  `;
+}
+
+function getAdminFilteredObservers(searchTerm = "") {
+  const normalizedSearch = normalizeSearchText(searchTerm);
+  return observers
+    .filter((observer) => observer.name.toLowerCase().includes(normalizedSearch))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function renderAdminObserverRows(searchTerm = "", page = 1) {
+  const filteredObservers = getAdminFilteredObservers(searchTerm);
+
+  if (!filteredObservers.length) {
+    return `
+      <tr>
+        <td colspan="5" class="admin-empty-row">No se encontraron veedores para la búsqueda indicada.</td>
+      </tr>
+    `;
+  }
+
+  const pageInfo = paginateItems(filteredObservers, page);
+
+  return pageInfo.items.map((observer, index) => `
+    <tr>
+      <td>${(pageInfo.page - 1) * ADMIN_PAGE_SIZE + index + 1}</td>
+      <td>${observer.name}</td>
+      <td>${observer.contact}</td>
+      <td>${observer.username}</td>
+      <td>
+        <div class="table-actions">
+          <button type="button" aria-label="Editar veedor ${observer.name}">
+            <i class="bi bi-pencil-fill"></i>
+          </button>
+          <button type="button" aria-label="Eliminar veedor ${observer.name}">
+            <i class="bi bi-trash-fill"></i>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderAdminObserversView(searchTerm = "", page = 1) {
+  const observerPageInfo = paginateItems(getAdminFilteredObservers(searchTerm), page);
+
+  return `
+    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Administrador</p>
+        <h2>Veedores</h2>
+      </div>
+      <button class="btn btn-ingreso delegate-add-player" type="button">
+        <i class="bi bi-plus-lg"></i>
+        Cargar nuevo veedor
+      </button>
+    </div>
+
+    <section class="division-table-panel admin-teams-panel">
+      <div class="admin-filter-grid admin-single-filter-grid" aria-label="Filtro de veedores">
+        <label class="admin-filter-field admin-search-field">
+          <span>Buscar veedor</span>
+          <input class="form-control" type="search" value="${searchTerm}" placeholder="Apellido y nombre" data-admin-observer-search>
+        </label>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table frame-table admin-observers-table mb-0">
+          <thead>
+            <tr>
+              <th>N&deg;</th>
+              <th>Apellido y nombre</th>
+              <th>Contacto</th>
+              <th>Usuario</th>
+              <th>Editar</th>
+            </tr>
+          </thead>
+          <tbody data-admin-observer-rows>${renderAdminObserverRows(searchTerm, observerPageInfo.page)}</tbody>
+        </table>
+      </div>
+      ${renderAdminPagination("observers", observerPageInfo)}
+    </section>
+  `;
+}
+
+function getAdminPlayers(hasCompletedFilters, selectedTeamId = "", searchTerm = "") {
+  if (!hasCompletedFilters) return [];
+
+  const normalizedSearch = normalizeSearchText(searchTerm);
+  return teams
+    .filter((team) => !selectedTeamId || team.id === selectedTeamId)
+    .flatMap((team) => team.players.map((player) => ({ ...player, team })))
+    .filter((player) => player.name.toLowerCase().includes(normalizedSearch))
+    .sort((a, b) => {
+      const teamOrder = a.team.shortName.localeCompare(b.team.shortName);
+      return teamOrder || a.name.localeCompare(b.name);
+    });
+}
+
+function renderAdminPlayerRows(hasCompletedFilters, selectedTeamId = "", searchTerm = "", page = 1) {
+  if (!hasCompletedFilters) {
+    return `
+      <tr>
+        <td colspan="6" class="admin-empty-row">Seleccioná categoría y división para visualizar jugadores.</td>
+      </tr>
+    `;
+  }
+
+  const players = getAdminPlayers(hasCompletedFilters, selectedTeamId, searchTerm);
+
+  if (!players.length) {
+    return `
+      <tr>
+        <td colspan="6" class="admin-empty-row">No se encontraron jugadores para la búsqueda indicada.</td>
+      </tr>
+    `;
+  }
+
+  const pageInfo = paginateItems(players, page);
+
+  return pageInfo.items.map((player, index) => `
+    <tr>
+      <td>${(pageInfo.page - 1) * ADMIN_PAGE_SIZE + index + 1}</td>
+      <td>${player.name}</td>
+      <td>
+        <span class="fixture-team">${renderTeamBadge(player.team, "small")} ${player.team.shortName}</span>
+      </td>
+      <td>${player.team.contact}</td>
+      <td>
+        <select class="form-select form-select-sm player-status-select" data-admin-player-status>
+          ${["Habilitado", "Inhabilitado", "Suspendido"].map((status) => `
+            <option value="${status}" ${status === getPlayerStatus(player) ? "selected" : ""}>${status}</option>
+          `).join("")}
+        </select>
+      </td>
+      <td>
+        <button class="btn btn-ingreso admin-save-row-btn" type="button" disabled>
+          <i class="bi bi-save-fill"></i>
+          Guardar
+        </button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderAdminPlayersView(selectedCategory = "", selectedDivision = "", selectedTeamId = "", searchTerm = "", page = 1) {
+  const divisionMap = getAdminDivisionMap();
+  const categories = Object.keys(divisionMap);
+  const divisions = selectedCategory ? divisionMap[selectedCategory] : [];
+  const hasCompletedFilters = Boolean(selectedCategory && selectedDivision);
+  const availableTeams = getAdminTeamsForFilters(selectedCategory, selectedDivision);
+  const playerPageInfo = paginateItems(getAdminPlayers(hasCompletedFilters, selectedTeamId, searchTerm), page);
+
+  return `
+    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Administrador</p>
+        <h2>Jugadores</h2>
+      </div>
+    </div>
+
+    <section class="division-table-panel admin-teams-panel">
+      <div class="admin-filter-grid admin-player-filter-grid" aria-label="Filtros obligatorios de jugadores">
+        <label class="admin-filter-field">
+          <span>Categoría</span>
+          <select class="form-select" data-admin-player-category>
+            <option value="">Seleccionar categoría</option>
+            ${categories.map((category) => `
+              <option value="${category}" ${category === selectedCategory ? "selected" : ""}>${category}</option>
+            `).join("")}
+          </select>
+        </label>
+
+        <label class="admin-filter-field">
+          <span>División</span>
+          <select class="form-select" data-admin-player-division ${selectedCategory ? "" : "disabled"}>
+            <option value="">Seleccionar división</option>
+            ${divisions.map((division) => `
+              <option value="${division}" ${division === selectedDivision ? "selected" : ""}>${division}</option>
+            `).join("")}
+          </select>
+        </label>
+
+        <label class="admin-filter-field">
+          <span>Equipo</span>
+          <select class="form-select" data-admin-player-team ${hasCompletedFilters ? "" : "disabled"}>
+            <option value="">Todos los equipos</option>
+            ${availableTeams.map((team) => `
+              <option value="${team.id}" ${team.id === selectedTeamId ? "selected" : ""}>${team.shortName}</option>
+            `).join("")}
+          </select>
+        </label>
+
+        <label class="admin-filter-field admin-search-field">
+          <span>Buscar jugador</span>
+          <input class="form-control" type="search" value="${searchTerm}" placeholder="Apellido y nombre" data-admin-player-search ${hasCompletedFilters ? "" : "disabled"}>
+        </label>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table frame-table admin-players-table mb-0">
+          <thead>
+            <tr>
+              <th>N&deg;</th>
+              <th>Apellido y nombre</th>
+              <th>Equipo</th>
+              <th>Contacto</th>
+              <th>Estado</th>
+              <th>Guardar</th>
+            </tr>
+          </thead>
+          <tbody data-admin-player-rows>${renderAdminPlayerRows(hasCompletedFilters, selectedTeamId, searchTerm, playerPageInfo.page)}</tbody>
+        </table>
+      </div>
+      ${hasCompletedFilters ? renderAdminPagination("players", playerPageInfo) : ""}
     </section>
   `;
 }
@@ -1305,6 +1972,7 @@ function enterDelegateView(team) {
           <i class="bi bi-sliders2-vertical"></i>
           <h2>Acciones</h2>
         </div>
+        <div class="sidebar-role-label">Rol: Delegado</div>
         <div class="admin-actions">
           <button class="division-link" type="button" data-delegate-home>
             <i class="bi bi-house-fill"></i>
@@ -1335,6 +2003,7 @@ function enterAdminView() {
           <i class="bi bi-sliders2-vertical"></i>
           <h2>Acciones</h2>
         </div>
+        <div class="sidebar-role-label">Rol: Administrador</div>
         <div class="admin-actions">
           <button class="division-link" type="button" data-admin-action="Equipos">
             <i class="bi bi-shield-fill-check"></i>
@@ -1348,6 +2017,25 @@ function enterAdminView() {
             <i class="bi bi-people-fill"></i>
             Jugadores
           </button>
+          <button class="division-link" type="button" data-admin-action="Veedores">
+            <i class="bi bi-clipboard2-check-fill"></i>
+            Veedores
+          </button>
+          <div class="admin-menu-accordion">
+            <button class="division-link admin-menu-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#adminTournamentMenu" aria-expanded="false" aria-controls="adminTournamentMenu">
+              <i class="bi bi-trophy-fill"></i>
+              Torneo
+              <i class="bi bi-chevron-down ms-auto"></i>
+            </button>
+            <div class="collapse" id="adminTournamentMenu">
+              <button class="division-link admin-sub-action" type="button" data-admin-action="Categorías">
+                Categorías
+              </button>
+              <button class="division-link admin-sub-action" type="button" data-admin-action="Divisiones">
+                Divisiones
+              </button>
+            </div>
+          </div>
           <button class="division-link" type="button" data-admin-action="Configuraciones">
             <i class="bi bi-gear-fill"></i>
             Configuraciones
@@ -1372,6 +2060,7 @@ function enterObserverView() {
           <i class="bi bi-sliders2-vertical"></i>
           <h2>Acciones</h2>
         </div>
+        <div class="sidebar-role-label">Rol: Veedor</div>
         <div class="admin-actions">
           <button class="division-link" type="button" data-observer-matches>
             <i class="bi bi-calendar2-week-fill"></i>
@@ -1429,7 +2118,37 @@ sidebarContent.addEventListener("click", (event) => {
   if (adminActionButton) {
     const actionName = adminActionButton.dataset.adminAction;
     showContentLoader(actionName, () => {
-      contentShell.innerHTML = actionName === "Equipos" ? renderAdminTeamsView() : renderAdminActionView(actionName);
+      if (actionName === "Equipos") {
+        contentShell.innerHTML = renderAdminTeamsView();
+        return;
+      }
+
+      if (actionName === "Delegados") {
+        contentShell.innerHTML = renderAdminDelegatesView();
+        return;
+      }
+
+      if (actionName === "Jugadores") {
+        contentShell.innerHTML = renderAdminPlayersView();
+        return;
+      }
+
+      if (actionName === "Veedores") {
+        contentShell.innerHTML = renderAdminObserversView();
+        return;
+      }
+
+      if (actionName === "Categorías") {
+        contentShell.innerHTML = renderAdminCategoriesView();
+        return;
+      }
+
+      if (actionName === "Divisiones") {
+        contentShell.innerHTML = renderAdminDivisionsView();
+        return;
+      }
+
+      contentShell.innerHTML = renderAdminActionView(actionName);
     });
     return;
   }
@@ -1450,6 +2169,9 @@ contentShell.addEventListener("click", (event) => {
   const eventButton = event.target.closest(".event-btn");
   const observationButton = event.target.closest("[data-observation]");
   const observerSaveButton = event.target.closest("[data-observer-save]");
+  const adminPageButton = event.target.closest("[data-admin-page]");
+  const openNewTeamButton = event.target.closest("[data-open-new-team-modal]");
+  const openNewDelegateButton = event.target.closest("[data-open-new-delegate-modal]");
 
   if (editButton) {
     const matchId = editButton.dataset.observerEditMatch;
@@ -1499,6 +2221,77 @@ contentShell.addEventListener("click", (event) => {
     return;
   }
 
+  if (adminPageButton) {
+    const type = adminPageButton.dataset.adminPage;
+    const page = Number(adminPageButton.dataset.page);
+
+    if (type === "teams") {
+      const category = contentShell.querySelector("[data-admin-team-category]")?.value || "";
+      const division = contentShell.querySelector("[data-admin-team-division]")?.value || "";
+      const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-team-search]")?.value || "");
+      contentShell.innerHTML = renderAdminTeamsView(category, division, searchTerm, page);
+      return;
+    }
+
+    if (type === "delegates") {
+      const category = contentShell.querySelector("[data-admin-delegate-category]")?.value || "";
+      const division = contentShell.querySelector("[data-admin-delegate-division]")?.value || "";
+      const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-delegate-search]")?.value || "");
+      contentShell.innerHTML = renderAdminDelegatesView(category, division, searchTerm, page);
+      return;
+    }
+
+    if (type === "observers") {
+      const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-observer-search]")?.value || "");
+      contentShell.innerHTML = renderAdminObserversView(searchTerm, page);
+      return;
+    }
+
+    if (type === "tournament-divisions") {
+      const category = contentShell.querySelector("[data-admin-division-category]")?.value || "";
+      contentShell.innerHTML = renderAdminDivisionsView(category, page);
+      return;
+    }
+
+    const category = contentShell.querySelector("[data-admin-player-category]")?.value || "";
+    const division = contentShell.querySelector("[data-admin-player-division]")?.value || "";
+    const teamId = contentShell.querySelector("[data-admin-player-team]")?.value || "";
+    const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-player-search]")?.value || "");
+    contentShell.innerHTML = renderAdminPlayersView(category, division, teamId, searchTerm, page);
+    return;
+  }
+
+  if (openNewTeamButton) {
+    newTeamForm.reset();
+    populateNewTeamCategories();
+    populateNewTeamDivisions("");
+    validateNewTeamForm();
+    bootstrap.Modal.getOrCreateInstance(newTeamModalElement).show();
+    return;
+  }
+
+  if (openNewDelegateButton) {
+    newDelegateForm.reset();
+    newDelegatePassword.value = "123456";
+    populateNewDelegateCategories();
+    populateNewDelegateTeams("");
+    validateNewDelegateForm();
+    bootstrap.Modal.getOrCreateInstance(newDelegateModalElement).show();
+    return;
+  }
+
+  const adminSaveButton = event.target.closest(".admin-save-row-btn");
+  if (adminSaveButton) {
+    adminSaveButton.classList.add("is-saved");
+    adminSaveButton.innerHTML = `<i class="bi bi-check2-circle"></i> Guardado`;
+    window.setTimeout(() => {
+      adminSaveButton.classList.remove("is-saved");
+      adminSaveButton.innerHTML = `<i class="bi bi-save-fill"></i> Guardar`;
+      adminSaveButton.disabled = true;
+    }, 1200);
+    return;
+  }
+
   if (observationButton) {
     activeObservationButton = observationButton;
     observationText.value = observationButton.dataset.observationText || "";
@@ -1510,22 +2303,127 @@ contentShell.addEventListener("click", (event) => {
 contentShell.addEventListener("change", (event) => {
   const categorySelect = event.target.closest("[data-admin-team-category]");
   const divisionSelect = event.target.closest("[data-admin-team-division]");
+  const delegateCategorySelect = event.target.closest("[data-admin-delegate-category]");
+  const delegateDivisionSelect = event.target.closest("[data-admin-delegate-division]");
+  const playerCategorySelect = event.target.closest("[data-admin-player-category]");
+  const playerDivisionSelect = event.target.closest("[data-admin-player-division]");
+  const playerTeamSelect = event.target.closest("[data-admin-player-team]");
+  const playerStatusSelect = event.target.closest("[data-admin-player-status]");
+  const tournamentDivisionCategorySelect = event.target.closest("[data-admin-division-category]");
 
   if (categorySelect) {
     const category = categorySelect.value;
-    showContentLoader("Equipos", () => {
-      contentShell.innerHTML = renderAdminTeamsView(category, "");
-    });
+    contentShell.innerHTML = renderAdminTeamsView(category, "");
     return;
   }
 
   if (divisionSelect) {
     const category = contentShell.querySelector("[data-admin-team-category]")?.value || "";
     const division = divisionSelect.value;
-    showContentLoader("Equipos", () => {
-      contentShell.innerHTML = renderAdminTeamsView(category, division);
-    });
+    contentShell.innerHTML = renderAdminTeamsView(category, division);
+    return;
   }
+
+  if (delegateCategorySelect) {
+    const category = delegateCategorySelect.value;
+    contentShell.innerHTML = renderAdminDelegatesView(category, "");
+    return;
+  }
+
+  if (delegateDivisionSelect) {
+    const category = contentShell.querySelector("[data-admin-delegate-category]")?.value || "";
+    const division = delegateDivisionSelect.value;
+    contentShell.innerHTML = renderAdminDelegatesView(category, division);
+    return;
+  }
+
+  if (playerCategorySelect) {
+    const category = playerCategorySelect.value;
+    contentShell.innerHTML = renderAdminPlayersView(category, "");
+    return;
+  }
+
+  if (playerDivisionSelect) {
+    const category = contentShell.querySelector("[data-admin-player-category]")?.value || "";
+    const division = playerDivisionSelect.value;
+    contentShell.innerHTML = renderAdminPlayersView(category, division);
+    return;
+  }
+
+  if (playerTeamSelect) {
+    const category = contentShell.querySelector("[data-admin-player-category]")?.value || "";
+    const division = contentShell.querySelector("[data-admin-player-division]")?.value || "";
+    const teamId = playerTeamSelect.value;
+    contentShell.innerHTML = renderAdminPlayersView(category, division, teamId);
+    return;
+  }
+
+  if (playerStatusSelect) {
+    const row = playerStatusSelect.closest("tr");
+    const saveButton = row.querySelector(".admin-save-row-btn");
+    saveButton.disabled = false;
+    return;
+  }
+
+  if (tournamentDivisionCategorySelect) {
+    contentShell.innerHTML = renderAdminDivisionsView(tournamentDivisionCategorySelect.value);
+  }
+});
+
+contentShell.addEventListener("input", (event) => {
+  const teamSearch = event.target.closest("[data-admin-team-search]");
+  const delegateSearch = event.target.closest("[data-admin-delegate-search]");
+  const playerSearch = event.target.closest("[data-admin-player-search]");
+  const observerSearch = event.target.closest("[data-admin-observer-search]");
+
+  if (!teamSearch && !delegateSearch && !playerSearch && !observerSearch) return;
+
+  window.clearTimeout(adminSearchTimer);
+  adminSearchTimer = window.setTimeout(() => {
+    if (teamSearch) {
+      const category = contentShell.querySelector("[data-admin-team-category]")?.value || "";
+      const division = contentShell.querySelector("[data-admin-team-division]")?.value || "";
+      const searchTerm = getEffectiveSearchTerm(teamSearch.value);
+      const rows = contentShell.querySelector("[data-admin-team-rows]");
+      const pageInfo = paginateItems(getAdminFilteredTeams(searchTerm), 1);
+
+      rows.innerHTML = renderAdminTeamRows(Boolean(category && division), searchTerm, 1);
+      updateAdminPagination("teams", pageInfo);
+      return;
+    }
+
+    if (delegateSearch) {
+      const category = contentShell.querySelector("[data-admin-delegate-category]")?.value || "";
+      const division = contentShell.querySelector("[data-admin-delegate-division]")?.value || "";
+      const searchTerm = getEffectiveSearchTerm(delegateSearch.value);
+      const rows = contentShell.querySelector("[data-admin-delegate-rows]");
+      const pageInfo = paginateItems(getAdminFilteredDelegateTeams(searchTerm), 1);
+
+      rows.innerHTML = renderAdminDelegateRows(Boolean(category && division), searchTerm, 1);
+      updateAdminPagination("delegates", pageInfo);
+      return;
+    }
+
+    if (observerSearch) {
+      const searchTerm = getEffectiveSearchTerm(observerSearch.value);
+      const rows = contentShell.querySelector("[data-admin-observer-rows]");
+      const pageInfo = paginateItems(getAdminFilteredObservers(searchTerm), 1);
+
+      rows.innerHTML = renderAdminObserverRows(searchTerm, 1);
+      updateAdminPagination("observers", pageInfo);
+      return;
+    }
+
+    const category = contentShell.querySelector("[data-admin-player-category]")?.value || "";
+    const division = contentShell.querySelector("[data-admin-player-division]")?.value || "";
+    const teamId = contentShell.querySelector("[data-admin-player-team]")?.value || "";
+    const searchTerm = getEffectiveSearchTerm(playerSearch.value);
+    const rows = contentShell.querySelector("[data-admin-player-rows]");
+    const pageInfo = paginateItems(getAdminPlayers(Boolean(category && division), teamId, searchTerm), 1);
+
+    rows.innerHTML = renderAdminPlayerRows(Boolean(category && division), teamId, searchTerm, 1);
+    updateAdminPagination("players", pageInfo);
+  }, 220);
 });
 
 saveObservationButton.addEventListener("click", () => {
@@ -1539,6 +2437,75 @@ saveObservationButton.addEventListener("click", () => {
   if (observationModal) {
     observationModal.hide();
   }
+});
+
+newTeamCategory.addEventListener("change", () => {
+  populateNewTeamDivisions(newTeamCategory.value);
+  validateNewTeamForm();
+});
+
+newTeamForm.addEventListener("input", validateNewTeamForm);
+newTeamForm.addEventListener("change", validateNewTeamForm);
+
+newTeamForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (createTeamButton.disabled) return;
+
+  createTeamButton.classList.add("is-saved");
+  createTeamButton.innerHTML = `<i class="bi bi-check2-circle"></i> Equipo creado`;
+
+  window.setTimeout(() => {
+    createTeamButton.classList.remove("is-saved");
+    createTeamButton.innerHTML = `<i class="bi bi-plus-circle-fill"></i> Crear equipo`;
+    bootstrap.Modal.getInstance(newTeamModalElement)?.hide();
+    newTeamForm.reset();
+    populateNewTeamDivisions("");
+    validateNewTeamForm();
+  }, 900);
+});
+
+newDelegateCategory.addEventListener("change", () => {
+  populateNewDelegateTeams(newDelegateCategory.value);
+  newDelegateUsername.value = "";
+  validateNewDelegateForm();
+});
+
+newDelegateTeam.addEventListener("change", () => {
+  newDelegateUsername.value = "";
+  updateDelegateDefaultsFromTeam();
+  validateNewDelegateForm();
+});
+
+newDelegateContact.addEventListener("input", () => {
+  newDelegateContact.value = newDelegateContact.value.replace(/\D/g, "");
+  validateNewDelegateForm();
+});
+
+delegatePasswordToggle.addEventListener("click", () => {
+  const isPasswordVisible = newDelegatePassword.type === "text";
+
+  newDelegatePassword.type = isPasswordVisible ? "password" : "text";
+  delegatePasswordToggle.setAttribute("aria-label", isPasswordVisible ? "Mostrar contraseña" : "Ocultar contraseña");
+  delegatePasswordToggle.innerHTML = `<i class="bi ${isPasswordVisible ? "bi-eye-fill" : "bi-eye-slash-fill"}"></i>`;
+});
+
+newDelegateForm.addEventListener("input", validateNewDelegateForm);
+newDelegateForm.addEventListener("change", validateNewDelegateForm);
+
+newDelegateForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (createDelegateButton.disabled) return;
+
+  createDelegateButton.classList.add("is-saved");
+  createDelegateButton.innerHTML = `<i class="bi bi-check2-circle"></i> Delegado creado`;
+
+  window.setTimeout(() => {
+    createDelegateButton.classList.remove("is-saved");
+    createDelegateButton.innerHTML = `<i class="bi bi-plus-circle-fill"></i> Crear delegado`;
+    bootstrap.Modal.getInstance(newDelegateModalElement)?.hide();
+    newDelegateForm.reset();
+    validateNewDelegateForm();
+  }, 900);
 });
 
 document.querySelectorAll("[data-scroll-team]").forEach((button) => {

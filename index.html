@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
   <head>
     <meta charset="utf-8">
@@ -447,7 +447,123 @@
       </div>
     </div>
 
+    <div class="modal fade frame-form-modal" id="newTeamModal" tabindex="-1" aria-labelledby="newTeamModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content login-modal team-create-modal">
+          <div class="modal-header">
+            <div class="login-brand">
+              <img src="assets/frame0-logo.png" alt="Logo Frame0">
+              <div>
+                <p class="section-kicker mb-1">Administrador</p>
+                <h2 class="modal-title fs-5" id="newTeamModalLabel">Cargar nuevo equipo</h2>
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <div class="team-form-preview">
+              <img src="assets/frame0-logo.png" alt="Escudo del equipo Frame0">
+              <span>Escudo del equipo</span>
+            </div>
+            <form id="newTeamForm" class="team-create-form">
+              <label class="form-label" for="newTeamName">Nombre del equipo</label>
+              <input class="form-control" id="newTeamName" type="text" autocomplete="off" required>
+
+              <label class="form-label" for="newTeamShortName">Nombre corto</label>
+              <input class="form-control" id="newTeamShortName" type="text" autocomplete="off" required>
+
+              <label class="form-label" for="newTeamCategory">Categoría</label>
+              <select class="form-select" id="newTeamCategory" required>
+                <option value="">Seleccionar categoría</option>
+              </select>
+
+              <label class="form-label" for="newTeamDivision">División</label>
+              <select class="form-select" id="newTeamDivision" required disabled>
+                <option value="">Seleccionar división</option>
+              </select>
+
+              <button class="btn btn-login-submit w-100 mt-3" type="submit" id="createTeamButton" disabled>
+                <i class="bi bi-plus-circle-fill"></i>
+                Crear equipo
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade frame-form-modal" id="newDelegateModal" tabindex="-1" aria-labelledby="newDelegateModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content login-modal team-create-modal">
+          <div class="modal-header">
+            <div class="login-brand">
+              <img src="assets/frame0-logo.png" alt="Logo Frame0">
+              <div>
+                <p class="section-kicker mb-1">Administrador</p>
+                <h2 class="modal-title fs-5" id="newDelegateModalLabel">Cargar nuevo delegado</h2>
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="newDelegateForm" class="team-create-form">
+              <div class="form-row-2">
+                <div>
+                  <label class="form-label" for="newDelegateLastName">Apellido</label>
+                  <input class="form-control" id="newDelegateLastName" type="text" autocomplete="off" required>
+                </div>
+                <div>
+                  <label class="form-label" for="newDelegateFirstName">Nombre</label>
+                  <input class="form-control" id="newDelegateFirstName" type="text" autocomplete="off" required>
+                </div>
+              </div>
+
+              <label class="form-label" for="newDelegateContact">Teléfono de contacto</label>
+              <input class="form-control" id="newDelegateContact" type="tel" inputmode="numeric" pattern="[0-9]+" autocomplete="off" required>
+
+              <div class="form-row-2">
+                <div>
+                  <label class="form-label" for="newDelegateCategory">Filtrar equipos por categoría</label>
+                  <select class="form-select" id="newDelegateCategory">
+                    <option value="">Todas las categorías</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="form-label" for="newDelegateTeam">Equipo</label>
+                  <select class="form-select" id="newDelegateTeam" required>
+                    <option value="">Seleccionar equipo</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row-2">
+                <div>
+                  <label class="form-label" for="newDelegateUsername">Usuario</label>
+                  <input class="form-control" id="newDelegateUsername" type="text" autocomplete="off" required>
+                </div>
+                <div>
+                  <label class="form-label" for="newDelegatePassword">Contraseña</label>
+                  <div class="password-field">
+                    <input class="form-control" id="newDelegatePassword" type="password" autocomplete="new-password" required>
+                    <button class="password-toggle" type="button" aria-label="Mostrar contraseña" data-delegate-password-toggle>
+                      <i class="bi bi-eye-fill"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button class="btn btn-login-submit w-100 mt-3" type="submit" id="createDelegateButton" disabled>
+                <i class="bi bi-plus-circle-fill"></i>
+                Crear delegado
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="script.js"></script>
   </body>
 </html>
+
