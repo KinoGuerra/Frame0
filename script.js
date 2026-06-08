@@ -1,6 +1,7 @@
 const selectedDivision = document.querySelector("#selectedDivision");
 const divisionButtons = document.querySelectorAll(".division-link");
 const homeContent = document.querySelector("#homeContent");
+const publicInfoContent = document.querySelector("#publicInfoContent");
 const divisionContent = document.querySelector("#divisionContent");
 const divisionLoader = document.querySelector(".division-loader");
 const divisionView = document.querySelector("#divisionView");
@@ -677,6 +678,7 @@ function setSelectedDivision(button) {
   selectedDivision.textContent = `División seleccionada: ${divisionName}`;
   selectedDivision.classList.remove("d-none");
   homeContent.classList.add("d-none");
+  publicInfoContent.classList.add("d-none");
   divisionContent.classList.remove("d-none");
   divisionLoader.classList.remove("is-hidden");
   divisionView.classList.add("d-none");
@@ -697,10 +699,58 @@ function showHome() {
   divisionButtons.forEach((item) => item.classList.remove("active"));
   selectedDivision.classList.add("d-none");
   homeContent.classList.remove("d-none");
+  publicInfoContent.classList.add("d-none");
   divisionContent.classList.add("d-none");
   divisionLoader.classList.remove("is-hidden");
   divisionView.classList.add("d-none");
   window.clearTimeout(divisionLoadTimer);
+}
+
+function renderRegulationContent() {
+  return `
+    <section class="public-info-panel">
+      <p class="section-kicker mb-2">Reglamento</p>
+      <h2>Reglamento general de competencia amateur</h2>
+      <p>
+        La competencia se disputa bajo principios de juego limpio, respeto entre participantes y cumplimiento de
+        la programación oficial informada por la organización. Cada equipo deberá presentar su lista de buena fe,
+        contar con jugadores habilitados y respetar los horarios asignados para cada fecha.
+      </p>
+      <p>
+        Los partidos tendrán una duración definida por la organización según categoría y división. La tabla de
+        posiciones se ordenará por puntos obtenidos, diferencia de gol, goles a favor y resultado entre equipos
+        cuando corresponda. Las sanciones disciplinarias podrán incluir suspensión por acumulación de tarjetas,
+        expulsiones directas o informes del veedor.
+      </p>
+      <p>
+        La organización podrá reprogramar encuentros por razones climáticas, disponibilidad de cancha o fuerza
+        mayor. Todo reclamo deberá ser presentado por el delegado dentro de los plazos establecidos y será evaluado
+        por la mesa organizadora.
+      </p>
+    </section>
+  `;
+}
+
+function renderAboutContent() {
+  return `
+    <section class="public-info-panel">
+      <p class="section-kicker mb-2">Nosotros</p>
+      <h2>Somos TheBlackListSystem</h2>
+    </section>
+  `;
+}
+
+function showPublicInfo(page) {
+  divisionButtons.forEach((item) => item.classList.remove("active"));
+  selectedDivision.classList.add("d-none");
+  homeContent.classList.add("d-none");
+  divisionContent.classList.add("d-none");
+  divisionLoader.classList.remove("is-hidden");
+  divisionView.classList.add("d-none");
+  window.clearTimeout(divisionLoadTimer);
+
+  publicInfoContent.innerHTML = page === "reglamento" ? renderRegulationContent() : renderAboutContent();
+  publicInfoContent.classList.remove("d-none");
 }
 
 function getActiveLoginRole() {
@@ -715,7 +765,7 @@ function renderProfileLoader(roleName) {
         <div class="loader-stage" aria-hidden="true">
           <img src="assets/frame0-logo.png" alt="" class="loader-logo">
           <div class="ball-track">
-            <div class="soccer-spinner"></div>
+            <img src="assets/soccer-ball.svg" alt="" class="soccer-spinner">
           </div>
         </div>
         <span>Cargando ${roleName}...</span>
@@ -1141,7 +1191,7 @@ function renderObserverPlayerRows(team) {
       <td>
         <div class="goal-counter">
           <button type="button" data-goal-dec aria-label="Restar gol"><i class="bi bi-dash-lg"></i></button>
-          <span><i class="bi bi-circle-fill goal-ball-icon"></i></span>
+          <span><img src="assets/soccer-ball.svg" alt="" class="goal-ball-icon"></span>
           <strong data-goal-value>0</strong>
           <button type="button" data-goal-inc aria-label="Sumar gol"><i class="bi bi-plus-lg"></i></button>
         </div>
@@ -2098,6 +2148,12 @@ sidebarContent.addEventListener("click", (event) => {
   const delegateHomeButton = event.target.closest("[data-delegate-home]");
   const observerMatchesButton = event.target.closest("[data-observer-matches]");
   const adminActionButton = event.target.closest("[data-admin-action]");
+  const publicPageButton = event.target.closest("[data-public-page]");
+
+  if (publicPageButton) {
+    showPublicInfo(publicPageButton.dataset.publicPage);
+    return;
+  }
 
   if (delegatePlayersButton || delegateHomeButton) {
     const team = getTeam(sidebarContent.dataset.delegateTeam);

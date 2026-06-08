@@ -202,6 +202,8 @@ body {
 }
 
 .frame-accordion {
+  display: grid;
+  gap: 0.5rem;
   --bs-accordion-border-color: rgba(116, 141, 166, 0.28);
   --bs-accordion-border-radius: 8px;
   --bs-accordion-inner-border-radius: 8px;
@@ -211,22 +213,62 @@ body {
 }
 
 .frame-accordion .accordion-item {
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.72);
+  overflow: visible;
+  border: 0;
+  background: transparent;
 }
 
 .frame-accordion .accordion-button {
-  min-height: 44px;
-  padding: 0.7rem 0.85rem;
-  background: rgba(255, 255, 255, 0.74);
-  font-weight: 900;
+  min-height: 38px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.45rem 0.65rem;
+  background: transparent;
+  color: var(--frame-ink);
+  font-size: 0.92rem;
+  font-weight: 800;
+  overflow: hidden;
+  transition: color 180ms ease, background-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.frame-accordion .accordion-button::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--frame-sky), var(--frame-green));
+  opacity: 0;
+  transform: scaleY(0.3);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.frame-accordion .accordion-button::after {
+  width: 0.95rem;
+  height: 0.95rem;
+  background-size: 0.95rem;
+}
+
+.frame-accordion .accordion-button:hover,
+.frame-accordion .accordion-button:focus,
+.frame-accordion .accordion-button:not(.collapsed) {
+  background: rgba(237, 250, 255, 0.9);
+  color: var(--frame-blue);
+  transform: translateX(4px);
+  box-shadow: 0 10px 18px rgba(13, 78, 162, 0.08);
+}
+
+.frame-accordion .accordion-button:hover::before,
+.frame-accordion .accordion-button:focus::before,
+.frame-accordion .accordion-button:not(.collapsed)::before {
+  opacity: 1;
+  transform: scaleY(1);
 }
 
 .frame-accordion .accordion-body {
   display: grid;
   gap: 0.5rem;
-  padding: 0.65rem;
-  background: rgba(236, 246, 252, 0.78);
+  padding: 0.45rem 0 0.15rem 0.8rem;
+  background: transparent;
 }
 
 .division-link {
@@ -351,6 +393,21 @@ body {
   min-height: 34px;
   padding-left: 1.65rem;
   font-size: 0.86rem;
+}
+
+.sidebar-info-group {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(29, 183, 255, 0.24);
+}
+
+.sidebar-mini-title {
+  color: var(--frame-blue);
+  font-size: 0.82rem;
+  font-weight: 950;
+  text-transform: uppercase;
 }
 
 @media (min-width: 992px) and (max-width: 1199.98px) {
@@ -1153,8 +1210,10 @@ body {
 }
 
 .goal-ball-icon {
-  color: #0a66d8;
-  font-size: 0.82rem;
+  display: block;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
 }
 
 .profile-loader-shell {
@@ -1272,15 +1331,9 @@ body {
   left: 18px;
   width: 48px;
   height: 48px;
-  border: 3px solid #ffffff;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 50% 50%, var(--frame-night) 0 18%, transparent 19%),
-    radial-gradient(circle at 28% 30%, var(--frame-night) 0 10%, transparent 11%),
-    radial-gradient(circle at 72% 30%, var(--frame-night) 0 10%, transparent 11%),
-    radial-gradient(circle at 34% 74%, var(--frame-night) 0 10%, transparent 11%),
-    radial-gradient(circle at 68% 74%, var(--frame-night) 0 10%, transparent 11%),
-    #f8fbfd;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 16px rgba(13, 78, 162, 0.24));
   box-shadow: 0 12px 24px rgba(13, 78, 162, 0.2);
   animation: ballMove 1100ms ease-in-out infinite;
 }
@@ -2025,6 +2078,31 @@ body {
   line-height: 1.7;
 }
 
+.public-info-panel {
+  min-height: 520px;
+  padding: 1.25rem;
+  border: 1px solid rgba(110, 120, 132, 0.34);
+  border-top: 5px solid var(--frame-blue);
+  border-bottom: 5px solid var(--frame-cyan);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #bceeff 0%, #ffffff 48%, #ffffff 100%);
+  box-shadow: 0 14px 28px rgba(17, 32, 51, 0.08);
+}
+
+.public-info-panel h2 {
+  margin: 0 0 0.85rem;
+  color: var(--frame-dark);
+  font-size: clamp(1.45rem, 2.4vw, 2.2rem);
+  font-weight: 950;
+}
+
+.public-info-panel p {
+  max-width: 980px;
+  color: #344155;
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
 .story-facts {
   display: flex;
   flex-wrap: wrap;
@@ -2227,6 +2305,13 @@ body {
   font-weight: 650;
 }
 
+.login-credentials-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
 .login-form .form-control {
   min-height: 44px;
   border-color: rgba(116, 141, 166, 0.4);
@@ -2284,6 +2369,44 @@ body {
 .btn-login-submit:focus {
   color: #ffffff;
   filter: brightness(0.96);
+}
+
+.login-invite {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.login-invite p {
+  margin: 0;
+  color: #324358;
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
+.login-socials {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.login-socials a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border: 1px solid rgba(29, 183, 255, 0.24);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--frame-blue);
+  font-size: 1.1rem;
+  text-decoration: none;
+}
+
+.login-socials a:hover,
+.login-socials a:focus {
+  background: #e6f7ff;
 }
 
 @media (max-width: 991.98px) {
@@ -2500,6 +2623,10 @@ body {
 
   .content-panel {
     padding: 0.85rem;
+  }
+
+  .login-credentials-row {
+    grid-template-columns: 1fr;
   }
 
   .quick-stats {
