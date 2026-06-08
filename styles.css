@@ -300,6 +300,20 @@ body {
   padding: 1rem;
 }
 
+.admin-view #sidebarContent,
+.admin-view #contentShell {
+  min-height: 100%;
+}
+
+.admin-sidebar-main {
+  min-height: 100%;
+}
+
+.admin-actions {
+  display: grid;
+  gap: 0.5rem;
+}
+
 @media (min-width: 992px) and (max-width: 1199.98px) {
   .content-panel {
     width: calc(75% - 2rem);
@@ -418,6 +432,55 @@ body {
   color: #d6e4ee;
   font-size: 0.78rem;
   line-height: 1.25;
+}
+
+.admin-toolbar {
+  margin-bottom: 1rem;
+}
+
+.admin-quick-stats {
+  margin-bottom: 1rem;
+}
+
+.admin-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.admin-summary-panel {
+  border: 1px solid rgba(110, 120, 132, 0.34);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #f1f4f6 0%, #ffffff 100%);
+  box-shadow: 0 14px 28px rgba(17, 32, 51, 0.08);
+  padding: 1rem;
+}
+
+.admin-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 42px;
+  border-bottom: 1px solid #d7dde3;
+  color: #263241;
+  font-weight: 900;
+}
+
+.admin-summary-row:last-child {
+  border-bottom: 0;
+}
+
+.admin-summary-row strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 28px;
+  border-radius: 6px;
+  background: #303740;
+  color: #ffffff;
+  font-family: "Coiny", "Arial Black", Impact, sans-serif;
 }
 
 .division-empty {
@@ -1368,6 +1431,35 @@ body {
   box-shadow: 0 0 0 0.2rem rgba(29, 183, 255, 0.18);
 }
 
+.password-field {
+  position: relative;
+}
+
+.password-field .form-control {
+  padding-right: 3rem;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--frame-blue);
+  transform: translateY(-50%);
+}
+
+.password-toggle:hover,
+.password-toggle:focus {
+  background: rgba(29, 183, 255, 0.12);
+}
+
 .btn-login-submit {
   display: inline-flex;
   align-items: center;
@@ -1446,6 +1538,10 @@ body {
 
   .quick-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-summary-grid {
+    grid-template-columns: 1fr;
   }
 
   .division-grid {

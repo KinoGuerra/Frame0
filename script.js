@@ -12,6 +12,10 @@ const standingsBody = document.querySelector("#standingsBody");
 const fixtureBody = document.querySelector("#fixtureBody");
 const fixtureDateSelect = document.querySelector("#fixtureDateSelect");
 const loginForm = document.querySelector("#loginForm");
+const sidebarContent = document.querySelector("#sidebarContent");
+const contentShell = document.querySelector("#contentShell");
+const passwordInput = document.querySelector("#password");
+const passwordToggle = document.querySelector("[data-password-toggle]");
 
 let divisionLoadTimer;
 let selectedTeamId = null;
@@ -665,11 +669,191 @@ function getActiveLoginRole() {
   return activeTab ? activeTab.dataset.role : "Delegado";
 }
 
+function getAdminMetrics() {
+  const categories = [
+    {
+      name: "Libre",
+      divisions: [
+        { name: "Primera División", teams: 14 },
+        { name: "Segunda División", teams: 12 }
+      ]
+    },
+    {
+      name: "Senior",
+      divisions: [
+        { name: "Senior A", teams: 10 },
+        { name: "Senior B", teams: 8 }
+      ]
+    },
+    {
+      name: "Femenino",
+      divisions: [
+        { name: "Fem A", teams: 8 },
+        { name: "Fem B", teams: 6 }
+      ]
+    }
+  ];
+  const totalTeams = categories.flatMap((category) => category.divisions).reduce((sum, division) => sum + division.teams, 0);
+  const averagePlayers = 15;
+
+  return {
+    categories,
+    totalTeams,
+    averagePlayers,
+    totalPlayers: totalTeams * averagePlayers
+  };
+}
+
+function renderAdminSummaryList(items) {
+  return items.map((item) => `
+    <div class="admin-summary-row">
+      <span>${item.name}</span>
+      <strong>${item.teams}</strong>
+    </div>
+  `).join("");
+}
+
+function renderAdminHome() {
+  const metrics = getAdminMetrics();
+  const divisions = metrics.categories.flatMap((category) =>
+    category.divisions.map((division) => ({
+      name: `${category.name} - ${division.name}`,
+      teams: division.teams
+    }))
+  );
+  const categories = metrics.categories.map((category) => ({
+    name: category.name,
+    teams: category.divisions.reduce((sum, division) => sum + division.teams, 0)
+  }));
+
+  return `
+    <div class="section-toolbar admin-toolbar">
+      <div>
+        <p class="section-kicker section-brand mb-1">Frame0</p>
+        <h2 class="section-title mb-0">Panel administrador</h2>
+      </div>
+    </div>
+
+    <section class="quick-stats admin-quick-stats" aria-label="Métricas generales de administrador">
+      <div class="quick-stat">
+        <i class="bi bi-grid-1x2-fill"></i>
+        <div class="quick-stat-content">
+          <strong>${metrics.categories.length}</strong>
+          <div class="quick-stat-copy">
+            <span>Categorías</span>
+            <small>Libre, Senior, Femenino</small>
+          </div>
+        </div>
+      </div>
+      <div class="quick-stat">
+        <i class="bi bi-shield-fill-check"></i>
+        <div class="quick-stat-content">
+          <strong>${metrics.totalTeams}</strong>
+          <div class="quick-stat-copy">
+            <span>Equipos</span>
+            <small>Total general de la competencia</small>
+          </div>
+        </div>
+      </div>
+      <div class="quick-stat">
+        <i class="bi bi-people-fill"></i>
+        <div class="quick-stat-content">
+          <strong>${metrics.totalPlayers}</strong>
+          <div class="quick-stat-copy">
+            <span>Jugadores</span>
+            <small>Estimación demo del torneo</small>
+          </div>
+        </div>
+      </div>
+      <div class="quick-stat">
+        <i class="bi bi-person-lines-fill"></i>
+        <div class="quick-stat-content">
+          <strong>${metrics.averagePlayers}</strong>
+          <div class="quick-stat-copy">
+            <span>Promedio</span>
+            <small>Jugadores por equipo</small>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="admin-summary-grid">
+      <section class="admin-summary-panel">
+        <div class="division-section-heading">
+          <p class="section-kicker mb-1">Distribución</p>
+          <h2>Equipos por categoría</h2>
+        </div>
+        ${renderAdminSummaryList(categories)}
+      </section>
+      <section class="admin-summary-panel">
+        <div class="division-section-heading">
+          <p class="section-kicker mb-1">Detalle</p>
+          <h2>Equipos por división</h2>
+        </div>
+        ${renderAdminSummaryList(divisions)}
+      </section>
+    </div>
+  `;
+}
+
+function enterAdminView() {
+  sidebarContent.innerHTML = `
+    <div class="sidebar-main admin-sidebar-main">
+      <div>
+        <div class="sidebar-heading">
+          <i class="bi bi-sliders2-vertical"></i>
+          <h2>Acciones</h2>
+        </div>
+        <div class="admin-actions">
+          <button class="division-link" type="button">
+            <i class="bi bi-shield-fill-check"></i>
+            Equipos
+          </button>
+          <button class="division-link" type="button">
+            <i class="bi bi-person-badge-fill"></i>
+            Delegados
+          </button>
+          <button class="division-link" type="button">
+            <i class="bi bi-people-fill"></i>
+            Jugadores
+          </button>
+          <button class="division-link" type="button">
+            <i class="bi bi-gear-fill"></i>
+            Configuraciones
+          </button>
+        </div>
+      </div>
+      <button class="btn btn-ingreso w-100" type="button" data-admin-logout>
+        <i class="bi bi-box-arrow-left"></i>
+        Salir
+      </button>
+    </div>
+  `;
+  contentShell.innerHTML = renderAdminHome();
+  document.body.classList.add("admin-view");
+}
+
 divisionButtons.forEach((button) => {
   button.addEventListener("click", () => setSelectedDivision(button));
 });
 
 document.querySelector(".frame-logo").addEventListener("click", showHome);
+
+passwordToggle.addEventListener("click", () => {
+  const isPasswordVisible = passwordInput.type === "text";
+
+  passwordInput.type = isPasswordVisible ? "password" : "text";
+  passwordToggle.setAttribute("aria-label", isPasswordVisible ? "Mostrar contraseña" : "Ocultar contraseña");
+  passwordToggle.innerHTML = `<i class="bi ${isPasswordVisible ? "bi-eye-fill" : "bi-eye-slash-fill"}"></i>`;
+});
+
+sidebarContent.addEventListener("click", (event) => {
+  const logoutButton = event.target.closest("[data-admin-logout]");
+  if (!logoutButton) return;
+
+  window.location.href = "index.html#home";
+  window.location.reload();
+});
 
 document.querySelectorAll("[data-scroll-team]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -714,7 +898,26 @@ loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
   const username = document.querySelector("#username").value.trim();
+  const password = document.querySelector("#password").value;
   const role = getActiveLoginRole();
 
-  alert(`Ingreso simulado como ${role}: ${username}`);
+  if (role !== "Administrador") {
+    alert("Por ahora sólo está habilitado el ingreso de Administrador.");
+    return;
+  }
+
+  if (username.toLowerCase() === "admin" && password === "123456") {
+    const modalElement = document.querySelector("#loginModal");
+    const modalInstance = bootstrap.Modal.getInstance(modalElement);
+
+    if (modalInstance) {
+      modalInstance.hide();
+    }
+
+    enterAdminView();
+    loginForm.reset();
+    return;
+  }
+
+  alert("Usuario o contraseña incorrectos.");
 });

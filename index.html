@@ -40,14 +40,15 @@
     <main id="home" class="dashboard-shell container-fluid">
       <div class="row g-3 g-lg-4">
         <aside class="col-12 col-lg-3 col-xl-2">
-          <section class="sidebar-panel">
-            <div class="sidebar-heading">
-              <i class="bi bi-grid-1x2-fill"></i>
-              <h2>Categorías</h2>
-            </div>
+          <section class="sidebar-panel" id="sidebarPanel">
+            <div id="sidebarContent">
+              <div class="sidebar-heading">
+                <i class="bi bi-grid-1x2-fill"></i>
+                <h2>Categorías</h2>
+              </div>
 
-            <div class="sidebar-main">
-              <div class="accordion frame-accordion" id="categoryAccordion">
+              <div class="sidebar-main">
+                <div class="accordion frame-accordion" id="categoryAccordion">
                 <div class="accordion-item">
                   <h3 class="accordion-header">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#categoryLibre" aria-expanded="false" aria-controls="categoryLibre">
@@ -89,18 +90,20 @@
                     </div>
                   </div>
                 </div>
-              </div>
+                </div>
 
-              <button class="btn btn-ingreso w-100" type="button" data-bs-toggle="modal" data-bs-target="#loginModal">
-                <i class="bi bi-box-arrow-in-right"></i>
-                Ingreso
-              </button>
+                <button class="btn btn-ingreso w-100" type="button" data-bs-toggle="modal" data-bs-target="#loginModal">
+                  <i class="bi bi-box-arrow-in-right"></i>
+                  Ingresar
+                </button>
+              </div>
             </div>
           </section>
         </aside>
 
         <section class="col-12 col-lg-9 col-xl-10">
-          <div class="content-panel">
+          <div class="content-panel" id="contentPanel">
+            <div id="contentShell">
             <div class="section-toolbar">
               <div>
                 <p class="section-kicker section-brand mb-1">Frame0</p>
@@ -343,6 +346,7 @@
                 </div>
               </div>
             </div>
+            </div>
           </div>
         </section>
       </div>
@@ -392,7 +396,12 @@
 
               <div class="mb-3">
                 <label for="password" class="form-label">Contraseña</label>
-                <input type="password" class="form-control" id="password" autocomplete="current-password" required>
+                <div class="password-field">
+                  <input type="password" class="form-control" id="password" autocomplete="current-password" required>
+                  <button class="password-toggle" type="button" aria-label="Mostrar contraseña" data-password-toggle>
+                    <i class="bi bi-eye-fill"></i>
+                  </button>
+                </div>
               </div>
 
               <button class="btn btn-login-submit w-100" type="submit">
