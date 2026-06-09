@@ -550,7 +550,9 @@ const observerMatches = [
   { id: "v-1", date: "08/06/2026", home: "belgrano", away: "instituto", homeGoals: 2, awayGoals: 1 },
   { id: "v-2", date: "08/06/2026", home: "boca", away: "river", homeGoals: 1, awayGoals: 1 },
   { id: "v-3", date: "08/06/2026", home: "real", away: "barcelona", homeGoals: null, awayGoals: null },
-  { id: "v-4", date: "08/06/2026", home: "manchester", away: "belgrano", homeGoals: null, awayGoals: null }
+  { id: "v-4", date: "08/06/2026", home: "manchester", away: "belgrano", homeGoals: null, awayGoals: null },
+  { id: "v-5", date: "09/06/2026", home: "inter", away: "roma", homeGoals: null, awayGoals: null },
+  { id: "v-6", date: "10/06/2026", home: "coritiba", away: "barcelona", homeGoals: null, awayGoals: null }
 ];
 
 const observers = [
@@ -1762,11 +1764,49 @@ function getObserverMatch(matchId) {
   return observerMatches.find((match) => match.id === matchId);
 }
 
-function renderObserverMatchRows() {
-  return observerMatches.map((match) => {
+function parseLocalDate(dateText) {
+  const [day, month, year] = dateText.split("/").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function normalizeDateOnly(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function isFutureMatchDate(dateText) {
+  return parseLocalDate(dateText) > normalizeDateOnly(new Date());
+}
+
+function getObserverAvailableDates() {
+  return [...new Set(observerMatches.map((match) => match.date))]
+    .sort((first, second) => parseLocalDate(second) - parseLocalDate(first));
+}
+
+function getDefaultObserverDate() {
+  const today = normalizeDateOnly(new Date());
+  const availableDates = getObserverAvailableDates();
+  return availableDates.find((date) => parseLocalDate(date) <= today) || availableDates[0] || "";
+}
+
+function renderObserverDateOptions(selectedDate) {
+  return getObserverAvailableDates().map((date) => `
+    <option value="${date}" ${date === selectedDate ? "selected" : ""}>${date}</option>
+  `).join("");
+}
+
+function renderObserverMatchRows(selectedDate) {
+  const selectedMatches = observerMatches.filter((match) => match.date === selectedDate);
+  const isFutureDate = isFutureMatchDate(selectedDate);
+
+  if (!selectedMatches.length) {
+    return `<tr><td colspan="5" class="admin-empty-row">No hay partidos cargados para esta fecha.</td></tr>`;
+  }
+
+  return selectedMatches.map((match) => {
     const homeTeam = getTeam(match.home);
     const awayTeam = getTeam(match.away);
     const score = match.homeGoals === null || match.awayGoals === null ? "" : `${match.homeGoals} - ${match.awayGoals}`;
+    const disabledAttribute = isFutureDate ? "disabled" : "";
 
     return `
       <tr>
@@ -1780,7 +1820,7 @@ function renderObserverMatchRows() {
         </td>
         <td>
           <div class="table-actions">
-            <button type="button" aria-label="Editar partido" data-observer-edit-match="${match.id}">
+            <button type="button" aria-label="Editar partido" data-observer-edit-match="${match.id}" ${disabledAttribute}>
               <i class="bi bi-pencil-fill"></i>
             </button>
           </div>
@@ -1790,20 +1830,31 @@ function renderObserverMatchRows() {
   }).join("");
 }
 
-function renderObserverMatches() {
+function renderObserverMatches(selectedDate = getDefaultObserverDate()) {
+  const isFutureDate = selectedDate && isFutureMatchDate(selectedDate);
+
   return `
     <div class="section-toolbar admin-toolbar">
       <div>
         <p class="section-kicker section-brand mb-1">Frame0</p>
-        <h2 class="section-title mb-0">Partidos del día</h2>
+        <h2 class="section-title mb-0">Partidos por fecha</h2>
       </div>
     </div>
 
     <section class="division-table-panel observer-panel">
-      <div class="division-section-heading">
-        <p class="section-kicker mb-1">Veedor</p>
-        <h2>Fecha 08/06/2026</h2>
+      <div class="fixture-toolbar">
+        <div class="division-section-heading">
+          <p class="section-kicker mb-1">Veedor</p>
+          <h2>Fecha ${selectedDate}</h2>
+        </div>
+        <label class="fixture-select-label">
+          Fecha
+          <select class="form-select form-select-sm" data-observer-date-select>
+            ${renderObserverDateOptions(selectedDate)}
+          </select>
+        </label>
       </div>
+      ${isFutureDate ? `<div class="delegate-edit-window is-closed"><i class="bi bi-lock-fill"></i> Esta fecha es futura. Los partidos todavía no pueden editarse.</div>` : ""}
       <div class="table-responsive">
         <table class="table frame-table observer-matches-table mb-0">
           <thead>
@@ -1815,7 +1866,7 @@ function renderObserverMatches() {
               <th>Editar</th>
             </tr>
           </thead>
-          <tbody>${renderObserverMatchRows()}</tbody>
+          <tbody>${renderObserverMatchRows(selectedDate)}</tbody>
         </table>
       </div>
     </section>
@@ -1836,29 +1887,35 @@ function renderScoreCounter(label, value, key) {
 }
 
 function renderObserverPlayerRows(team) {
-  return team.players.map((player) => `
-    <tr>
+  return team.players.map((player) => {
+    const status = getPlayerStatus(player);
+    const isDisabledPlayer = status !== "Habilitado";
+    const disabledAttribute = isDisabledPlayer ? "disabled" : "";
+
+    return `
+    <tr class="${isDisabledPlayer ? "observer-player-disabled" : ""}">
       <td>${player.name}</td>
       <td>${player.number}</td>
+      <td><span class="player-status ${status.toLowerCase()}">${status}</span></td>
       <td>
         <div class="event-actions">
-          <button class="event-btn player-of-match" type="button" aria-label="Jugador del partido">
+          <button class="event-btn player-of-match" type="button" aria-label="Jugador del partido" ${disabledAttribute}>
             <i class="bi bi-star-fill"></i>
           </button>
-          <button class="event-btn yellow-card" type="button" aria-label="Tarjeta amarilla">
+          <button class="event-btn yellow-card" type="button" aria-label="Tarjeta amarilla" ${disabledAttribute}>
             <i class="bi bi-square-fill"></i>
           </button>
-          <button class="event-btn red-card" type="button" aria-label="Tarjeta roja">
+          <button class="event-btn red-card" type="button" aria-label="Tarjeta roja" ${disabledAttribute}>
             <i class="bi bi-square-fill"></i>
           </button>
         </div>
       </td>
       <td>
         <div class="goal-counter">
-          <button type="button" data-goal-dec aria-label="Restar gol"><i class="bi bi-dash-lg"></i></button>
+          <button type="button" data-goal-dec aria-label="Restar gol" ${disabledAttribute}><i class="bi bi-dash-lg"></i></button>
           <span><img src="assets/soccer-ball.svg" alt="" class="goal-ball-icon"></span>
           <strong data-goal-value>0</strong>
-          <button type="button" data-goal-inc aria-label="Sumar gol"><i class="bi bi-plus-lg"></i></button>
+          <button type="button" data-goal-inc aria-label="Sumar gol" ${disabledAttribute}><i class="bi bi-plus-lg"></i></button>
         </div>
       </td>
       <td>
@@ -1867,7 +1924,8 @@ function renderObserverPlayerRows(team) {
         </button>
       </td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function renderObserverPlayersTable(team, sideLabel) {
@@ -1883,6 +1941,7 @@ function renderObserverPlayersTable(team, sideLabel) {
             <tr>
               <th>Apellido y nombre</th>
               <th>#</th>
+              <th>Estado</th>
               <th>Incidencias</th>
               <th>Goles</th>
               <th>Obs.</th>
@@ -1898,6 +1957,10 @@ function renderObserverPlayersTable(team, sideLabel) {
 function renderObserverEditMatch(matchId) {
   const match = getObserverMatch(matchId);
   if (!match) return renderObserverMatches();
+
+  if (isFutureMatchDate(match.date)) {
+    return renderObserverMatches(match.date);
+  }
 
   const homeTeam = getTeam(match.home);
   const awayTeam = getTeam(match.away);
@@ -3322,11 +3385,17 @@ contentShell.addEventListener("change", (event) => {
   const playerTeamSelect = event.target.closest("[data-admin-player-team]");
   const playerStatusSelect = event.target.closest("[data-admin-player-status]");
   const tournamentDivisionCategorySelect = event.target.closest("[data-admin-division-category]");
+  const observerDateSelect = event.target.closest("[data-observer-date-select]");
   const registrationFromInput = event.target.closest("[data-registration-from]");
   const registrationToInput = event.target.closest("[data-registration-to]");
   const tournamentDatesInput = event.target.closest("[data-tournament-dates]");
   const tournamentPlayoffInput = event.target.closest("[data-tournament-playoff]");
   const tournamentPlayoffTeamsInput = event.target.closest("[data-tournament-playoff-teams]");
+
+  if (observerDateSelect) {
+    contentShell.innerHTML = renderObserverMatches(observerDateSelect.value);
+    return;
+  }
 
   if (registrationFromInput) {
     tournamentSettings.playerRegistrationFrom = registrationFromInput.value;
