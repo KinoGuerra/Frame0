@@ -1281,12 +1281,13 @@ function getTournamentDivisionKey(categoryName, divisionName) {
 
 function getTournamentDivisionConfig(categoryName, divisionName, teamCount) {
   const key = getTournamentDivisionKey(categoryName, divisionName);
+  const defaultPlayoffTeams = [32, 16, 8, 4, 2].find((option) => option <= teamCount) || 2;
 
   if (!tournamentSettings.divisions[key]) {
     tournamentSettings.divisions[key] = {
       datesCount: Math.max(teamCount - 1, 1),
       playoffEnabled: false,
-      playoffTeams: Math.min(8, teamCount),
+      playoffTeams: defaultPlayoffTeams,
       fixture: null
     };
   }
@@ -1324,24 +1325,12 @@ function buildPlayoffCups(teamCount, playoffTeams) {
 
   while (start <= teamCount) {
     const end = Math.min(start + playoffTeams - 1, teamCount);
-    const pairs = [];
-    let low = start;
-    let high = end;
-
-    while (low < high) {
-      pairs.push(`${low} vs ${high}`);
-      low += 1;
-      high -= 1;
-    }
-
-    if (low === high) {
-      pairs.push(`${low} libre`);
-    }
+    const qualifiedCount = end - start + 1;
 
     cups.push({
       name: cupNames[cupIndex] || `Copa ${cupIndex + 1}`,
       range: `${start} al ${end}`,
-      pairs
+      stages: buildPlayoffStages(start, qualifiedCount)
     });
 
     start = end + 1;
@@ -1349,6 +1338,164 @@ function buildPlayoffCups(teamCount, playoffTeams) {
   }
 
   return cups;
+}
+
+function buildPlayoffStages(startPosition, teamsCount) {
+  const bracketSize = [32, 16, 8, 4, 2].find((size) => teamsCount >= size) || 2;
+  const stageNames = {
+    2: "Final",
+    4: "Semifinales",
+    8: "Cuartos de Final",
+    16: "Octavos de Final",
+    32: "Dieciseisavos de Final"
+  };
+  const groupLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+  const firstLabels = bracketSize === 2
+    ? ["Final A"]
+    : Array.from({ length: bracketSize / 2 }, (_, index) => {
+      const group = groupLetters[Math.floor(index / 2)];
+      return bracketSize === 4 ? group : `${group}${(index % 2) + 1}`;
+    });
+  const firstMatches = firstLabels.map((label, index) => {
+    const leftSeed = startPosition + index;
+    const rightSeed = startPosition + bracketSize - 1 - index;
+    return `${label}: Equipo ${leftSeed} vs Equipo ${rightSeed}`;
+  });
+
+  if (bracketSize === 2) {
+    return [{ name: "Final", matches: firstMatches }];
+  }
+
+  const stages = [{ name: stageNames[bracketSize], matches: firstMatches }];
+  let currentLabels = firstLabels;
+  let nextStageName = {
+    4: "Final",
+    8: "Semifinales",
+    16: "Cuartos de Final",
+    32: "Octavos de Final"
+  }[bracketSize];
+
+  while (currentLabels.length > 2) {
+    const nextMatches = [];
+    const nextLabels = [];
+
+    for (let index = 0; index < currentLabels.length; index += 4) {
+      const group = groupLetters[nextLabels.length];
+      const firstLeft = currentLabels[index];
+      const firstRight = currentLabels[index + 3] || currentLabels[index + 1];
+      const secondLeft = currentLabels[index + 1];
+      const secondRight = currentLabels[index + 2] || currentLabels[index + 1];
+
+      nextMatches.push(`${group}: Ganador ${firstLeft} vs Ganador ${firstRight}`);
+      nextLabels.push(group);
+
+      if (secondLeft && secondRight && secondLeft !== secondRight) {
+        const secondGroup = groupLetters[nextLabels.length];
+        nextMatches.push(`${secondGroup}: Ganador ${secondLeft} vs Ganador ${secondRight}`);
+        nextLabels.push(secondGroup);
+      }
+    }
+
+    stages.push({ name: nextStageName, matches: nextMatches });
+    currentLabels = nextLabels;
+    nextStageName = {
+      "Octavos de Final": "Cuartos de Final",
+      "Cuartos de Final": "Semifinales",
+      "Semifinales": "Final"
+    }[nextStageName] || "Final";
+  }
+
+  stages.push({
+    name: "Final",
+    matches: [`Ganador ${currentLabels[0]} vs Ganador ${currentLabels[1]}`]
+  });
+
+  return stages;
+}
+
+function shuffleItems(items) {
+  const shuffled = [...items];
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
+  }
+
+  return shuffled;
+}
+
+function getFixtureTeamNames(categoryName, divisionName, teamCount) {
+  const fallbackNames = [
+    "La Reserva",
+    "Los Pibes FC",
+    "Barrio Norte",
+    "La Academia",
+    "Deportivo Sur",
+    "Unión Amateur",
+    "Los Halcones",
+    "Atlético Centro",
+    "La Banda",
+    "Sportivo Alberdi",
+    "Nueva Córdoba",
+    "Villa Unión",
+    "Los Titanes",
+    "Defensores del Parque",
+    "San Martín",
+    "El Fortín",
+    "La Cantera",
+    "Estrella Roja",
+    "Deportivo Oeste",
+    "Los Cóndores",
+    "Fénix FC",
+    "La Gloria Amateur"
+  ];
+  const loadedNames = teams.map((team) => team.shortName);
+  const contextSuffix = `${categoryName} ${divisionName}`.replace(/\s+/g, " ").trim();
+  const allNames = [...loadedNames];
+
+  fallbackNames.forEach((name) => {
+    if (allNames.length < teamCount) {
+      allNames.push(`${name} ${contextSuffix}`);
+    }
+  });
+
+  while (allNames.length < teamCount) {
+    allNames.push(`Club ${allNames.length + 1} ${contextSuffix}`);
+  }
+
+  return allNames.slice(0, teamCount);
+}
+
+function buildRoundRobinRounds(teamNames, requestedDates) {
+  const teamsList = shuffleItems(teamNames);
+  const hasBye = teamsList.length % 2 !== 0;
+  const rotation = hasBye ? [...teamsList, null] : [...teamsList];
+  const baseRoundCount = rotation.length - 1;
+  const totalRoundCount = Math.max(baseRoundCount, Math.ceil((Number(requestedDates) || baseRoundCount) / baseRoundCount) * baseRoundCount);
+  const rounds = [];
+
+  for (let roundIndex = 0; roundIndex < totalRoundCount; roundIndex += 1) {
+    const cycleRound = roundIndex % baseRoundCount;
+    const matches = [];
+
+    for (let index = 0; index < rotation.length / 2; index += 1) {
+      const home = rotation[index];
+      const away = rotation[rotation.length - 1 - index];
+
+      if (home && away) {
+        matches.push(cycleRound % 2 === 0 ? `${home} vs ${away}` : `${away} vs ${home}`);
+      }
+    }
+
+    rounds.push({
+      name: `Fecha ${roundIndex + 1}`,
+      matches
+    });
+
+    rotation.splice(1, 0, rotation.pop());
+  }
+
+  return rounds;
 }
 
 function generateFixturePlan(categoryName, divisionName) {
@@ -1359,24 +1506,10 @@ function generateFixturePlan(categoryName, divisionName) {
 
   const config = row.config;
   const teamsCount = row.teams;
-  const datesCount = Math.max(Number(config.datesCount) || teamsCount - 1, 1);
-  const rounds = Array.from({ length: datesCount }, (_, roundIndex) => {
-    const matches = [];
-    const offset = roundIndex + 1;
-
-    for (let team = 1; team <= Math.floor(teamsCount / 2); team += 1) {
-      const home = team;
-      const away = ((team + offset - 1) % teamsCount) + 1;
-      if (home !== away) {
-        matches.push(`Equipo ${home} vs Equipo ${away}`);
-      }
-    }
-
-    return {
-      name: `Fecha ${roundIndex + 1}`,
-      matches: matches.slice(0, Math.floor(teamsCount / 2))
-    };
-  });
+  const fixtureTeamNames = getFixtureTeamNames(categoryName, divisionName, teamsCount);
+  const rounds = buildRoundRobinRounds(fixtureTeamNames, config.datesCount);
+  const datesCount = rounds.length;
+  config.datesCount = datesCount;
 
   config.fixture = {
     generatedAt: new Date().toLocaleString("es-AR"),
@@ -1403,7 +1536,10 @@ function renderFixtureDownloadDocument(fixture) {
     ${fixture.cups.map((cup) => `
       <section>
         <h3>${cup.name} (${cup.range})</h3>
-        <ul>${cup.pairs.map((pair) => `<li>${pair}</li>`).join("")}</ul>
+        ${cup.stages.map((stage) => `
+          <h4>${stage.name}</h4>
+          <ul>${stage.matches.map((match) => `<li>${match}</li>`).join("")}</ul>
+        `).join("")}
       </section>
     `).join("")}
   ` : "";
@@ -1419,6 +1555,7 @@ function renderFixtureDownloadDocument(fixture) {
           h1 { color: #0b4fe8; margin-bottom: 4px; }
           h2 { margin-top: 22px; border-bottom: 1px solid #cbd5e1; padding-bottom: 6px; }
           h3 { margin-bottom: 6px; }
+          h4 { margin: 12px 0 4px; color: #263241; }
           li { margin: 5px 0; }
           .meta { color: #526070; margin-bottom: 20px; }
         </style>
@@ -1901,6 +2038,9 @@ function renderTournamentGeneralRows() {
     const playoffSummary = fixture?.cups?.length
       ? fixture.cups.map((cup) => `${cup.name}: ${cup.range}`).join(" · ")
       : "Sin fixture generado";
+    const playoffOptions = [2, 4, 8, 16, 32].map((option) => `
+      <option value="${option}" ${Number(row.config.playoffTeams) === option ? "selected" : ""} ${option > row.teams ? "disabled" : ""}>${option}</option>
+    `).join("");
 
     return `
       <tr data-tournament-row="${escapeHtml(key)}">
@@ -1915,7 +2055,9 @@ function renderTournamentGeneralRows() {
             <label class="form-check form-switch m-0">
               <input class="form-check-input" type="checkbox" ${row.config.playoffEnabled ? "checked" : ""} data-tournament-playoff="${escapeHtml(key)}">
             </label>
-            <input class="form-control form-control-sm tournament-number-input" type="number" min="2" max="${row.teams}" value="${row.config.playoffTeams}" ${row.config.playoffEnabled ? "" : "disabled"} data-tournament-playoff-teams="${escapeHtml(key)}" aria-label="Cantidad de equipos playoff de ${row.division}">
+            <select class="form-select form-select-sm tournament-number-input" ${row.config.playoffEnabled ? "" : "disabled"} data-tournament-playoff-teams="${escapeHtml(key)}" aria-label="Cantidad de equipos playoff de ${row.division}">
+              ${playoffOptions}
+            </select>
           </div>
         </td>
         <td>

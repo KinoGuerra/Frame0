@@ -3410,6 +3410,7 @@ body.dark-mode .modal-content.login-modal {
 .tournament-config-table th:nth-child(5),
 .tournament-config-table td:nth-child(5) {
   min-width: 190px;
+  text-align: center;
 }
 
 .tournament-config-table th:nth-child(6),
