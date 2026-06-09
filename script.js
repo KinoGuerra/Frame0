@@ -17,6 +17,7 @@ const sidebarContent = document.querySelector("#sidebarContent");
 const contentShell = document.querySelector("#contentShell");
 const passwordInput = document.querySelector("#password");
 const passwordToggle = document.querySelector("[data-password-toggle]");
+const darkModeToggle = document.querySelector("#darkModeToggle");
 const observationModalElement = document.querySelector("#observationModal");
 const observationText = document.querySelector("#observationText");
 const saveObservationButton = document.querySelector("#saveObservation");
@@ -45,6 +46,63 @@ let activeObservationButton = null;
 let adminSearchTimer;
 
 const ADMIN_PAGE_SIZE = 20;
+const DRIVE_FOLDER_ID = "1Rc5iI61AXuY-DjYL11cVGb7Wg3JTPLEj";
+const THEME_STORAGE_KEY = "frame0-dark-mode";
+const publicSettings = {
+  instagramUrl: "#",
+  facebookUrl: "#",
+  whatsappPhone: "3510000000",
+  locationTitle: "Córdoba Capital",
+  locationText: "La sede principal del torneo estará ubicada en Córdoba Capital, con programación semanal y comunicación oficial para delegados antes de cada fecha.",
+  contactTitle: "351 XXX XXXX",
+  contactText: "Consultas por cupos, inscripción, documentación y calendario inicial. La atención se centraliza para mantener una comunicación clara con cada equipo.",
+  regulationText: `La competencia se disputa bajo principios de juego limpio, respeto entre participantes y cumplimiento de la programación oficial informada por la organización. Cada equipo deberá presentar su lista de buena fe, contar con jugadores habilitados y respetar los horarios asignados para cada fecha.
+
+Los partidos tendrán una duración definida por la organización según categoría y división. La tabla de posiciones se ordenará por puntos obtenidos, diferencia de gol, goles a favor y resultado entre equipos cuando corresponda. Las sanciones disciplinarias podrán incluir suspensión por acumulación de tarjetas, expulsiones directas o informes del veedor.
+
+La organización podrá reprogramar encuentros por razones climáticas, disponibilidad de cancha o fuerza mayor. Todo reclamo deberá ser presentado por el delegado dentro de los plazos establecidos y será evaluado por la mesa organizadora.`
+};
+
+function applyDarkMode(isDarkMode) {
+  document.body.classList.toggle("dark-mode", isDarkMode);
+  if (darkModeToggle) {
+    darkModeToggle.checked = isDarkMode;
+  }
+  localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? "true" : "false");
+}
+
+function getWhatsappUrl(phone) {
+  const cleanPhone = String(phone || "").replace(/\D/g, "");
+  return cleanPhone ? `https://wa.me/54${cleanPhone}` : "#";
+}
+
+function setLinkIfExists(selector, href) {
+  const link = document.querySelector(selector);
+  if (!link) return;
+
+  link.href = href || "#";
+  link.target = href && href !== "#" ? "_blank" : "";
+  link.rel = href && href !== "#" ? "noopener noreferrer" : "";
+}
+
+function applyPublicSettings() {
+  const locationTitle = document.querySelector("#homeLocationTitle");
+  const locationText = document.querySelector("#homeLocationText");
+  const contactTitle = document.querySelector("#homeContactTitle");
+  const contactText = document.querySelector("#homeContactText");
+
+  if (locationTitle) locationTitle.textContent = publicSettings.locationTitle;
+  if (locationText) locationText.textContent = publicSettings.locationText;
+  if (contactTitle) contactTitle.textContent = publicSettings.contactTitle;
+  if (contactText) contactText.textContent = publicSettings.contactText;
+
+  setLinkIfExists("#homeInstagramLink", publicSettings.instagramUrl);
+  setLinkIfExists("#loginInstagramLink", publicSettings.instagramUrl);
+  setLinkIfExists("#homeFacebookLink", publicSettings.facebookUrl);
+  setLinkIfExists("#loginFacebookLink", publicSettings.facebookUrl);
+  setLinkIfExists("#homeWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
+  setLinkIfExists("#loginWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
+}
 
 const teams = [
   {
@@ -707,28 +765,46 @@ function showHome() {
 }
 
 function renderRegulationContent() {
+  const regulationParagraphs = publicSettings.regulationText
+    .split(/\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+    .join("");
+
   return `
     <section class="public-info-panel">
       <p class="section-kicker mb-2">Reglamento</p>
       <h2>Reglamento general de competencia amateur</h2>
-      <p>
-        La competencia se disputa bajo principios de juego limpio, respeto entre participantes y cumplimiento de
-        la programación oficial informada por la organización. Cada equipo deberá presentar su lista de buena fe,
-        contar con jugadores habilitados y respetar los horarios asignados para cada fecha.
-      </p>
-      <p>
-        Los partidos tendrán una duración definida por la organización según categoría y división. La tabla de
-        posiciones se ordenará por puntos obtenidos, diferencia de gol, goles a favor y resultado entre equipos
-        cuando corresponda. Las sanciones disciplinarias podrán incluir suspensión por acumulación de tarjetas,
-        expulsiones directas o informes del veedor.
-      </p>
-      <p>
-        La organización podrá reprogramar encuentros por razones climáticas, disponibilidad de cancha o fuerza
-        mayor. Todo reclamo deberá ser presentado por el delegado dentro de los plazos establecidos y será evaluado
-        por la mesa organizadora.
-      </p>
+      ${regulationParagraphs}
     </section>
   `;
+}
+
+function renderPhotosContent() {
+  const embedUrl = `https://drive.google.com/embeddedfolderview?id=${DRIVE_FOLDER_ID}#grid`;
+
+  return `
+    <section class="public-info-panel photos-panel">
+      <div class="photos-heading">
+        <div>
+          <p class="section-kicker mb-2">Fotos</p>
+          <h2>Galería del torneo</h2>
+          <p>Aquí puedes visualizar todas las fotos del torneo, se encuentran organizadas por fecha.</p>
+        </div>
+      </div>
+      <iframe class="drive-photos-frame" src="${embedUrl}" title="Fotos del torneo Frame0 en Google Drive"></iframe>
+    </section>
+  `;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function renderAboutContent() {
@@ -749,7 +825,13 @@ function showPublicInfo(page) {
   divisionView.classList.add("d-none");
   window.clearTimeout(divisionLoadTimer);
 
-  publicInfoContent.innerHTML = page === "reglamento" ? renderRegulationContent() : renderAboutContent();
+  const publicPages = {
+    fotos: renderPhotosContent,
+    reglamento: renderRegulationContent,
+    nosotros: renderAboutContent
+  };
+
+  publicInfoContent.innerHTML = (publicPages[page] || renderAboutContent)();
   publicInfoContent.classList.remove("d-none");
 }
 
@@ -1366,6 +1448,107 @@ function renderAdminActionView(actionName) {
       <div class="division-section-heading">
         <p class="section-kicker mb-1">Administrador</p>
         <h2>${actionName}</h2>
+      </div>
+    </section>
+  `;
+}
+
+function renderAdminSettingsView() {
+  return `
+    <div class="section-toolbar admin-toolbar">
+      <div>
+        <p class="section-kicker section-brand mb-1">Frame0</p>
+        <h2 class="section-title mb-0">Configuraciones</h2>
+      </div>
+    </div>
+    <section class="division-table-panel admin-settings-panel">
+      <ul class="nav nav-pills admin-settings-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#settings-general" type="button" role="tab">Generales Torneo</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" data-bs-toggle="pill" data-bs-target="#settings-social" type="button" role="tab">Redes y Contacto</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" data-bs-toggle="pill" data-bs-target="#settings-comms" type="button" role="tab">Comunicaciones</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" data-bs-toggle="pill" data-bs-target="#settings-rules" type="button" role="tab">Reglamento</button>
+        </li>
+      </ul>
+
+      <div class="tab-content admin-settings-content">
+        <div class="tab-pane fade show active" id="settings-general" role="tabpanel" tabindex="0">
+          <div class="settings-note">
+            <i class="bi bi-trophy-fill"></i>
+            <div>
+              <h3>Generales del torneo</h3>
+              <p>Espacio preparado para configurar nombre del torneo, temporada, fechas y parámetros generales cuando se conecte la base de datos.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="settings-social" role="tabpanel" tabindex="0">
+          <form class="settings-form" data-public-settings-form>
+            <div class="admin-filter-grid settings-grid">
+              <label class="admin-filter-field">
+                <span>Instagram URL</span>
+                <input class="form-control" type="url" value="${escapeHtml(publicSettings.instagramUrl)}" data-setting="instagramUrl">
+              </label>
+              <label class="admin-filter-field">
+                <span>Facebook URL</span>
+                <input class="form-control" type="url" value="${escapeHtml(publicSettings.facebookUrl)}" data-setting="facebookUrl">
+              </label>
+              <label class="admin-filter-field">
+                <span>Teléfono WhatsApp</span>
+                <input class="form-control" type="tel" inputmode="numeric" value="${escapeHtml(publicSettings.whatsappPhone)}" data-setting="whatsappPhone">
+              </label>
+              <label class="admin-filter-field">
+                <span>Título ubicación</span>
+                <input class="form-control" type="text" value="${escapeHtml(publicSettings.locationTitle)}" data-setting="locationTitle">
+              </label>
+              <label class="admin-filter-field settings-wide">
+                <span>Información ubicación</span>
+                <textarea class="form-control" rows="3" data-setting="locationText">${escapeHtml(publicSettings.locationText)}</textarea>
+              </label>
+              <label class="admin-filter-field">
+                <span>Título contacto</span>
+                <input class="form-control" type="text" value="${escapeHtml(publicSettings.contactTitle)}" data-setting="contactTitle">
+              </label>
+              <label class="admin-filter-field settings-wide">
+                <span>Información contacto</span>
+                <textarea class="form-control" rows="3" data-setting="contactText">${escapeHtml(publicSettings.contactText)}</textarea>
+              </label>
+            </div>
+            <button class="btn btn-ingreso settings-save-btn" type="button" data-save-public-settings>
+              <i class="bi bi-save-fill"></i>
+              Guardar redes y contacto
+            </button>
+          </form>
+        </div>
+
+        <div class="tab-pane fade" id="settings-comms" role="tabpanel" tabindex="0">
+          <div class="settings-note">
+            <i class="bi bi-megaphone-fill"></i>
+            <div>
+              <h3>Comunicaciones</h3>
+              <p>Espacio preparado para mensajes generales, avisos a delegados y notificaciones del torneo.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="settings-rules" role="tabpanel" tabindex="0">
+          <form class="settings-form">
+            <label class="admin-filter-field">
+              <span>Texto público del reglamento</span>
+              <textarea class="form-control settings-regulation-text" rows="11" data-setting="regulationText">${escapeHtml(publicSettings.regulationText)}</textarea>
+            </label>
+            <button class="btn btn-ingreso settings-save-btn" type="button" data-save-public-settings>
+              <i class="bi bi-save-fill"></i>
+              Guardar reglamento
+            </button>
+          </form>
+        </div>
       </div>
     </section>
   `;
@@ -2204,6 +2387,11 @@ sidebarContent.addEventListener("click", (event) => {
         return;
       }
 
+      if (actionName === "Configuraciones") {
+        contentShell.innerHTML = renderAdminSettingsView();
+        return;
+      }
+
       contentShell.innerHTML = renderAdminActionView(actionName);
     });
     return;
@@ -2228,6 +2416,7 @@ contentShell.addEventListener("click", (event) => {
   const adminPageButton = event.target.closest("[data-admin-page]");
   const openNewTeamButton = event.target.closest("[data-open-new-team-modal]");
   const openNewDelegateButton = event.target.closest("[data-open-new-delegate-modal]");
+  const savePublicSettingsButton = event.target.closest("[data-save-public-settings]");
 
   if (editButton) {
     const matchId = editButton.dataset.observerEditMatch;
@@ -2274,6 +2463,29 @@ contentShell.addEventListener("click", (event) => {
       observerSaveButton.classList.remove("is-saved");
       observerSaveButton.innerHTML = `<i class="bi bi-save-fill"></i> Guardar`;
     }, 1600);
+    return;
+  }
+
+  if (savePublicSettingsButton) {
+    const originalLabel = savePublicSettingsButton.dataset.originalLabel || savePublicSettingsButton.textContent.trim();
+    savePublicSettingsButton.dataset.originalLabel = originalLabel;
+    contentShell.querySelectorAll("[data-setting]").forEach((field) => {
+      publicSettings[field.dataset.setting] = field.value.trim();
+    });
+    applyPublicSettings();
+    savePublicSettingsButton.classList.add("is-saved");
+    savePublicSettingsButton.innerHTML = `<i class="bi bi-check2-circle"></i> Guardado`;
+    window.setTimeout(() => {
+      savePublicSettingsButton.classList.remove("is-saved");
+      savePublicSettingsButton.innerHTML = `<i class="bi bi-save-fill"></i> ${originalLabel}`;
+    }, 1400);
+
+    if (!publicInfoContent.classList.contains("d-none")) {
+      const regulationTitle = publicInfoContent.querySelector("h2");
+      if (regulationTitle && regulationTitle.textContent.includes("Reglamento")) {
+        publicInfoContent.innerHTML = renderRegulationContent();
+      }
+    }
     return;
   }
 
@@ -2427,10 +2639,15 @@ contentShell.addEventListener("change", (event) => {
 });
 
 contentShell.addEventListener("input", (event) => {
+  const whatsappPhoneInput = event.target.closest('[data-setting="whatsappPhone"]');
   const teamSearch = event.target.closest("[data-admin-team-search]");
   const delegateSearch = event.target.closest("[data-admin-delegate-search]");
   const playerSearch = event.target.closest("[data-admin-player-search]");
   const observerSearch = event.target.closest("[data-admin-observer-search]");
+
+  if (whatsappPhoneInput) {
+    whatsappPhoneInput.value = whatsappPhoneInput.value.replace(/\D/g, "");
+  }
 
   if (!teamSearch && !delegateSearch && !playerSearch && !observerSearch) return;
 
@@ -2603,6 +2820,15 @@ standingsBody.addEventListener("click", (event) => {
 
 fixtureDateSelect.addEventListener("change", renderFixture);
 
+if (darkModeToggle) {
+  applyDarkMode(localStorage.getItem(THEME_STORAGE_KEY) === "true");
+  darkModeToggle.addEventListener("change", () => {
+    applyDarkMode(darkModeToggle.checked);
+  });
+}
+
+applyPublicSettings();
+
 loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
@@ -2653,3 +2879,4 @@ loginForm.addEventListener("submit", (event) => {
 
   alert("Usuario o contraseña incorrectos.");
 });
+

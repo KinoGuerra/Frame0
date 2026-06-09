@@ -94,6 +94,10 @@
 
                 <div class="sidebar-info-group">
                   <div class="sidebar-mini-title">Más información</div>
+                  <button class="division-link" type="button" data-public-page="fotos">
+                    <i class="bi bi-camera-fill"></i>
+                    Fotos
+                  </button>
                   <button class="division-link" type="button" data-public-page="reglamento">
                     <i class="bi bi-journal-text"></i>
                     Reglamento
@@ -102,6 +106,15 @@
                     <i class="bi bi-people-fill"></i>
                     Nosotros
                   </button>
+                  <div class="theme-switcher">
+                    <div>
+                      <span>DarkMode</span>
+                    </div>
+                    <label class="theme-switch" for="darkModeToggle">
+                      <input type="checkbox" id="darkModeToggle" aria-label="Activar modo oscuro">
+                      <span class="theme-slider"></span>
+                    </label>
+                  </div>
                 </div>
 
                 <button class="btn btn-ingreso w-100" type="button" data-bs-toggle="modal" data-bs-target="#loginModal">
@@ -233,38 +246,29 @@
                 <section class="story-section split-section">
                   <div>
                     <p class="section-kicker mb-2">Ubicación</p>
-                    <h3>Córdoba Capital</h3>
-                    <p>
+                    <h3 id="homeLocationTitle">Córdoba Capital</h3>
+                    <p id="homeLocationText">
                       La sede principal del torneo estará ubicada en Córdoba Capital, con programación semanal
                       y comunicación oficial para delegados antes de cada fecha.
                     </p>
                   </div>
                   <div>
                     <p class="section-kicker mb-2">Contacto</p>
-                    <h3>351 XXX XXXX</h3>
-                    <p>
+                    <h3 id="homeContactTitle">351 XXX XXXX</h3>
+                    <p id="homeContactText">
                       Consultas por cupos, inscripción, documentación y calendario inicial. La atención se
                       centraliza para mantener una comunicación clara con cada equipo.
                     </p>
                   </div>
                 </section>
 
-                <section class="story-section final-section">
-                  <div>
-                    <p class="section-kicker mb-2">Reglamento</p>
-                    <h3>Condiciones de competencia</h3>
-                    <p>
-                      El reglamento reúne las normas generales del torneo, formato de disputa, fichajes,
-                      sanciones, criterios de desempate y presentación de listas.
-                    </p>
-                    <a class="regulation-link" href="#" aria-label="Ver más sobre el reglamento">Ver más</a>
-                  </div>
+                <section class="story-section final-section socials-only">
                   <div class="social-area">
                     <p class="section-kicker mb-2">Redes sociales</p>
                     <div class="social-links">
-                      <a href="#" aria-label="Instagram de Frame0"><i class="bi bi-instagram"></i> Instagram</a>
-                      <a href="#" aria-label="WhatsApp de Frame0"><i class="bi bi-whatsapp"></i> WhatsApp</a>
-                      <a href="#" aria-label="Facebook de Frame0"><i class="bi bi-facebook"></i> Facebook</a>
+                      <a id="homeInstagramLink" href="#" aria-label="Instagram de Frame0"><i class="bi bi-instagram"></i> Instagram</a>
+                      <a id="homeWhatsappLink" href="#" aria-label="WhatsApp de Frame0"><i class="bi bi-whatsapp"></i> WhatsApp</a>
+                      <a id="homeFacebookLink" href="#" aria-label="Facebook de Frame0"><i class="bi bi-facebook"></i> Facebook</a>
                     </div>
                   </div>
                 </section>
@@ -435,9 +439,9 @@
               <div class="login-invite">
                 <p>¿Aun no sos parte del mejor torneo?, ¿que esperas para comunicarte?</p>
                 <div class="login-socials">
-                  <a href="#" aria-label="Instagram de Frame0"><i class="bi bi-instagram"></i></a>
-                  <a href="#" aria-label="WhatsApp de Frame0"><i class="bi bi-whatsapp"></i></a>
-                  <a href="#" aria-label="Facebook de Frame0"><i class="bi bi-facebook"></i></a>
+                  <a id="loginInstagramLink" href="#" aria-label="Instagram de Frame0"><i class="bi bi-instagram"></i></a>
+                  <a id="loginWhatsappLink" href="#" aria-label="WhatsApp de Frame0"><i class="bi bi-whatsapp"></i></a>
+                  <a id="loginFacebookLink" href="#" aria-label="Facebook de Frame0"><i class="bi bi-facebook"></i></a>
                 </div>
               </div>
             </form>
