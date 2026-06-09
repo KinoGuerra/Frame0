@@ -44,6 +44,7 @@ let divisionLoadTimer;
 let selectedTeamId = null;
 let activeObservationButton = null;
 let adminSearchTimer;
+let teamCarouselActiveIndex = 0;
 
 const ADMIN_PAGE_SIZE = 20;
 const DRIVE_FOLDER_ID = "1Rc5iI61AXuY-DjYL11cVGb7Wg3JTPLEj";
@@ -62,6 +63,28 @@ Los partidos tendrán una duración definida por la organización según categor
 
 La organización podrá reprogramar encuentros por razones climáticas, disponibilidad de cancha o fuerza mayor. Todo reclamo deberá ser presentado por el delegado dentro de los plazos establecidos y será evaluado por la mesa organizadora.`
 };
+const aboutMembers = [
+  {
+    name: "Ignacio Cerutti",
+    role: "Product Manager",
+    image: "assets/about-ignacio.png"
+  },
+  {
+    name: "Jorge Guerra",
+    role: "Data Analytics",
+    image: "assets/about-jorge.png"
+  },
+  {
+    name: "Juan Pablo Valdivia",
+    role: "Developer",
+    image: "assets/about-juan.png"
+  },
+  {
+    name: "Leonel Salguero",
+    role: "Tester",
+    image: "assets/about-leonel.png"
+  }
+];
 
 function applyDarkMode(isDarkMode) {
   document.body.classList.toggle("dark-mode", isDarkMode);
@@ -102,6 +125,46 @@ function applyPublicSettings() {
   setLinkIfExists("#loginFacebookLink", publicSettings.facebookUrl);
   setLinkIfExists("#homeWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
   setLinkIfExists("#loginWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
+}
+
+function getAboutCarouselClass(index, activeIndex) {
+  const total = aboutMembers.length;
+  const previousIndex = (activeIndex - 1 + total) % total;
+  const nextIndex = (activeIndex + 1) % total;
+
+  if (index === activeIndex) return "active";
+  if (index === previousIndex) return "previous";
+  if (index === nextIndex) return "next";
+  return "hidden";
+}
+
+function createDemoPlayers(prefix, goalsBase = 0) {
+  const names = [
+    "Santiago Molina",
+    "Lucas Pereira",
+    "Mateo Vargas",
+    "Nicolás Duarte",
+    "Franco Acosta",
+    "Tomás Rivas",
+    "Bruno Herrera",
+    "Julián Morales",
+    "Agustín Campos",
+    "Pablo Ferreyra",
+    "Ramiro Costa",
+    "Enzo Medina",
+    "Alan Cabrera",
+    "Martín Castro",
+    "Lautaro Díaz"
+  ];
+
+  return names.map((name, index) => ({
+    number: index + 1,
+    name: `${name} ${prefix}`,
+    age: 22 + (index % 10),
+    goals: index % 4 === 0 ? goalsBase + 2 : index % 5 === 0 ? 1 : 0,
+    yellow: index % 3,
+    red: index === 4 ? 1 : 0
+  }));
 }
 
 const teams = [
@@ -349,6 +412,63 @@ const teams = [
     ],
     founded: "Equipo invitado",
     description: "Equipo físico, vertical y peligroso cuando encuentra espacios para correr."
+  },
+  {
+    id: "inter",
+    name: "Inter de Milán",
+    legalName: "Football Club Internazionale Milano",
+    abbreviation: "INT",
+    shortName: "Inter",
+    initials: "INT",
+    colors: ["#0057b8", "#111827"],
+    shirtColors: ["#0057b8", "#111827", "#ffffff"],
+    city: "Milán",
+    captain: "Valentín Moretti",
+    delegate: "Federico Conti",
+    contact: "351999101",
+    topScorer: "Valentín Moretti",
+    mostSanctioned: "Bruno Herrera Inter",
+    players: createDemoPlayers("Inter", 3),
+    founded: "Equipo invitado",
+    description: "Plantel compacto, con buena presión tras pérdida y ataques rápidos por los costados."
+  },
+  {
+    id: "roma",
+    name: "Roma",
+    legalName: "Associazione Sportiva Roma",
+    abbreviation: "ASR",
+    shortName: "Roma",
+    initials: "ROM",
+    colors: ["#8e1f2f", "#f0bc42"],
+    shirtColors: ["#8e1f2f", "#f0bc42", "#ffffff"],
+    city: "Roma",
+    captain: "Matías Mancini",
+    delegate: "Diego Romano",
+    contact: "351999102",
+    topScorer: "Matías Mancini",
+    mostSanctioned: "Ramiro Costa Roma",
+    players: createDemoPlayers("Roma", 2),
+    founded: "Equipo invitado",
+    description: "Equipo de mucha intensidad, fuerte en duelos individuales y con buen juego directo."
+  },
+  {
+    id: "coritiba",
+    name: "Coritiba",
+    legalName: "Coritiba Foot Ball Club",
+    abbreviation: "CFC",
+    shortName: "Coritiba",
+    initials: "CFC",
+    colors: ["#006b3f", "#ffffff"],
+    shirtColors: ["#006b3f", "#ffffff"],
+    city: "Curitiba",
+    captain: "João Ferreira",
+    delegate: "Rafael Silva",
+    contact: "351999103",
+    topScorer: "João Ferreira",
+    mostSanctioned: "Mateo Vargas Coritiba",
+    players: createDemoPlayers("Coritiba", 1),
+    founded: "Equipo invitado",
+    description: "Conjunto ordenado, solidario en defensa y peligroso cuando acelera en transición."
   }
 ];
 
@@ -358,7 +478,10 @@ const standings = [
   { teamId: "real", pts: 9, pj: 4, g: 3, e: 0, p: 1, dg: 6 },
   { teamId: "river", pts: 7, pj: 4, g: 2, e: 1, p: 1, dg: 3 },
   { teamId: "boca", pts: 6, pj: 4, g: 2, e: 0, p: 2, dg: 1 },
+  { teamId: "inter", pts: 6, pj: 4, g: 1, e: 3, p: 0, dg: 2 },
+  { teamId: "roma", pts: 4, pj: 4, g: 1, e: 1, p: 2, dg: -1 },
   { teamId: "instituto", pts: 3, pj: 4, g: 1, e: 0, p: 3, dg: -4 },
+  { teamId: "coritiba", pts: 2, pj: 4, g: 0, e: 2, p: 2, dg: -5 },
   { teamId: "manchester", pts: 1, pj: 4, g: 0, e: 1, p: 3, dg: -8 }
 ];
 
@@ -366,22 +489,30 @@ const fixtures = {
   1: [
     { status: "Final", home: "belgrano", away: "instituto", homeGoals: 2, awayGoals: 1 },
     { status: "Final", home: "boca", away: "river", homeGoals: 1, awayGoals: 1 },
-    { status: "Final", home: "real", away: "barcelona", homeGoals: 2, awayGoals: 3 }
+    { status: "Final", home: "real", away: "barcelona", homeGoals: 2, awayGoals: 3 },
+    { status: "Final", home: "inter", away: "roma", homeGoals: 2, awayGoals: 2 },
+    { status: "Final", home: "coritiba", away: "manchester", homeGoals: 1, awayGoals: 1 }
   ],
   2: [
     { status: "Final", home: "barcelona", away: "manchester", homeGoals: 4, awayGoals: 0 },
     { status: "Final", home: "river", away: "belgrano", homeGoals: 2, awayGoals: 0 },
-    { status: "Final", home: "instituto", away: "boca", homeGoals: 0, awayGoals: 1 }
+    { status: "Final", home: "instituto", away: "boca", homeGoals: 0, awayGoals: 1 },
+    { status: "Final", home: "roma", away: "coritiba", homeGoals: 1, awayGoals: 0 },
+    { status: "Final", home: "inter", away: "real", homeGoals: 1, awayGoals: 1 }
   ],
   3: [
     { status: "A disputar", home: "belgrano", away: "boca", homeGoals: null, awayGoals: null },
     { status: "A disputar", home: "instituto", away: "real", homeGoals: null, awayGoals: null },
-    { status: "A disputar", home: "manchester", away: "river", homeGoals: null, awayGoals: null }
+    { status: "A disputar", home: "manchester", away: "river", homeGoals: null, awayGoals: null },
+    { status: "A disputar", home: "roma", away: "barcelona", homeGoals: null, awayGoals: null },
+    { status: "A disputar", home: "coritiba", away: "inter", homeGoals: null, awayGoals: null }
   ],
   4: [
     { status: "A disputar", home: "barcelona", away: "belgrano", homeGoals: null, awayGoals: null },
     { status: "A disputar", home: "boca", away: "real", homeGoals: null, awayGoals: null },
-    { status: "A disputar", home: "river", away: "instituto", homeGoals: null, awayGoals: null }
+    { status: "A disputar", home: "river", away: "instituto", homeGoals: null, awayGoals: null },
+    { status: "A disputar", home: "inter", away: "manchester", homeGoals: null, awayGoals: null },
+    { status: "A disputar", home: "coritiba", away: "roma", homeGoals: null, awayGoals: null }
   ]
 };
 
@@ -415,13 +546,30 @@ function truncateTeamName(name) {
   return name.length > 12 ? `${name.slice(0, 12)}...` : name;
 }
 
+function getTeamCarouselClass(index, activeIndex) {
+  const total = teams.length;
+  const previousIndex = (activeIndex - 1 + total) % total;
+  const nextIndex = (activeIndex + 1) % total;
+
+  if (index === activeIndex) return "active";
+  if (index === previousIndex) return "previous";
+  if (index === nextIndex) return "next";
+  return "hidden";
+}
+
 function renderTeamCarousel() {
-  teamCarousel.innerHTML = teams.map((team) => `
-    <button class="team-card ${team.id === selectedTeamId ? "active" : ""}" type="button" data-team-id="${team.id}">
+  teamCarousel.dataset.teamCarouselActive = String(teamCarouselActiveIndex);
+  teamCarousel.innerHTML = teams.map((team, index) => `
+    <button class="team-card ${getTeamCarouselClass(index, teamCarouselActiveIndex)} ${team.id === selectedTeamId ? "selected" : ""}" type="button" data-team-id="${team.id}" data-team-carousel-index="${index}" aria-hidden="${getTeamCarouselClass(index, teamCarouselActiveIndex) === "hidden" ? "true" : "false"}">
       ${renderTeamBadge(team)}
       <span>${team.shortName}</span>
     </button>
   `).join("");
+}
+
+function moveTeamCarousel(direction) {
+  teamCarouselActiveIndex = (teamCarouselActiveIndex + direction + teams.length) % teams.length;
+  renderTeamCarousel();
 }
 
 function getTeamStanding(teamId) {
@@ -710,6 +858,10 @@ function showDivisionTables() {
 
 function selectTeam(teamId) {
   selectedTeamId = teamId;
+  const teamIndex = teams.findIndex((team) => team.id === teamId);
+  if (teamIndex >= 0) {
+    teamCarouselActiveIndex = teamIndex;
+  }
   renderTeamCarousel();
   renderTeamDetail();
   divisionTables.classList.add("d-none");
@@ -718,6 +870,7 @@ function selectTeam(teamId) {
 
 function renderDivisionView(divisionName) {
   selectedTeamId = null;
+  teamCarouselActiveIndex = 0;
   divisionTitle.textContent = divisionName;
   renderTeamCarousel();
   renderStandings();
@@ -808,12 +961,50 @@ function escapeHtml(value) {
 }
 
 function renderAboutContent() {
+  const activeIndex = 0;
+  const carouselItems = aboutMembers.map((member, index) => `
+    <article class="about-member-card ${getAboutCarouselClass(index, activeIndex)}" data-about-index="${index}" aria-hidden="${index === activeIndex ? "false" : "true"}">
+      <img src="${member.image}" alt="${member.name} - ${member.role}" loading="${index === activeIndex ? "eager" : "lazy"}">
+    </article>
+  `).join("");
+
   return `
-    <section class="public-info-panel">
-      <p class="section-kicker mb-2">Nosotros</p>
-      <h2>Somos TheBlackListSystem</h2>
+    <section class="public-info-panel about-panel" data-about-carousel data-about-active="0">
+      <div class="about-hero">
+        <img src="assets/frame0-logo.png" alt="Escudo Frame0" class="about-frame-logo">
+        <p class="section-kicker mb-2">Nosotros</p>
+        <h2>Somos TheBlackListSystem</h2>
+      </div>
+
+      <div class="about-carousel-shell">
+        <button class="about-carousel-control previous" type="button" data-about-carousel-move="-1" aria-label="Ver integrante anterior">
+          <i class="bi bi-chevron-left"></i>
+        </button>
+        <div class="about-carousel-stage" aria-live="polite">
+          ${carouselItems}
+        </div>
+        <button class="about-carousel-control next" type="button" data-about-carousel-move="1" aria-label="Ver integrante siguiente">
+          <i class="bi bi-chevron-right"></i>
+        </button>
+      </div>
     </section>
   `;
+}
+
+function updateAboutCarousel(direction) {
+  const carousel = publicInfoContent.querySelector("[data-about-carousel]");
+  if (!carousel) return;
+
+  const total = aboutMembers.length;
+  const currentIndex = Number(carousel.dataset.aboutActive || 0);
+  const nextIndex = (currentIndex + direction + total) % total;
+
+  carousel.dataset.aboutActive = String(nextIndex);
+  carousel.querySelectorAll("[data-about-index]").forEach((item) => {
+    const itemIndex = Number(item.dataset.aboutIndex);
+    item.className = `about-member-card ${getAboutCarouselClass(itemIndex, nextIndex)}`;
+    item.setAttribute("aria-hidden", itemIndex === nextIndex ? "false" : "true");
+  });
 }
 
 function showPublicInfo(page) {
@@ -2417,6 +2608,12 @@ contentShell.addEventListener("click", (event) => {
   const openNewTeamButton = event.target.closest("[data-open-new-team-modal]");
   const openNewDelegateButton = event.target.closest("[data-open-new-delegate-modal]");
   const savePublicSettingsButton = event.target.closest("[data-save-public-settings]");
+  const aboutCarouselMoveButton = event.target.closest("[data-about-carousel-move]");
+
+  if (aboutCarouselMoveButton) {
+    updateAboutCarousel(Number(aboutCarouselMoveButton.dataset.aboutCarouselMove));
+    return;
+  }
 
   if (editButton) {
     const matchId = editButton.dataset.observerEditMatch;
@@ -2784,7 +2981,7 @@ newDelegateForm.addEventListener("submit", (event) => {
 document.querySelectorAll("[data-scroll-team]").forEach((button) => {
   button.addEventListener("click", () => {
     const direction = Number(button.dataset.scrollTeam);
-    teamCarousel.scrollBy({ left: direction * 260, behavior: "smooth" });
+    moveTeamCarousel(direction);
   });
 });
 
@@ -2792,6 +2989,7 @@ teamCarousel.addEventListener("click", (event) => {
   const teamButton = event.target.closest("[data-team-id]");
   if (!teamButton) return;
 
+  teamCarouselActiveIndex = Number(teamButton.dataset.teamCarouselIndex || 0);
   selectTeam(teamButton.dataset.teamId);
 });
 
