@@ -59,6 +59,11 @@ let teamCarouselActiveIndex = 0;
 const ADMIN_PAGE_SIZE = 20;
 const DRIVE_FOLDER_ID = "1Rc5iI61AXuY-DjYL11cVGb7Wg3JTPLEj";
 const THEME_STORAGE_KEY = "frame0-dark-mode";
+const HELP_URLS = {
+  admin: "https://sites.google.com/view/frame0-principal/inicio",
+  observer: "https://sites.google.com/view/frame0-veedores/inicio",
+  delegate: "https://sites.google.com/view/frame0-delegados/inicio"
+};
 const publicSettings = {
   instagramUrl: "#",
   facebookUrl: "#",
@@ -2037,7 +2042,9 @@ function renderTournamentGeneralRows() {
     const fixture = row.config.fixture;
     const playoffSummary = fixture?.cups?.length
       ? fixture.cups.map((cup) => `${cup.name}: ${cup.range}`).join(" · ")
-      : "Sin fixture generado";
+      : fixture
+        ? "Fixture generado sin playoff"
+        : "Sin fixture generado";
     const playoffOptions = [2, 4, 8, 16, 32].map((option) => `
       <option value="${option}" ${Number(row.config.playoffTeams) === option ? "selected" : ""} ${option > row.teams ? "disabled" : ""}>${option}</option>
     `).join("");
@@ -2888,6 +2895,10 @@ function enterDelegateView(team) {
             <i class="bi bi-people-fill"></i>
             Jugadores
           </button>
+          <button class="division-link" type="button" data-help-role="delegate">
+            <i class="bi bi-question-circle-fill"></i>
+            Ayuda
+          </button>
         </div>
       </div>
       <button class="btn btn-ingreso w-100" type="button" data-admin-logout>
@@ -2946,6 +2957,10 @@ function enterAdminView() {
             <i class="bi bi-gear-fill"></i>
             Configuraciones
           </button>
+          <button class="division-link" type="button" data-help-role="admin">
+            <i class="bi bi-question-circle-fill"></i>
+            Ayuda
+          </button>
         </div>
       </div>
       <button class="btn btn-ingreso w-100" type="button" data-admin-logout>
@@ -2971,6 +2986,10 @@ function enterObserverView() {
           <button class="division-link" type="button" data-observer-matches>
             <i class="bi bi-calendar2-week-fill"></i>
             Partidos
+          </button>
+          <button class="division-link" type="button" data-help-role="observer">
+            <i class="bi bi-question-circle-fill"></i>
+            Ayuda
           </button>
         </div>
       </div>
@@ -3005,6 +3024,15 @@ sidebarContent.addEventListener("click", (event) => {
   const observerMatchesButton = event.target.closest("[data-observer-matches]");
   const adminActionButton = event.target.closest("[data-admin-action]");
   const publicPageButton = event.target.closest("[data-public-page]");
+  const helpButton = event.target.closest("[data-help-role]");
+
+  if (helpButton) {
+    const helpUrl = HELP_URLS[helpButton.dataset.helpRole];
+    if (helpUrl) {
+      window.open(helpUrl, "_blank", "noopener");
+    }
+    return;
+  }
 
   if (publicPageButton) {
     showPublicInfo(publicPageButton.dataset.publicPage);
