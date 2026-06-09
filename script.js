@@ -39,6 +39,16 @@ const newDelegateUsername = document.querySelector("#newDelegateUsername");
 const newDelegatePassword = document.querySelector("#newDelegatePassword");
 const delegatePasswordToggle = document.querySelector("[data-delegate-password-toggle]");
 const createDelegateButton = document.querySelector("#createDelegateButton");
+const newObserverModalElement = document.querySelector("#newObserverModal");
+const newObserverForm = document.querySelector("#newObserverForm");
+const newObserverLastName = document.querySelector("#newObserverLastName");
+const newObserverFirstName = document.querySelector("#newObserverFirstName");
+const newObserverContact = document.querySelector("#newObserverContact");
+const newObserverUsername = document.querySelector("#newObserverUsername");
+const newObserverPassword = document.querySelector("#newObserverPassword");
+const newObserverUserFeedback = document.querySelector("#newObserverUserFeedback");
+const observerPasswordToggle = document.querySelector("[data-observer-password-toggle]");
+const createObserverButton = document.querySelector("#createObserverButton");
 
 let divisionLoadTimer;
 let selectedTeamId = null;
@@ -62,6 +72,11 @@ const publicSettings = {
 Los partidos tendrán una duración definida por la organización según categoría y división. La tabla de posiciones se ordenará por puntos obtenidos, diferencia de gol, goles a favor y resultado entre equipos cuando corresponda. Las sanciones disciplinarias podrán incluir suspensión por acumulación de tarjetas, expulsiones directas o informes del veedor.
 
 La organización podrá reprogramar encuentros por razones climáticas, disponibilidad de cancha o fuerza mayor. Todo reclamo deberá ser presentado por el delegado dentro de los plazos establecidos y será evaluado por la mesa organizadora.`
+};
+const tournamentSettings = {
+  playerRegistrationFrom: "2026-06-01",
+  playerRegistrationTo: "2026-07-31",
+  divisions: {}
 };
 const aboutMembers = [
   {
@@ -175,6 +190,7 @@ const teams = [
     abbreviation: "CAB",
     shortName: "Belgrano",
     initials: "BEL",
+    crest: "assets/team-belgrano.svg",
     colors: ["#58aee8", "#111827"],
     shirtColors: ["#58aee8", "#111827", "#ffffff"],
     city: "Córdoba Capital",
@@ -210,6 +226,7 @@ const teams = [
     abbreviation: "IACC",
     shortName: "Instituto",
     initials: "INS",
+    crest: "assets/team-instituto.svg",
     colors: ["#e11d48", "#ffffff"],
     shirtColors: ["#e11d48", "#ffffff"],
     city: "Alta Córdoba",
@@ -245,6 +262,7 @@ const teams = [
     abbreviation: "CABJ",
     shortName: "Boca",
     initials: "BOC",
+    crest: "assets/team-boca.svg",
     colors: ["#0033a0", "#f7c600"],
     shirtColors: ["#0033a0", "#f7c600"],
     city: "Buenos Aires",
@@ -280,6 +298,7 @@ const teams = [
     abbreviation: "CARP",
     shortName: "River",
     initials: "RIV",
+    crest: "assets/team-river.svg",
     colors: ["#ffffff", "#d71920"],
     shirtColors: ["#ffffff", "#d71920", "#111827"],
     city: "Buenos Aires",
@@ -315,6 +334,7 @@ const teams = [
     abbreviation: "RMA",
     shortName: "Real Madrid",
     initials: "RMA",
+    crest: "assets/team-real.svg",
     colors: ["#ffffff", "#d4af37"],
     shirtColors: ["#ffffff", "#d4af37", "#4f46e5"],
     city: "Madrid",
@@ -350,6 +370,7 @@ const teams = [
     abbreviation: "FCB",
     shortName: "Barcelona",
     initials: "BAR",
+    crest: "assets/team-barcelona.svg",
     colors: ["#a50044", "#004d98"],
     shirtColors: ["#a50044", "#004d98", "#fbbf24"],
     city: "Barcelona",
@@ -385,6 +406,7 @@ const teams = [
     abbreviation: "MUFC",
     shortName: "Man. United",
     initials: "MUN",
+    crest: "assets/team-manchester.svg",
     colors: ["#da291c", "#111827"],
     shirtColors: ["#da291c", "#111827", "#ffffff"],
     city: "Manchester",
@@ -420,6 +442,7 @@ const teams = [
     abbreviation: "INT",
     shortName: "Inter",
     initials: "INT",
+    crest: "assets/team-inter.svg",
     colors: ["#0057b8", "#111827"],
     shirtColors: ["#0057b8", "#111827", "#ffffff"],
     city: "Milán",
@@ -439,6 +462,7 @@ const teams = [
     abbreviation: "ASR",
     shortName: "Roma",
     initials: "ROM",
+    crest: "assets/team-roma.svg",
     colors: ["#8e1f2f", "#f0bc42"],
     shirtColors: ["#8e1f2f", "#f0bc42", "#ffffff"],
     city: "Roma",
@@ -458,6 +482,7 @@ const teams = [
     abbreviation: "CFC",
     shortName: "Coritiba",
     initials: "CFC",
+    crest: "assets/team-coritiba.svg",
     colors: ["#006b3f", "#ffffff"],
     shirtColors: ["#006b3f", "#ffffff"],
     city: "Curitiba",
@@ -524,10 +549,10 @@ const observerMatches = [
 ];
 
 const observers = [
-  { name: "Santiago Ferreyra", contact: "351555101", username: "veedor" },
-  { name: "Marcos Bustos", contact: "351555102", username: "veedor.bustos" },
-  { name: "Camila Roldán", contact: "351555103", username: "veedor.roldan" },
-  { name: "Nicolás Peralta", contact: "351555104", username: "veedor.peralta" }
+  { id: 1, name: "Santiago Ferreyra", contact: "351555101", username: "veedor", password: "123456" },
+  { id: 2, name: "Marcos Bustos", contact: "351555102", username: "veedor.bustos", password: "123456" },
+  { id: 3, name: "Camila Roldán", contact: "351555103", username: "veedor.roldan", password: "123456" },
+  { id: 4, name: "Nicolás Peralta", contact: "351555104", username: "veedor.peralta", password: "123456" }
 ];
 
 function getTeam(teamId) {
@@ -539,6 +564,10 @@ function getBadgeStyle(team) {
 }
 
 function renderTeamBadge(team, sizeClass = "") {
+  if (team.crest) {
+    return `<span class="team-badge team-badge-image team-badge-${team.id} ${sizeClass}" style="${getBadgeStyle(team)}"><img src="${team.crest}" alt="Escudo ${team.shortName}" loading="lazy"></span>`;
+  }
+
   return `<span class="team-badge ${sizeClass}" style="${getBadgeStyle(team)}">${team.initials}</span>`;
 }
 
@@ -548,12 +577,17 @@ function truncateTeamName(name) {
 
 function getTeamCarouselClass(index, activeIndex) {
   const total = teams.length;
+  const offset = ((index - activeIndex + total + Math.floor(total / 2)) % total) - Math.floor(total / 2);
   const previousIndex = (activeIndex - 1 + total) % total;
   const nextIndex = (activeIndex + 1) % total;
 
   if (index === activeIndex) return "active";
   if (index === previousIndex) return "previous";
   if (index === nextIndex) return "next";
+  if (offset === -2) return "far-previous";
+  if (offset === 2) return "far-next";
+  if (offset === -3) return "edge-previous";
+  if (offset === 3) return "edge-next";
   return "hidden";
 }
 
@@ -1191,6 +1225,215 @@ function validateNewDelegateForm() {
   createDelegateButton.disabled = !isValid;
 }
 
+function getNextObserverId() {
+  return observers.reduce((maxId, observer) => Math.max(maxId, Number(observer.id) || 0), 0) + 1;
+}
+
+function isObserverUsernameAvailable(username) {
+  const normalizedUsername = username.trim().toLowerCase();
+
+  return Boolean(normalizedUsername) &&
+    !observers.some((observer) => observer.username.toLowerCase() === normalizedUsername);
+}
+
+function prepareNewObserverForm() {
+  newObserverForm.reset();
+  newObserverUsername.value = `veedor${getNextObserverId()}`;
+  newObserverPassword.value = "123456";
+  newObserverPassword.type = "password";
+  observerPasswordToggle.setAttribute("aria-label", "Mostrar contraseña");
+  observerPasswordToggle.innerHTML = `<i class="bi bi-eye-fill"></i>`;
+  validateNewObserverForm();
+}
+
+function validateNewObserverForm() {
+  const isValidPhone = /^[0-9]+$/.test(newObserverContact.value.trim());
+  const username = newObserverUsername.value.trim();
+  const isUniqueUsername = isObserverUsernameAvailable(username);
+  const isValid = Boolean(
+    newObserverLastName.value.trim() &&
+    newObserverFirstName.value.trim() &&
+    isValidPhone &&
+    username &&
+    isUniqueUsername &&
+    newObserverPassword.value.trim()
+  );
+
+  newObserverUserFeedback.textContent = username && !isUniqueUsername
+    ? "Ese usuario ya existe. Ingresá uno diferente."
+    : "";
+  newObserverUserFeedback.classList.toggle("is-error", Boolean(username && !isUniqueUsername));
+  createObserverButton.disabled = !isValid;
+}
+
+function isPlayerRegistrationOpen(date = new Date()) {
+  const from = tournamentSettings.playerRegistrationFrom;
+  const to = tournamentSettings.playerRegistrationTo;
+  if (!from || !to) return true;
+
+  const currentDate = new Date(date.toISOString().slice(0, 10));
+  return currentDate >= new Date(from) && currentDate <= new Date(to);
+}
+
+function getTournamentDivisionKey(categoryName, divisionName) {
+  return `${categoryName}::${divisionName}`;
+}
+
+function getTournamentDivisionConfig(categoryName, divisionName, teamCount) {
+  const key = getTournamentDivisionKey(categoryName, divisionName);
+
+  if (!tournamentSettings.divisions[key]) {
+    tournamentSettings.divisions[key] = {
+      datesCount: Math.max(teamCount - 1, 1),
+      playoffEnabled: false,
+      playoffTeams: Math.min(8, teamCount),
+      fixture: null
+    };
+  }
+
+  return tournamentSettings.divisions[key];
+}
+
+function getTournamentConfigByKey(key) {
+  const [categoryName, divisionName] = key.split("::");
+  const row = getTournamentDivisionRows().find((item) =>
+    item.category === categoryName && item.division === divisionName
+  );
+
+  return row ? { ...row, key } : null;
+}
+
+function getTournamentDivisionRows() {
+  return getAdminMetrics().categories.flatMap((category) =>
+    category.divisions.map((division) => ({
+      category: category.name,
+      division: division.name,
+      teams: division.teams,
+      config: getTournamentDivisionConfig(category.name, division.name, division.teams)
+    }))
+  );
+}
+
+function buildPlayoffCups(teamCount, playoffTeams) {
+  if (!playoffTeams || playoffTeams < 2) return [];
+
+  const cupNames = ["Copa Oro", "Copa Plata", "Copa Bronce", "Copa Cobre"];
+  const cups = [];
+  let start = 1;
+  let cupIndex = 0;
+
+  while (start <= teamCount) {
+    const end = Math.min(start + playoffTeams - 1, teamCount);
+    const pairs = [];
+    let low = start;
+    let high = end;
+
+    while (low < high) {
+      pairs.push(`${low} vs ${high}`);
+      low += 1;
+      high -= 1;
+    }
+
+    if (low === high) {
+      pairs.push(`${low} libre`);
+    }
+
+    cups.push({
+      name: cupNames[cupIndex] || `Copa ${cupIndex + 1}`,
+      range: `${start} al ${end}`,
+      pairs
+    });
+
+    start = end + 1;
+    cupIndex += 1;
+  }
+
+  return cups;
+}
+
+function generateFixturePlan(categoryName, divisionName) {
+  const row = getTournamentDivisionRows().find((item) =>
+    item.category === categoryName && item.division === divisionName
+  );
+  if (!row) return null;
+
+  const config = row.config;
+  const teamsCount = row.teams;
+  const datesCount = Math.max(Number(config.datesCount) || teamsCount - 1, 1);
+  const rounds = Array.from({ length: datesCount }, (_, roundIndex) => {
+    const matches = [];
+    const offset = roundIndex + 1;
+
+    for (let team = 1; team <= Math.floor(teamsCount / 2); team += 1) {
+      const home = team;
+      const away = ((team + offset - 1) % teamsCount) + 1;
+      if (home !== away) {
+        matches.push(`Equipo ${home} vs Equipo ${away}`);
+      }
+    }
+
+    return {
+      name: `Fecha ${roundIndex + 1}`,
+      matches: matches.slice(0, Math.floor(teamsCount / 2))
+    };
+  });
+
+  config.fixture = {
+    generatedAt: new Date().toLocaleString("es-AR"),
+    category: categoryName,
+    division: divisionName,
+    teamsCount,
+    datesCount,
+    rounds,
+    cups: config.playoffEnabled ? buildPlayoffCups(teamsCount, Number(config.playoffTeams)) : []
+  };
+
+  return config.fixture;
+}
+
+function renderFixtureDownloadDocument(fixture) {
+  const roundsHtml = fixture.rounds.map((round) => `
+    <section>
+      <h2>${round.name}</h2>
+      <ul>${round.matches.map((match) => `<li>${match}</li>`).join("")}</ul>
+    </section>
+  `).join("");
+  const cupsHtml = fixture.cups.length ? `
+    <h2>Playoff</h2>
+    ${fixture.cups.map((cup) => `
+      <section>
+        <h3>${cup.name} (${cup.range})</h3>
+        <ul>${cup.pairs.map((pair) => `<li>${pair}</li>`).join("")}</ul>
+      </section>
+    `).join("")}
+  ` : "";
+
+  return `
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="utf-8">
+        <title>Fixture ${fixture.category} - ${fixture.division}</title>
+        <style>
+          body { font-family: Arial, sans-serif; color: #111827; padding: 28px; }
+          h1 { color: #0b4fe8; margin-bottom: 4px; }
+          h2 { margin-top: 22px; border-bottom: 1px solid #cbd5e1; padding-bottom: 6px; }
+          h3 { margin-bottom: 6px; }
+          li { margin: 5px 0; }
+          .meta { color: #526070; margin-bottom: 20px; }
+        </style>
+      </head>
+      <body>
+        <h1>Fixture ${fixture.category} - ${fixture.division}</h1>
+        <p class="meta">${fixture.teamsCount} equipos · ${fixture.datesCount} fechas · Generado: ${fixture.generatedAt}</p>
+        ${roundsHtml}
+        ${cupsHtml}
+        <script>window.print();</script>
+      </body>
+    </html>
+  `;
+}
+
 function renderAdminSummaryList(items) {
   return items.map((item) => `
     <div class="admin-summary-row">
@@ -1319,17 +1562,24 @@ function renderDelegateHome(team) {
 }
 
 function renderDelegatePlayers(team) {
+  const canEditPlayers = isPlayerRegistrationOpen();
+  const disabledAttribute = canEditPlayers ? "" : "disabled";
+  const registrationNotice = canEditPlayers
+    ? `<div class="delegate-edit-window is-open"><i class="bi bi-unlock-fill"></i> Edición habilitada hasta ${tournamentSettings.playerRegistrationTo}</div>`
+    : `<div class="delegate-edit-window is-closed"><i class="bi bi-lock-fill"></i> La edición de jugadores está cerrada. Período: ${tournamentSettings.playerRegistrationFrom} al ${tournamentSettings.playerRegistrationTo}</div>`;
+
   return `
     <div class="fixture-toolbar delegate-players-toolbar">
       <div class="division-section-heading">
         <p class="section-kicker mb-1">Delegado</p>
         <h2>Jugadores de ${team.shortName}</h2>
       </div>
-      <button class="btn btn-ingreso delegate-add-player" type="button">
+      <button class="btn btn-ingreso delegate-add-player" type="button" ${disabledAttribute}>
         <i class="bi bi-plus-lg"></i>
         Agregar jugador
       </button>
     </div>
+    ${registrationNotice}
     <section class="division-table-panel">
       <div class="table-responsive">
         <table class="table frame-table delegate-players-table mb-0">
@@ -1353,8 +1603,8 @@ function renderDelegatePlayers(team) {
                 <td>${player.number}</td>
                 <td>
                   <div class="table-actions">
-                    <button type="button" aria-label="Editar ${player.name}"><i class="bi bi-pencil-fill"></i></button>
-                    <button type="button" aria-label="Eliminar ${player.name}"><i class="bi bi-trash-fill"></i></button>
+                    <button type="button" aria-label="Editar ${player.name}" ${disabledAttribute}><i class="bi bi-pencil-fill"></i></button>
+                    <button type="button" aria-label="Eliminar ${player.name}" ${disabledAttribute}><i class="bi bi-trash-fill"></i></button>
                   </div>
                 </td>
               </tr>
@@ -1644,6 +1894,102 @@ function renderAdminActionView(actionName) {
   `;
 }
 
+function renderTournamentGeneralRows() {
+  return getTournamentDivisionRows().map((row) => {
+    const key = getTournamentDivisionKey(row.category, row.division);
+    const fixture = row.config.fixture;
+    const playoffSummary = fixture?.cups?.length
+      ? fixture.cups.map((cup) => `${cup.name}: ${cup.range}`).join(" · ")
+      : "Sin fixture generado";
+
+    return `
+      <tr data-tournament-row="${escapeHtml(key)}">
+        <td>${row.category}</td>
+        <td>${row.division}</td>
+        <td>${row.teams}</td>
+        <td>
+          <input class="form-control form-control-sm tournament-number-input" type="number" min="1" max="60" value="${row.config.datesCount}" data-tournament-dates="${escapeHtml(key)}" aria-label="Cantidad de fechas de ${row.division}">
+        </td>
+        <td>
+          <div class="playoff-config">
+            <label class="form-check form-switch m-0">
+              <input class="form-check-input" type="checkbox" ${row.config.playoffEnabled ? "checked" : ""} data-tournament-playoff="${escapeHtml(key)}">
+            </label>
+            <input class="form-control form-control-sm tournament-number-input" type="number" min="2" max="${row.teams}" value="${row.config.playoffTeams}" ${row.config.playoffEnabled ? "" : "disabled"} data-tournament-playoff-teams="${escapeHtml(key)}" aria-label="Cantidad de equipos playoff de ${row.division}">
+          </div>
+        </td>
+        <td>
+          <div class="tournament-actions">
+            <button class="table-action-btn" type="button" data-generate-fixture="${escapeHtml(key)}" aria-label="Generar fixture ${row.division}">
+              <i class="bi bi-shuffle"></i>
+            </button>
+            <button class="table-action-btn" type="button" data-download-fixture="${escapeHtml(key)}" ${fixture ? "" : "disabled"} aria-label="Descargar fixture ${row.division}">
+              <i class="bi bi-file-earmark-pdf-fill"></i>
+            </button>
+          </div>
+          <small class="fixture-generated-state">${fixture ? `Generado ${fixture.generatedAt}` : "Pendiente"}</small>
+        </td>
+        <td><small>${playoffSummary}</small></td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function refreshTournamentGeneralRows() {
+  const rows = contentShell.querySelector("[data-tournament-general-rows]");
+  if (rows) {
+    rows.innerHTML = renderTournamentGeneralRows();
+  }
+}
+
+function renderTournamentGeneralSettings() {
+  return `
+    <form class="settings-form tournament-general-form">
+      <div class="settings-note tournament-note">
+        <i class="bi bi-calendar-range-fill"></i>
+        <div>
+          <h3>Inscripción de jugadores</h3>
+          <p>Este rango determina hasta cuándo los delegados pueden agregar, editar o eliminar jugadores desde su perfil.</p>
+        </div>
+      </div>
+
+      <div class="admin-filter-grid settings-grid">
+        <label class="admin-filter-field">
+          <span>Fecha desde</span>
+          <input class="form-control" type="date" value="${tournamentSettings.playerRegistrationFrom}" data-registration-from>
+        </label>
+        <label class="admin-filter-field">
+          <span>Fecha hasta</span>
+          <input class="form-control" type="date" value="${tournamentSettings.playerRegistrationTo}" data-registration-to>
+        </label>
+      </div>
+
+      <div class="division-table-panel tournament-config-panel">
+        <div class="division-section-heading">
+          <p class="section-kicker mb-1">Confección</p>
+          <h2>Categorías y divisiones</h2>
+        </div>
+        <div class="table-responsive">
+          <table class="table frame-table tournament-config-table mb-0">
+            <thead>
+              <tr>
+                <th>Categoría</th>
+                <th>División</th>
+                <th>Equipos</th>
+                <th>Fechas</th>
+                <th>Playoff</th>
+                <th>Fixture</th>
+                <th>Resumen</th>
+              </tr>
+            </thead>
+            <tbody data-tournament-general-rows>${renderTournamentGeneralRows()}</tbody>
+          </table>
+        </div>
+      </div>
+    </form>
+  `;
+}
+
 function renderAdminSettingsView() {
   return `
     <div class="section-toolbar admin-toolbar">
@@ -1670,13 +2016,7 @@ function renderAdminSettingsView() {
 
       <div class="tab-content admin-settings-content">
         <div class="tab-pane fade show active" id="settings-general" role="tabpanel" tabindex="0">
-          <div class="settings-note">
-            <i class="bi bi-trophy-fill"></i>
-            <div>
-              <h3>Generales del torneo</h3>
-              <p>Espacio preparado para configurar nombre del torneo, temporada, fechas y parámetros generales cuando se conecte la base de datos.</p>
-            </div>
-          </div>
+          ${renderTournamentGeneralSettings()}
         </div>
 
         <div class="tab-pane fade" id="settings-social" role="tabpanel" tabindex="0">
@@ -2221,7 +2561,7 @@ function renderAdminObserversView(searchTerm = "", page = 1) {
         <p class="section-kicker mb-1">Administrador</p>
         <h2>Veedores</h2>
       </div>
-      <button class="btn btn-ingreso delegate-add-player" type="button">
+      <button class="btn btn-ingreso delegate-add-player" type="button" data-open-new-observer-modal>
         <i class="bi bi-plus-lg"></i>
         Cargar nuevo veedor
       </button>
@@ -2607,8 +2947,11 @@ contentShell.addEventListener("click", (event) => {
   const adminPageButton = event.target.closest("[data-admin-page]");
   const openNewTeamButton = event.target.closest("[data-open-new-team-modal]");
   const openNewDelegateButton = event.target.closest("[data-open-new-delegate-modal]");
+  const openNewObserverButton = event.target.closest("[data-open-new-observer-modal]");
   const savePublicSettingsButton = event.target.closest("[data-save-public-settings]");
   const aboutCarouselMoveButton = event.target.closest("[data-about-carousel-move]");
+  const generateFixtureButton = event.target.closest("[data-generate-fixture]");
+  const downloadFixtureButton = event.target.closest("[data-download-fixture]");
 
   if (aboutCarouselMoveButton) {
     updateAboutCarousel(Number(aboutCarouselMoveButton.dataset.aboutCarouselMove));
@@ -2686,6 +3029,34 @@ contentShell.addEventListener("click", (event) => {
     return;
   }
 
+  if (generateFixtureButton) {
+    const key = generateFixtureButton.dataset.generateFixture;
+    const row = getTournamentConfigByKey(key);
+    if (!row) return;
+
+    generateFixturePlan(row.category, row.division);
+    refreshTournamentGeneralRows();
+    return;
+  }
+
+  if (downloadFixtureButton) {
+    const key = downloadFixtureButton.dataset.downloadFixture;
+    const row = getTournamentConfigByKey(key);
+    const fixture = row?.config.fixture;
+    if (!fixture) return;
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("El navegador bloqueó la ventana de descarga. Permití ventanas emergentes para generar el PDF.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(renderFixtureDownloadDocument(fixture));
+    printWindow.document.close();
+    return;
+  }
+
   if (adminPageButton) {
     const type = adminPageButton.dataset.adminPage;
     const page = Number(adminPageButton.dataset.page);
@@ -2745,6 +3116,12 @@ contentShell.addEventListener("click", (event) => {
     return;
   }
 
+  if (openNewObserverButton) {
+    prepareNewObserverForm();
+    bootstrap.Modal.getOrCreateInstance(newObserverModalElement).show();
+    return;
+  }
+
   const adminSaveButton = event.target.closest(".admin-save-row-btn");
   if (adminSaveButton) {
     adminSaveButton.classList.add("is-saved");
@@ -2775,6 +3152,51 @@ contentShell.addEventListener("change", (event) => {
   const playerTeamSelect = event.target.closest("[data-admin-player-team]");
   const playerStatusSelect = event.target.closest("[data-admin-player-status]");
   const tournamentDivisionCategorySelect = event.target.closest("[data-admin-division-category]");
+  const registrationFromInput = event.target.closest("[data-registration-from]");
+  const registrationToInput = event.target.closest("[data-registration-to]");
+  const tournamentDatesInput = event.target.closest("[data-tournament-dates]");
+  const tournamentPlayoffInput = event.target.closest("[data-tournament-playoff]");
+  const tournamentPlayoffTeamsInput = event.target.closest("[data-tournament-playoff-teams]");
+
+  if (registrationFromInput) {
+    tournamentSettings.playerRegistrationFrom = registrationFromInput.value;
+    return;
+  }
+
+  if (registrationToInput) {
+    tournamentSettings.playerRegistrationTo = registrationToInput.value;
+    return;
+  }
+
+  if (tournamentDatesInput) {
+    const row = getTournamentConfigByKey(tournamentDatesInput.dataset.tournamentDates);
+    if (row) {
+      row.config.datesCount = Math.max(Number(tournamentDatesInput.value) || 1, 1);
+      row.config.fixture = null;
+      refreshTournamentGeneralRows();
+    }
+    return;
+  }
+
+  if (tournamentPlayoffInput) {
+    const row = getTournamentConfigByKey(tournamentPlayoffInput.dataset.tournamentPlayoff);
+    if (row) {
+      row.config.playoffEnabled = tournamentPlayoffInput.checked;
+      row.config.fixture = null;
+      refreshTournamentGeneralRows();
+    }
+    return;
+  }
+
+  if (tournamentPlayoffTeamsInput) {
+    const row = getTournamentConfigByKey(tournamentPlayoffTeamsInput.dataset.tournamentPlayoffTeams);
+    if (row) {
+      row.config.playoffTeams = Math.min(Math.max(Number(tournamentPlayoffTeamsInput.value) || 2, 2), row.teams);
+      row.config.fixture = null;
+      refreshTournamentGeneralRows();
+    }
+    return;
+  }
 
   if (categorySelect) {
     const category = categorySelect.value;
@@ -2978,6 +3400,46 @@ newDelegateForm.addEventListener("submit", (event) => {
   }, 900);
 });
 
+newObserverContact.addEventListener("input", () => {
+  newObserverContact.value = newObserverContact.value.replace(/\D/g, "");
+  validateNewObserverForm();
+});
+
+observerPasswordToggle.addEventListener("click", () => {
+  const isPasswordVisible = newObserverPassword.type === "text";
+
+  newObserverPassword.type = isPasswordVisible ? "password" : "text";
+  observerPasswordToggle.setAttribute("aria-label", isPasswordVisible ? "Mostrar contraseña" : "Ocultar contraseña");
+  observerPasswordToggle.innerHTML = `<i class="bi ${isPasswordVisible ? "bi-eye-fill" : "bi-eye-slash-fill"}"></i>`;
+});
+
+newObserverForm.addEventListener("input", validateNewObserverForm);
+newObserverForm.addEventListener("change", validateNewObserverForm);
+
+newObserverForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (createObserverButton.disabled) return;
+
+  const nextObserverId = getNextObserverId();
+  observers.push({
+    id: nextObserverId,
+    name: `${newObserverLastName.value.trim()} ${newObserverFirstName.value.trim()}`,
+    contact: newObserverContact.value.trim(),
+    username: newObserverUsername.value.trim(),
+    password: newObserverPassword.value
+  });
+
+  createObserverButton.classList.add("is-saved");
+  createObserverButton.innerHTML = `<i class="bi bi-check2-circle"></i> Veedor creado`;
+
+  window.setTimeout(() => {
+    createObserverButton.classList.remove("is-saved");
+    createObserverButton.innerHTML = `<i class="bi bi-plus-circle-fill"></i> Crear veedor`;
+    bootstrap.Modal.getInstance(newObserverModalElement)?.hide();
+    contentShell.innerHTML = renderAdminObserversView();
+  }, 900);
+});
+
 document.querySelectorAll("[data-scroll-team]").forEach((button) => {
   button.addEventListener("click", () => {
     const direction = Number(button.dataset.scrollTeam);
@@ -3047,7 +3509,12 @@ loginForm.addEventListener("submit", (event) => {
     return;
   }
 
-  if (username.toLowerCase() === "veedor" && password === "123456") {
+  const observer = observers.find((item) =>
+    item.username.toLowerCase() === username.toLowerCase() &&
+    item.password === password
+  );
+
+  if (role === "Veedor" && observer) {
     const modalElement = document.querySelector("#loginModal");
     const modalInstance = bootstrap.Modal.getInstance(modalElement);
 
@@ -3062,7 +3529,7 @@ loginForm.addEventListener("submit", (event) => {
 
   const team = getTeamFromUsername(username);
 
-  if (team && password === "123456") {
+  if (role === "Delegado" && team && password === "123456") {
     const modalElement = document.querySelector("#loginModal");
     const modalInstance = bootstrap.Modal.getInstance(modalElement);
 
