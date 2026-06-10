@@ -480,6 +480,37 @@
       </div>
     </div>
 
+    <div class="modal fade frame-form-modal" id="newCategoryModal" tabindex="-1" aria-labelledby="newCategoryModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content login-modal team-create-modal">
+          <div class="modal-header">
+            <div class="login-brand">
+              <img src="assets/frame0-logo.png" alt="Logo Frame0">
+              <div>
+                <p class="section-kicker mb-1">Administrador</p>
+                <h2 class="modal-title fs-5" id="newCategoryModalLabel">Cargar nueva categor&iacute;a</h2>
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="newCategoryForm" class="team-create-form">
+              <label class="form-label" for="newCategoryName">Nombre</label>
+              <input class="form-control" id="newCategoryName" type="text" autocomplete="off" required>
+
+              <label class="form-label" for="newCategoryDescription">Descripci&oacute;n</label>
+              <textarea class="form-control" id="newCategoryDescription" rows="3" autocomplete="off"></textarea>
+
+              <button class="btn btn-login-submit w-100 mt-3" type="submit" id="createCategoryButton" disabled>
+                <i class="bi bi-plus-circle-fill"></i>
+                Crear categor&iacute;a
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal fade frame-form-modal" id="newDelegateModal" tabindex="-1" aria-labelledby="newDelegateModalLabel" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content login-modal team-create-modal">
@@ -610,6 +641,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./supabaseClient.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="./apiClient.js"></script>
     <script src="./script.js"></script>
   </body>
 </html>

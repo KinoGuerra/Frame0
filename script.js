@@ -30,6 +30,11 @@ const newTeamShortName = document.querySelector("#newTeamShortName");
 const newTeamCategory = document.querySelector("#newTeamCategory");
 const newTeamDivision = document.querySelector("#newTeamDivision");
 const createTeamButton = document.querySelector("#createTeamButton");
+const newCategoryModalElement = document.querySelector("#newCategoryModal");
+const newCategoryForm = document.querySelector("#newCategoryForm");
+const newCategoryName = document.querySelector("#newCategoryName");
+const newCategoryDescription = document.querySelector("#newCategoryDescription");
+const createCategoryButton = document.querySelector("#createCategoryButton");
 const newDelegateModalElement = document.querySelector("#newDelegateModal");
 const newDelegateForm = document.querySelector("#newDelegateForm");
 const newDelegateLastName = document.querySelector("#newDelegateLastName");
@@ -57,6 +62,11 @@ let selectedTeamId = null;
 let activeObservationButton = null;
 let adminSearchTimer;
 let teamCarouselActiveIndex = 0;
+const adminCategoriesState = {
+  includeInactive: false,
+  items: [],
+  editingId: null
+};
 
 const ADMIN_PAGE_SIZE = 20;
 const DRIVE_FOLDER_ID = "1Rc5iI61AXuY-DjYL11cVGb7Wg3JTPLEj";
@@ -184,6 +194,21 @@ async function cargarResumenDashboard() {
     });
   } catch (error) {
     console.error("Error al cargar el resumen del dashboard:", error);
+  }
+}
+
+// Prueba de conexion con el backend local. No reemplaza las consultas publicas a Supabase.
+async function cargarCategoriasDesdeBackend() {
+  if (typeof apiGet !== "function") {
+    console.error("apiClient no esta disponible. Revisa la carga de apiClient.js.");
+    return;
+  }
+
+  try {
+    const categorias = await apiGet("/categorias");
+    console.log("Categorías desde backend", categorias);
+  } catch (error) {
+    console.error("Error al cargar categorias desde backend:", error);
   }
 }
 
@@ -1229,7 +1254,20 @@ function renderProfileLoader(roleName) {
 
 function showContentLoader(sectionName, callback) {
   contentShell.innerHTML = renderProfileLoader(sectionName);
-  window.setTimeout(callback, 650);
+  window.setTimeout(async () => {
+    try {
+      await callback();
+    } catch (error) {
+      console.error(`Error al cargar ${sectionName}:`, error);
+      contentShell.innerHTML = `
+        <section class="admin-error-panel">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <h2>No se pudo cargar la sección</h2>
+          <p>Revisá que el backend local esté disponible e intentá nuevamente.</p>
+        </section>
+      `;
+    }
+  }, 650);
 }
 
 function showProfileLoader(roleName, callback) {
@@ -2498,6 +2536,385 @@ function renderAdminCategoriesView() {
   `;
 }
 
+function getApiData(response) {
+  return response?.data ?? response ?? [];
+}
+
+async function fetchAdminCategories(includeInactive = false) {
+  if (typeof apiGet !== "function") {
+    console.error("apiClient no esta disponible para el ABM de categorias.");
+    return [];
+  }
+
+  const endpoint = includeInactive ? "/categorias?verBajas=true" : "/categorias";
+  const response = await apiGet(endpoint);
+  return getApiData(response);
+}
+
+function getAdminCategoryStatus(category) {
+  return category.activa === false ? "Dado de baja" : "Activa";
+}
+
+function renderAdminCategoryRows(categories = adminCategoriesState.items) {
+  if (!categories.length) {
+    return `
+      <tr>
+        <td colspan="5" class="admin-empty-row">No se encontraron categorÃ­as.</td>
+      </tr>
+    `;
+  }
+
+  return categories.map((category, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${escapeHtml(category.nombre || "")}</td>
+      <td>${escapeHtml(category.descripcion || "-")}</td>
+      <td>
+        <span class="admin-status-pill ${category.activa === false ? "inactive" : "active"}">
+          ${getAdminCategoryStatus(category)}
+        </span>
+      </td>
+      <td>
+        <div class="table-actions">
+          <button type="button" aria-label="Editar categorÃ­a ${escapeHtml(category.nombre || "")}" data-admin-category-edit="${category.id}">
+            <i class="bi bi-pencil-fill"></i>
+          </button>
+          ${category.activa === false
+            ? `<button type="button" aria-label="Reactivar categorÃ­a ${escapeHtml(category.nombre || "")}" data-admin-category-activate="${category.id}">
+                <i class="bi bi-arrow-counterclockwise"></i>
+              </button>`
+            : `<button type="button" aria-label="Dar de baja categorÃ­a ${escapeHtml(category.nombre || "")}" data-admin-category-deactivate="${category.id}">
+                <i class="bi bi-trash-fill"></i>
+              </button>`
+          }
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderAdminCategoryForm(editingCategory = null) {
+  const isEditing = Boolean(editingCategory);
+  const nombre = editingCategory?.nombre || "";
+  const descripcion = editingCategory?.descripcion || "";
+
+  return `
+    <form class="admin-category-form" data-admin-category-form data-editing-id="${editingCategory?.id || ""}">
+      <label class="admin-filter-field">
+        <span>Nombre</span>
+        <input class="form-control" type="text" name="nombre" value="${escapeHtml(nombre)}" autocomplete="off" required>
+      </label>
+      <label class="admin-filter-field admin-category-description">
+        <span>DescripciÃ³n</span>
+        <input class="form-control" type="text" name="descripcion" value="${escapeHtml(descripcion)}" autocomplete="off">
+      </label>
+      <div class="admin-category-form-actions">
+        <button class="btn btn-ingreso" type="submit" data-admin-category-save ${nombre.trim() ? "" : "disabled"}>
+          <i class="bi ${isEditing ? "bi-save-fill" : "bi-plus-circle-fill"}"></i>
+          ${isEditing ? "Guardar cambios" : "Crear categorÃ­a"}
+        </button>
+        ${isEditing
+          ? `<button class="btn btn-outline-light admin-secondary-btn" type="button" data-admin-category-cancel>
+              Cancelar
+            </button>`
+          : ""
+        }
+      </div>
+    </form>
+  `;
+}
+
+async function renderAdminCategoriesView(options = {}) {
+  adminCategoriesState.includeInactive = options.includeInactive ?? adminCategoriesState.includeInactive;
+  adminCategoriesState.editingId = options.editingId ?? adminCategoriesState.editingId;
+
+  try {
+    adminCategoriesState.items = await fetchAdminCategories(adminCategoriesState.includeInactive);
+  } catch (error) {
+    console.error("Error al cargar categorÃ­as desde backend:", error);
+    adminCategoriesState.items = [];
+  }
+
+  const editingCategory = adminCategoriesState.items.find((category) => String(category.id) === String(adminCategoriesState.editingId));
+
+  return `
+    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Torneo</p>
+        <h2>CategorÃ­as</h2>
+      </div>
+      <button class="btn btn-ingreso delegate-add-player" type="button" data-admin-categories-toggle-bajas>
+        <i class="bi ${adminCategoriesState.includeInactive ? "bi-eye-slash-fill" : "bi-eye-fill"}"></i>
+        ${adminCategoriesState.includeInactive ? "Ocultar bajas" : "Ver bajas"}
+      </button>
+    </div>
+
+    <section class="admin-filter-panel admin-category-editor">
+      ${renderAdminCategoryForm(editingCategory)}
+    </section>
+
+    <section class="division-table-panel admin-teams-panel">
+      <div class="table-responsive">
+        <table class="table frame-table admin-categories-table mb-0">
+          <thead>
+            <tr>
+              <th>N&deg;</th>
+              <th>Nombre</th>
+              <th>DescripciÃ³n</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody data-admin-category-rows>${renderAdminCategoryRows()}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderAdminCategoryRows(categories = adminCategoriesState.items) {
+  if (!categories.length) {
+    return `
+      <tr>
+        <td colspan="5" class="admin-empty-row">No se encontraron categorías.</td>
+      </tr>
+    `;
+  }
+
+  return categories.map((category, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${escapeHtml(category.nombre || "")}</td>
+      <td>${escapeHtml(category.descripcion || "-")}</td>
+      <td>
+        <span class="admin-status-pill ${category.activa === false ? "inactive" : "active"}">
+          ${getAdminCategoryStatus(category)}
+        </span>
+      </td>
+      <td>
+        <div class="table-actions">
+          <button type="button" aria-label="Editar categoría ${escapeHtml(category.nombre || "")}" data-admin-category-edit="${category.id}">
+            <i class="bi bi-pencil-fill"></i>
+          </button>
+          ${category.activa === false
+            ? `<button type="button" aria-label="Reactivar categoría ${escapeHtml(category.nombre || "")}" data-admin-category-activate="${category.id}">
+                <i class="bi bi-arrow-counterclockwise"></i>
+              </button>`
+            : `<button type="button" aria-label="Dar de baja categoría ${escapeHtml(category.nombre || "")}" data-admin-category-deactivate="${category.id}">
+                <i class="bi bi-trash-fill"></i>
+              </button>`
+          }
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderAdminCategoryForm(editingCategory = null) {
+  const isEditing = Boolean(editingCategory);
+  const nombre = editingCategory?.nombre || "";
+  const descripcion = editingCategory?.descripcion || "";
+
+  return `
+    <form class="admin-category-form" data-admin-category-form data-editing-id="${editingCategory?.id || ""}">
+      <label class="admin-filter-field">
+        <span>Nombre</span>
+        <input class="form-control" type="text" name="nombre" value="${escapeHtml(nombre)}" autocomplete="off" required>
+      </label>
+      <label class="admin-filter-field admin-category-description">
+        <span>Descripción</span>
+        <input class="form-control" type="text" name="descripcion" value="${escapeHtml(descripcion)}" autocomplete="off">
+      </label>
+      <div class="admin-category-form-actions">
+        <button class="btn btn-ingreso" type="submit" data-admin-category-save ${nombre.trim() ? "" : "disabled"}>
+          <i class="bi ${isEditing ? "bi-save-fill" : "bi-plus-circle-fill"}"></i>
+          ${isEditing ? "Guardar cambios" : "Crear categoría"}
+        </button>
+        ${isEditing
+          ? `<button class="btn btn-outline-light admin-secondary-btn" type="button" data-admin-category-cancel>
+              Cancelar
+            </button>`
+          : ""
+        }
+      </div>
+    </form>
+  `;
+}
+
+async function renderAdminCategoriesView(options = {}) {
+  adminCategoriesState.includeInactive = options.includeInactive ?? adminCategoriesState.includeInactive;
+  adminCategoriesState.editingId = options.editingId ?? adminCategoriesState.editingId;
+
+  try {
+    adminCategoriesState.items = await fetchAdminCategories(adminCategoriesState.includeInactive);
+  } catch (error) {
+    console.error("Error al cargar categorías desde backend:", error);
+    adminCategoriesState.items = [];
+  }
+
+  const editingCategory = adminCategoriesState.items.find((category) => String(category.id) === String(adminCategoriesState.editingId));
+
+  return `
+    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Torneo</p>
+        <h2>Categorías</h2>
+      </div>
+      <button class="btn btn-ingreso delegate-add-player" type="button" data-admin-category-new>
+        <i class="bi bi-plus-lg"></i>
+        Cargar categoría
+      </button>
+    </div>
+
+    <section class="admin-filter-panel admin-category-editor">
+      ${renderAdminCategoryForm(editingCategory)}
+    </section>
+
+    <section class="division-table-panel admin-teams-panel">
+      <div class="table-responsive">
+        <table class="table frame-table admin-categories-table mb-0">
+          <thead>
+            <tr>
+              <th>N&deg;</th>
+              <th>Nombre</th>
+              <th>Descripción</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody data-admin-category-rows>${renderAdminCategoryRows()}</tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="admin-category-footer-actions">
+      <button class="btn btn-ingreso admin-view-inactive-btn" type="button" data-admin-categories-toggle-bajas>
+        <i class="bi ${adminCategoriesState.includeInactive ? "bi-eye-slash-fill" : "bi-eye-fill"}"></i>
+        ${adminCategoriesState.includeInactive ? "Ocultar bajas" : "Ver bajas"}
+      </button>
+    </div>
+  `;
+}
+
+function renderAdminCategoryRows(categories = adminCategoriesState.items) {
+  if (!categories.length) {
+    return `
+      <tr>
+        <td colspan="5" class="admin-empty-row">No se encontraron categor&iacute;as.</td>
+      </tr>
+    `;
+  }
+
+  return categories.map((category, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${escapeHtml(category.nombre || "")}</td>
+      <td>${escapeHtml(category.descripcion || "-")}</td>
+      <td>
+        <span class="admin-status-pill ${category.activa === false ? "inactive" : "active"}">
+          ${getAdminCategoryStatus(category)}
+        </span>
+      </td>
+      <td>
+        <div class="table-actions">
+          <button type="button" aria-label="Editar categoria ${escapeHtml(category.nombre || "")}" data-admin-category-edit="${category.id}">
+            <i class="bi bi-pencil-fill"></i>
+          </button>
+          ${category.activa === false
+            ? `<button type="button" aria-label="Reactivar categoria ${escapeHtml(category.nombre || "")}" data-admin-category-activate="${category.id}">
+                <i class="bi bi-arrow-counterclockwise"></i>
+              </button>`
+            : `<button type="button" aria-label="Dar de baja categoria ${escapeHtml(category.nombre || "")}" data-admin-category-deactivate="${category.id}">
+                <i class="bi bi-trash-fill"></i>
+              </button>`
+          }
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderAdminCategoryForm(editingCategory = null) {
+  if (!editingCategory) return "";
+
+  return `
+    <section class="admin-filter-panel admin-category-editor">
+      <form class="admin-category-form" data-admin-category-form data-editing-id="${editingCategory.id}">
+        <label class="admin-filter-field">
+          <span>Nombre</span>
+          <input class="form-control" type="text" name="nombre" value="${escapeHtml(editingCategory.nombre || "")}" autocomplete="off" required>
+        </label>
+        <label class="admin-filter-field admin-category-description">
+          <span>Descripci&oacute;n</span>
+          <input class="form-control" type="text" name="descripcion" value="${escapeHtml(editingCategory.descripcion || "")}" autocomplete="off">
+        </label>
+        <div class="admin-category-form-actions">
+          <button class="btn btn-ingreso" type="submit" data-admin-category-save>
+            <i class="bi bi-save-fill"></i>
+            Guardar cambios
+          </button>
+          <button class="btn btn-outline-light admin-secondary-btn" type="button" data-admin-category-cancel>
+            Cancelar
+          </button>
+        </div>
+      </form>
+    </section>
+  `;
+}
+
+async function renderAdminCategoriesView(options = {}) {
+  adminCategoriesState.includeInactive = options.includeInactive ?? adminCategoriesState.includeInactive;
+  adminCategoriesState.editingId = options.editingId ?? adminCategoriesState.editingId;
+
+  try {
+    adminCategoriesState.items = await fetchAdminCategories(adminCategoriesState.includeInactive);
+  } catch (error) {
+    console.error("Error al cargar categorias desde backend:", error);
+    adminCategoriesState.items = [];
+  }
+
+  const editingCategory = adminCategoriesState.items.find((category) => String(category.id) === String(adminCategoriesState.editingId));
+
+  return `
+    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Torneo</p>
+        <h2>Categor&iacute;as</h2>
+      </div>
+      <button class="btn btn-ingreso delegate-add-player" type="button" data-admin-category-new>
+        <i class="bi bi-plus-lg"></i>
+        Cargar nueva categor&iacute;a
+      </button>
+    </div>
+
+    ${renderAdminCategoryForm(editingCategory)}
+
+    <section class="division-table-panel admin-teams-panel">
+      <div class="table-responsive">
+        <table class="table frame-table admin-categories-table mb-0">
+          <thead>
+            <tr>
+              <th>N&deg;</th>
+              <th>Nombre</th>
+              <th>Descripci&oacute;n</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody data-admin-category-rows>${renderAdminCategoryRows()}</tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="admin-category-footer-actions">
+      <button class="btn btn-ingreso admin-view-inactive-btn" type="button" data-admin-categories-toggle-bajas>
+        <i class="bi ${adminCategoriesState.includeInactive ? "bi-eye-slash-fill" : "bi-eye-fill"}"></i>
+        ${adminCategoriesState.includeInactive ? "Ocultar bajas" : "Ver bajas"}
+      </button>
+    </div>
+  `;
+}
+
 function renderAdminDivisionRows(selectedCategory = "", page = 1) {
   const divisions = getTournamentDivisions(selectedCategory);
 
@@ -3272,7 +3689,7 @@ sidebarContent.addEventListener("click", (event) => {
 
   if (adminActionButton) {
     const actionName = adminActionButton.dataset.adminAction;
-    showContentLoader(actionName, () => {
+    showContentLoader(actionName, async () => {
       if (actionName === "Equipos") {
         contentShell.innerHTML = renderAdminTeamsView();
         return;
@@ -3294,7 +3711,7 @@ sidebarContent.addEventListener("click", (event) => {
       }
 
       if (actionName === "Categorías") {
-        contentShell.innerHTML = renderAdminCategoriesView();
+        contentShell.innerHTML = await renderAdminCategoriesView({ includeInactive: false, editingId: null });
         return;
       }
 
@@ -3319,7 +3736,7 @@ sidebarContent.addEventListener("click", (event) => {
   window.location.reload();
 });
 
-contentShell.addEventListener("click", (event) => {
+contentShell.addEventListener("click", async (event) => {
   const editButton = event.target.closest("[data-observer-edit-match]");
   const observerBackButton = event.target.closest("[data-observer-back]");
   const scoreIncButton = event.target.closest("[data-score-inc]");
@@ -3337,6 +3754,76 @@ contentShell.addEventListener("click", (event) => {
   const aboutCarouselMoveButton = event.target.closest("[data-about-carousel-move]");
   const generateFixtureButton = event.target.closest("[data-generate-fixture]");
   const downloadFixtureButton = event.target.closest("[data-download-fixture]");
+  const toggleCategoriesBajasButton = event.target.closest("[data-admin-categories-toggle-bajas]");
+  const newCategoryButton = event.target.closest("[data-admin-category-new]");
+  const editCategoryButton = event.target.closest("[data-admin-category-edit]");
+  const cancelCategoryButton = event.target.closest("[data-admin-category-cancel]");
+  const deactivateCategoryButton = event.target.closest("[data-admin-category-deactivate]");
+  const activateCategoryButton = event.target.closest("[data-admin-category-activate]");
+
+  if (toggleCategoriesBajasButton) {
+    contentShell.innerHTML = await renderAdminCategoriesView({
+      includeInactive: !adminCategoriesState.includeInactive,
+      editingId: null
+    });
+    return;
+  }
+
+  if (newCategoryButton) {
+    newCategoryForm?.reset();
+    if (createCategoryButton) {
+      createCategoryButton.disabled = true;
+      createCategoryButton.innerHTML = `<i class="bi bi-plus-circle-fill"></i> Crear categor&iacute;a`;
+    }
+    bootstrap.Modal.getOrCreateInstance(newCategoryModalElement).show();
+    return;
+  }
+
+  if (editCategoryButton) {
+    contentShell.innerHTML = await renderAdminCategoriesView({
+      includeInactive: adminCategoriesState.includeInactive,
+      editingId: editCategoryButton.dataset.adminCategoryEdit
+    });
+    return;
+  }
+
+  if (cancelCategoryButton) {
+    contentShell.innerHTML = await renderAdminCategoriesView({
+      includeInactive: adminCategoriesState.includeInactive,
+      editingId: null
+    });
+    return;
+  }
+
+  if (deactivateCategoryButton) {
+    try {
+      await apiPatch(`/categorias/${deactivateCategoryButton.dataset.adminCategoryDeactivate}/desactivar`);
+      contentShell.innerHTML = await renderAdminCategoriesView({
+        includeInactive: adminCategoriesState.includeInactive,
+        editingId: null
+      });
+      cargarResumenDashboard();
+      cargarMenuCategorias();
+    } catch (error) {
+      console.error("Error al dar de baja la categorÃ­a:", error);
+    }
+    return;
+  }
+
+  if (activateCategoryButton) {
+    try {
+      await apiPatch(`/categorias/${activateCategoryButton.dataset.adminCategoryActivate}/activar`);
+      contentShell.innerHTML = await renderAdminCategoriesView({
+        includeInactive: true,
+        editingId: null
+      });
+      cargarResumenDashboard();
+      cargarMenuCategorias();
+    } catch (error) {
+      console.error("Error al reactivar la categorÃ­a:", error);
+    }
+    return;
+  }
 
   if (aboutCarouselMoveButton) {
     updateAboutCarousel(Number(aboutCarouselMoveButton.dataset.aboutCarouselMove));
@@ -3648,15 +4135,67 @@ contentShell.addEventListener("change", (event) => {
   }
 });
 
+contentShell.addEventListener("submit", async (event) => {
+  const categoryForm = event.target.closest("[data-admin-category-form]");
+  if (!categoryForm) return;
+
+  event.preventDefault();
+
+  const formData = new FormData(categoryForm);
+  const nombre = String(formData.get("nombre") || "").trim();
+  const descripcion = String(formData.get("descripcion") || "").trim();
+  const editingId = categoryForm.dataset.editingId;
+  const saveButton = categoryForm.querySelector("[data-admin-category-save]");
+
+  if (!nombre) return;
+
+  if (saveButton) {
+    saveButton.disabled = true;
+    saveButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
+  }
+
+  try {
+    if (editingId) {
+      await apiPut(`/categorias/${editingId}`, { nombre, descripcion });
+    } else {
+      await apiPost("/categorias", { nombre, descripcion });
+    }
+
+    contentShell.innerHTML = await renderAdminCategoriesView({
+      includeInactive: adminCategoriesState.includeInactive,
+      editingId: null
+    });
+    cargarResumenDashboard();
+    cargarMenuCategorias();
+  } catch (error) {
+    console.error("Error al guardar la categorÃ­a:", error);
+    if (saveButton) {
+      saveButton.disabled = false;
+      saveButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
+    }
+  }
+});
+
 contentShell.addEventListener("input", (event) => {
   const whatsappPhoneInput = event.target.closest('[data-setting="whatsappPhone"]');
   const teamSearch = event.target.closest("[data-admin-team-search]");
   const delegateSearch = event.target.closest("[data-admin-delegate-search]");
   const playerSearch = event.target.closest("[data-admin-player-search]");
   const observerSearch = event.target.closest("[data-admin-observer-search]");
+  const categoryFormInput = event.target.closest("[data-admin-category-form] input");
 
   if (whatsappPhoneInput) {
     whatsappPhoneInput.value = whatsappPhoneInput.value.replace(/\D/g, "");
+  }
+
+  if (categoryFormInput) {
+    const form = categoryFormInput.closest("[data-admin-category-form]");
+    const saveButton = form.querySelector("[data-admin-category-save]");
+    const nameInput = form.querySelector('[name="nombre"]');
+    if (saveButton && nameInput) {
+      saveButton.disabled = !nameInput.value.trim();
+    }
+    return;
   }
 
   if (!teamSearch && !delegateSearch && !playerSearch && !observerSearch) return;
@@ -3725,6 +4264,49 @@ saveObservationButton.addEventListener("click", () => {
 newTeamCategory.addEventListener("change", () => {
   populateNewTeamDivisions(newTeamCategory.value);
   validateNewTeamForm();
+});
+
+function validateNewCategoryForm() {
+  if (!createCategoryButton || !newCategoryName) return;
+  createCategoryButton.disabled = !newCategoryName.value.trim();
+}
+
+newCategoryForm?.addEventListener("input", validateNewCategoryForm);
+
+newCategoryForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!newCategoryForm || !newCategoryName || !createCategoryButton || createCategoryButton.disabled) return;
+
+  createCategoryButton.disabled = true;
+  createCategoryButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Creando`;
+
+  try {
+    await apiPost("/categorias", {
+      nombre: newCategoryName.value.trim(),
+      descripcion: newCategoryDescription?.value.trim() || ""
+    });
+
+    createCategoryButton.classList.add("is-saved");
+    createCategoryButton.innerHTML = `<i class="bi bi-check2-circle"></i> Categor&iacute;a creada`;
+
+    window.setTimeout(async () => {
+      createCategoryButton.classList.remove("is-saved");
+      createCategoryButton.innerHTML = `<i class="bi bi-plus-circle-fill"></i> Crear categor&iacute;a`;
+      bootstrap.Modal.getInstance(newCategoryModalElement)?.hide();
+      newCategoryForm.reset();
+      validateNewCategoryForm();
+      contentShell.innerHTML = await renderAdminCategoriesView({
+        includeInactive: adminCategoriesState.includeInactive,
+        editingId: null
+      });
+      cargarResumenDashboard();
+      cargarMenuCategorias();
+    }, 650);
+  } catch (error) {
+    console.error("Error al crear la categoria:", error);
+    createCategoryButton.disabled = false;
+    createCategoryButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
+  }
 });
 
 newTeamForm.addEventListener("input", validateNewTeamForm);
@@ -3881,6 +4463,7 @@ if (darkModeToggle) {
 applyPublicSettings();
 cargarResumenDashboard();
 cargarMenuCategorias();
+cargarCategoriasDesdeBackend();
 
 if (openLoginButton && loginModalElement) {
   openLoginButton.addEventListener("click", () => {
