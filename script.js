@@ -1,5 +1,5 @@
 const selectedDivision = document.querySelector("#selectedDivision");
-const divisionButtons = document.querySelectorAll(".division-link");
+const menuCategorias = document.querySelector("#menu-categorias");
 const homeContent = document.querySelector("#homeContent");
 const publicInfoContent = document.querySelector("#publicInfoContent");
 const divisionContent = document.querySelector("#divisionContent");
@@ -13,6 +13,8 @@ const standingsBody = document.querySelector("#standingsBody");
 const fixtureBody = document.querySelector("#fixtureBody");
 const fixtureDateSelect = document.querySelector("#fixtureDateSelect");
 const loginForm = document.querySelector("#loginForm");
+const loginModalElement = document.querySelector("#loginModal");
+const openLoginButton = document.querySelector("[data-bs-target='#loginModal']");
 const sidebarContent = document.querySelector("#sidebarContent");
 const contentShell = document.querySelector("#contentShell");
 const passwordInput = document.querySelector("#password");
@@ -145,6 +147,143 @@ function applyPublicSettings() {
   setLinkIfExists("#loginFacebookLink", publicSettings.facebookUrl);
   setLinkIfExists("#homeWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
   setLinkIfExists("#loginWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
+}
+
+// Cuenta registros de una tabla de Supabase sin traer filas al navegador.
+async function contarRegistrosSupabase(nombreTabla) {
+  if (typeof supabaseClient === "undefined") {
+    console.error("Supabase no está disponible. Revisá la carga de supabaseClient.js.");
+    return 0;
+  }
+
+  const { count, error } = await supabaseClient
+    .from(nombreTabla)
+    .select("*", { count: "exact", head: true });
+
+  if (error) {
+    console.error(`Error al contar registros de ${nombreTabla}:`, error);
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
+async function cargarResumenDashboard() {
+  try {
+    const [categorias, divisiones, equipos] = await Promise.all([
+      contarRegistrosSupabase("categorias"),
+      contarRegistrosSupabase("divisiones"),
+      contarRegistrosSupabase("equipos")
+    ]);
+
+    const resumen = { categorias, divisiones, equipos };
+
+    document.querySelectorAll("[data-dashboard-count]").forEach((element) => {
+      const clave = element.dataset.dashboardCount;
+      element.textContent = resumen[clave] ?? 0;
+    });
+  } catch (error) {
+    console.error("Error al cargar el resumen del dashboard:", error);
+  }
+}
+
+function limpiarSeleccionDivisiones() {
+  document.querySelectorAll("[data-division]").forEach((item) => item.classList.remove("active"));
+}
+
+function agruparDivisionesPorCategoria(divisiones) {
+  return divisiones.reduce((grupo, division) => {
+    const categoriaId = String(division.categoria_id);
+    if (!grupo[categoriaId]) {
+      grupo[categoriaId] = [];
+    }
+    grupo[categoriaId].push(division);
+    return grupo;
+  }, {});
+}
+
+function renderMenuCategorias(categorias, divisiones) {
+  const divisionesPorCategoria = agruparDivisionesPorCategoria(divisiones);
+  const categoriasOrdenadas = [...categorias].sort((a, b) => {
+    const nombreA = String(a.nombre || "").trim().toLowerCase();
+    const nombreB = String(b.nombre || "").trim().toLowerCase();
+
+    if (nombreA === "femenino") return 1;
+    if (nombreB === "femenino") return -1;
+    return nombreA.localeCompare(nombreB, "es");
+  });
+
+  if (!categoriasOrdenadas.length) {
+    menuCategorias.innerHTML = `<div class="menu-empty">Sin categorías activas.</div>`;
+    return;
+  }
+
+  menuCategorias.innerHTML = categoriasOrdenadas.map((categoria) => {
+    const categoriaId = String(categoria.id);
+    const panelId = `category-${categoriaId}`.replace(/[^a-zA-Z0-9_-]/g, "-");
+    const divisionesCategoria = divisionesPorCategoria[categoriaId] || [];
+    console.log(`Divisiones para ${categoria.nombre}:`, divisionesCategoria);
+    const divisionesHtml = divisionesCategoria.length
+      ? divisionesCategoria.map((division) => `
+        <button class="division-link" type="button" data-division="${escapeHtml(division.nombre)}" data-division-id="${division.id}">
+          ${escapeHtml(division.nombre)}
+        </button>
+      `).join("")
+      : `<div class="menu-empty">Sin divisiones</div>`;
+
+    return `
+      <div class="accordion-item">
+        <h3 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-category-toggle="${panelId}" aria-expanded="false" aria-controls="${panelId}">
+            ${escapeHtml(categoria.nombre)}
+          </button>
+        </h3>
+        <div id="${panelId}" class="accordion-collapse menu-category-panel">
+          <div class="accordion-body">
+            ${divisionesHtml}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function cargarMenuCategorias() {
+  if (!menuCategorias) return;
+
+  try {
+    const [{ data: categorias, error: categoriasError }, { data: divisiones, error: divisionesError }] = await Promise.all([
+      supabaseClient
+        .from("categorias")
+        .select("id,nombre,activa")
+        .eq("activa", true)
+        .order("nombre", { ascending: true }),
+      supabaseClient
+        .from("divisiones")
+        .select("id,nombre,categoria_id,activa")
+        .eq("activa", true)
+        .order("nombre", { ascending: true })
+    ]);
+
+    if (categoriasError) {
+      console.error("Error al cargar categorías del menú:", categoriasError);
+    }
+
+    if (divisionesError) {
+      console.error("Error al cargar divisiones del menú:", divisionesError);
+    }
+
+    const categoriasActivas = categoriasError ? [] : (categorias || []);
+    const divisionesActivas = divisionesError ? [] : (divisiones || []);
+
+    console.log("Menú categorías:", categoriasActivas);
+    console.log("Menú divisiones:", divisionesActivas);
+
+    renderMenuCategorias(categoriasActivas, divisionesActivas);
+  } catch (error) {
+    console.error("Error al cargar el menú de categorías:", error);
+    menuCategorias.innerHTML = `<div class="menu-empty">No se pudo cargar el menú.</div>`;
+  }
 }
 
 function getAboutCarouselClass(index, activeIndex) {
@@ -923,7 +1062,7 @@ function renderDivisionView(divisionName) {
 function setSelectedDivision(button) {
   const divisionName = button.dataset.division;
 
-  divisionButtons.forEach((item) => item.classList.remove("active"));
+  limpiarSeleccionDivisiones();
   button.classList.add("active");
   button.classList.add("is-clicking");
 
@@ -948,7 +1087,7 @@ function setSelectedDivision(button) {
 }
 
 function showHome() {
-  divisionButtons.forEach((item) => item.classList.remove("active"));
+  limpiarSeleccionDivisiones();
   selectedDivision.classList.add("d-none");
   homeContent.classList.remove("d-none");
   publicInfoContent.classList.add("d-none");
@@ -1049,7 +1188,7 @@ function updateAboutCarousel(direction) {
 }
 
 function showPublicInfo(page) {
-  divisionButtons.forEach((item) => item.classList.remove("active"));
+  limpiarSeleccionDivisiones();
   selectedDivision.classList.add("d-none");
   homeContent.classList.add("d-none");
   divisionContent.classList.add("d-none");
@@ -2024,7 +2163,7 @@ function renderAdminHome() {
       <div class="quick-stat">
         <i class="bi bi-grid-1x2-fill"></i>
         <div class="quick-stat-content">
-          <strong>${metrics.categories.length}</strong>
+          <strong data-dashboard-count="categorias">${metrics.categories.length}</strong>
           <div class="quick-stat-copy">
             <span>Categorías</span>
             <small>Libre, Senior, Femenino</small>
@@ -2034,7 +2173,7 @@ function renderAdminHome() {
       <div class="quick-stat">
         <i class="bi bi-shield-fill-check"></i>
         <div class="quick-stat-content">
-          <strong>${metrics.totalTeams}</strong>
+          <strong data-dashboard-count="equipos">${metrics.totalTeams}</strong>
           <div class="quick-stat-copy">
             <span>Equipos</span>
             <small>Total general de la competencia</small>
@@ -2042,12 +2181,12 @@ function renderAdminHome() {
         </div>
       </div>
       <div class="quick-stat">
-        <i class="bi bi-people-fill"></i>
+        <i class="bi bi-diagram-3-fill"></i>
         <div class="quick-stat-content">
-          <strong>${metrics.totalPlayers}</strong>
+          <strong data-dashboard-count="divisiones">${divisions.length}</strong>
           <div class="quick-stat-copy">
-            <span>Jugadores</span>
-            <small>Estimación demo del torneo</small>
+            <span>Divisiones</span>
+            <small>Total configurado en Supabase</small>
           </div>
         </div>
       </div>
@@ -3033,6 +3172,7 @@ function enterAdminView() {
     </div>
   `;
   contentShell.innerHTML = renderAdminHome();
+  cargarResumenDashboard();
   document.body.classList.add("admin-view");
 }
 
@@ -3066,10 +3206,6 @@ function enterObserverView() {
   document.body.classList.add("admin-view");
 }
 
-divisionButtons.forEach((button) => {
-  button.addEventListener("click", () => setSelectedDivision(button));
-});
-
 document.querySelector(".frame-logo").addEventListener("click", showHome);
 
 passwordToggle.addEventListener("click", () => {
@@ -3088,6 +3224,22 @@ sidebarContent.addEventListener("click", (event) => {
   const adminActionButton = event.target.closest("[data-admin-action]");
   const publicPageButton = event.target.closest("[data-public-page]");
   const helpButton = event.target.closest("[data-help-role]");
+  const divisionButton = event.target.closest("[data-division]");
+  const categoryToggleButton = event.target.closest("[data-category-toggle]");
+
+  if (categoryToggleButton && sidebarContent.contains(categoryToggleButton)) {
+    const panel = document.getElementById(categoryToggleButton.dataset.categoryToggle);
+    const isOpen = panel?.classList.toggle("show");
+
+    categoryToggleButton.classList.toggle("collapsed", !isOpen);
+    categoryToggleButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    return;
+  }
+
+  if (divisionButton && sidebarContent.contains(divisionButton)) {
+    setSelectedDivision(divisionButton);
+    return;
+  }
 
   if (helpButton) {
     const helpUrl = HELP_URLS[helpButton.dataset.helpRole];
@@ -3727,6 +3879,14 @@ if (darkModeToggle) {
 }
 
 applyPublicSettings();
+cargarResumenDashboard();
+cargarMenuCategorias();
+
+if (openLoginButton && loginModalElement) {
+  openLoginButton.addEventListener("click", () => {
+    bootstrap.Modal.getOrCreateInstance(loginModalElement).show();
+  });
+}
 
 loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -3802,4 +3962,4 @@ async function cargarCategorias() {
   console.log('Categorías cargadas desde Supabase:', data);
 }
 
-cargarCategorias();
+// cargarCategorias();

@@ -346,6 +346,22 @@ select {
   background: transparent;
 }
 
+.menu-category-panel {
+  display: none;
+}
+
+.menu-category-panel.show {
+  display: block;
+}
+
+.menu-loading,
+.menu-empty {
+  padding: 0.65rem 0.75rem;
+  color: #526070;
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
 .division-link {
   width: 100%;
   min-height: 38px;
@@ -2831,6 +2847,11 @@ body.dark-mode .frame-accordion .accordion-button:hover::after,
 body.dark-mode .frame-accordion .accordion-button:focus::after,
 body.dark-mode .frame-accordion .accordion-button:not(.collapsed)::after {
   filter: brightness(0) invert(1);
+}
+
+body.dark-mode .menu-loading,
+body.dark-mode .menu-empty {
+  color: #d7dde5;
 }
 
 body.dark-mode .btn-ingreso,
