@@ -3,4 +3,7 @@ Desktop.ini
 .DS_Store
 *.log
 .env
+backend/.env
 .vs/
+backend/node_modules/
+node_modules/
