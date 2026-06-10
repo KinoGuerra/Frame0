@@ -3783,4 +3783,23 @@ loginForm.addEventListener("submit", (event) => {
 
   alert("Usuario o contraseña incorrectos.");
 });
+// ============================================================
+// FRAME0 - PRUEBA DE CONEXIÓN CON SUPABASE
+// Consulta la tabla "categorias" y muestra los datos en consola.
+// ============================================================
 
+async function cargarCategorias() {
+  const { data, error } = await supabaseClient
+    .from('categorias')
+    .select('*')
+    .order('nombre', { ascending: true });
+
+  if (error) {
+    console.error('Error al cargar categorías:', error);
+    return;
+  }
+
+  console.log('Categorías cargadas desde Supabase:', data);
+}
+
+cargarCategorias();
