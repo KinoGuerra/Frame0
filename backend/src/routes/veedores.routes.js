@@ -5,6 +5,7 @@ const router = Router();
 
 // TODO: validar rol admin/superadmin.
 router.get("/", veedoresController.list);
+router.post("/login", veedoresController.login);
 router.get("/:id", veedoresController.getById);
 router.post("/", veedoresController.create);
 router.put("/:id", veedoresController.update);

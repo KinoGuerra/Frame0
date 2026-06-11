@@ -14,6 +14,9 @@ const fixtureBody = document.querySelector("#fixtureBody");
 const fixtureDateSelect = document.querySelector("#fixtureDateSelect");
 const loginForm = document.querySelector("#loginForm");
 const loginModalElement = document.querySelector("#loginModal");
+const loginErrorModalElement = document.querySelector("#loginErrorModal");
+const loginErrorMessage = document.querySelector("#loginErrorMessage");
+const loginRetryButton = document.querySelector("[data-login-retry]");
 const openLoginButton = document.querySelector("[data-bs-target='#loginModal']");
 const sidebarContent = document.querySelector("#sidebarContent");
 const contentShell = document.querySelector("#contentShell");
@@ -32,6 +35,7 @@ const newTeamDivision = document.querySelector("#newTeamDivision");
 const createTeamButton = document.querySelector("#createTeamButton");
 const newCategoryModalElement = document.querySelector("#newCategoryModal");
 const newCategoryForm = document.querySelector("#newCategoryForm");
+const newCategoryId = document.querySelector("#newCategoryId");
 const newCategoryName = document.querySelector("#newCategoryName");
 const newCategoryDescription = document.querySelector("#newCategoryDescription");
 const createCategoryButton = document.querySelector("#createCategoryButton");
@@ -45,7 +49,12 @@ const saveDivisionButton = document.querySelector("#saveDivisionButton");
 const adminObserverModalElement = document.querySelector("#adminObserverModal");
 const adminObserverForm = document.querySelector("#adminObserverForm");
 const adminObserverId = document.querySelector("#adminObserverId");
-const adminObserverUser = document.querySelector("#adminObserverUser");
+const adminObserverFirstName = document.querySelector("#adminObserverFirstName");
+const adminObserverLastName = document.querySelector("#adminObserverLastName");
+const adminObserverContact = document.querySelector("#adminObserverContact");
+const adminObserverUsername = document.querySelector("#adminObserverUsername");
+const adminObserverPassword = document.querySelector("#adminObserverPassword");
+const adminObserverPasswordToggle = document.querySelector("[data-admin-observer-password-toggle]");
 const adminObserverFeedback = document.querySelector("#adminObserverFeedback");
 const saveObserverButton = document.querySelector("#saveObserverButton");
 const newDelegateModalElement = document.querySelector("#newDelegateModal");
@@ -1261,6 +1270,15 @@ function showPublicInfo(page) {
 function getActiveLoginRole() {
   const activeTab = document.querySelector("#loginRoleTabs .nav-link.active");
   return activeTab ? activeTab.dataset.role : "Delegado";
+}
+
+function showLoginError(message = "Usuario o contraseña incorrectos.") {
+  if (loginErrorMessage) {
+    loginErrorMessage.textContent = message;
+  }
+
+  bootstrap.Modal.getInstance(loginModalElement)?.hide();
+  bootstrap.Modal.getOrCreateInstance(loginErrorModalElement).show();
 }
 
 function renderProfileLoader(roleName) {
@@ -2862,31 +2880,7 @@ function renderAdminCategoryRows(categories = adminCategoriesState.items) {
 }
 
 function renderAdminCategoryForm(editingCategory = null) {
-  if (!editingCategory) return "";
-
-  return `
-    <section class="admin-filter-panel admin-category-editor">
-      <form class="admin-category-form" data-admin-category-form data-editing-id="${editingCategory.id}">
-        <label class="admin-filter-field">
-          <span>Nombre</span>
-          <input class="form-control" type="text" name="nombre" value="${escapeHtml(editingCategory.nombre || "")}" autocomplete="off" required>
-        </label>
-        <label class="admin-filter-field admin-category-description">
-          <span>Descripci&oacute;n</span>
-          <input class="form-control" type="text" name="descripcion" value="${escapeHtml(editingCategory.descripcion || "")}" autocomplete="off">
-        </label>
-        <div class="admin-category-form-actions">
-          <button class="btn btn-ingreso" type="submit" data-admin-category-save>
-            <i class="bi bi-save-fill"></i>
-            Guardar cambios
-          </button>
-          <button class="btn btn-outline-light admin-secondary-btn" type="button" data-admin-category-cancel>
-            Cancelar
-          </button>
-        </div>
-      </form>
-    </section>
-  `;
+  return "";
 }
 
 async function renderAdminCategoriesView(options = {}) {
@@ -3544,11 +3538,7 @@ async function renderAdminDivisionsView(selectedCategory = adminDivisionsState.s
 }
 
 function renderAdminObserverRows(searchTerm = adminObserversState.searchTerm, page = 1) {
-  const normalizedSearch = normalizeSearchText(searchTerm);
-  const filteredObservers = adminObserversState.items.filter((observer) => {
-    const user = observer.usuario || {};
-    return `${user.nombre || ""} ${user.email || ""} ${user.rol || ""}`.toLowerCase().includes(normalizedSearch);
-  });
+  const filteredObservers = getAdminFilteredObserversFromBackend(searchTerm);
 
   if (!filteredObservers.length) {
     return `
@@ -3566,9 +3556,9 @@ function renderAdminObserverRows(searchTerm = adminObserversState.searchTerm, pa
     return `
       <tr>
         <td>${(pageInfo.page - 1) * ADMIN_PAGE_SIZE + index + 1}</td>
-        <td>${escapeHtml(user.nombre || "Usuario sin nombre")}</td>
-        <td>${escapeHtml(user.email || "-")}</td>
-        <td>${escapeHtml(user.rol || "-")}</td>
+        <td>${escapeHtml(`${user.nombre || ""} ${user.apellido || ""}`.trim() || "Usuario sin nombre")}</td>
+        <td>${escapeHtml(user.contacto || "-")}</td>
+        <td>${escapeHtml(user.usuario || "-")}</td>
         <td>
           <span class="admin-status-pill ${observer.activo === false ? "inactive" : "active"}">
             ${getAdminObserverStatus(observer)}
@@ -3594,28 +3584,26 @@ function renderAdminObserverRows(searchTerm = adminObserversState.searchTerm, pa
   }).join("");
 }
 
+function getAdminFilteredObserversFromBackend(searchTerm = "") {
+  const normalizedSearch = normalizeSearchText(searchTerm);
+  return adminObserversState.items.filter((observer) => {
+    const user = observer.usuario || {};
+    return `${user.nombre || ""} ${user.apellido || ""} ${user.contacto || ""} ${user.usuario || ""}`.toLowerCase().includes(normalizedSearch);
+  });
+}
+
 async function renderAdminObserversView(searchTerm = adminObserversState.searchTerm, page = 1, options = {}) {
   adminObserversState.includeInactive = options.includeInactive ?? adminObserversState.includeInactive;
   adminObserversState.searchTerm = searchTerm || "";
 
   try {
-    const [observersList, usersList] = await Promise.all([
-      fetchAdminObservers(adminObserversState.includeInactive),
-      fetchAdminUsers()
-    ]);
-    adminObserversState.items = observersList;
-    adminObserversState.users = usersList;
+    adminObserversState.items = await fetchAdminObservers(adminObserversState.includeInactive);
   } catch (error) {
     console.error("Error al cargar veedores desde backend:", error);
     adminObserversState.items = [];
-    adminObserversState.users = [];
   }
 
-  const normalizedSearch = normalizeSearchText(adminObserversState.searchTerm);
-  const filteredObservers = adminObserversState.items.filter((observer) => {
-    const user = observer.usuario || {};
-    return `${user.nombre || ""} ${user.email || ""} ${user.rol || ""}`.toLowerCase().includes(normalizedSearch);
-  });
+  const filteredObservers = getAdminFilteredObserversFromBackend(adminObserversState.searchTerm);
   const observerPageInfo = paginateItems(filteredObservers, page);
 
   return `
@@ -3631,13 +3619,10 @@ async function renderAdminObserversView(searchTerm = adminObserversState.searchT
     </div>
 
     <section class="division-table-panel admin-teams-panel">
-      ${adminObserversState.users.length ? "" : `
-        <div class="admin-empty-row admin-inline-message">No hay usuarios disponibles para asignar como veedor.</div>
-      `}
       <div class="admin-filter-grid admin-single-filter-grid" aria-label="Filtro de veedores">
         <label class="admin-filter-field admin-search-field">
           <span>Buscar veedor</span>
-          <input class="form-control" type="search" value="${escapeHtml(adminObserversState.searchTerm)}" placeholder="Nombre o email" data-admin-observer-search>
+          <input class="form-control" type="search" value="${escapeHtml(adminObserversState.searchTerm)}" placeholder="Nombre, contacto o usuario" data-admin-observer-search>
         </label>
       </div>
 
@@ -3646,9 +3631,9 @@ async function renderAdminObserversView(searchTerm = adminObserversState.searchT
           <thead>
             <tr>
               <th>N&deg;</th>
-              <th>Nombre</th>
-              <th>Email</th>
-              <th>Rol</th>
+              <th>Apellido y nombre</th>
+              <th>Contacto</th>
+              <th>Usuario</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
@@ -4145,20 +4130,12 @@ contentShell.addEventListener("click", async (event) => {
   }
 
   if (newCategoryButton) {
-    newCategoryForm?.reset();
-    if (createCategoryButton) {
-      createCategoryButton.disabled = true;
-      createCategoryButton.innerHTML = `<i class="bi bi-plus-circle-fill"></i> Crear categor&iacute;a`;
-    }
-    bootstrap.Modal.getOrCreateInstance(newCategoryModalElement).show();
+    openAdminCategoryModal();
     return;
   }
 
   if (editCategoryButton) {
-    contentShell.innerHTML = await renderAdminCategoriesView({
-      includeInactive: adminCategoriesState.includeInactive,
-      editingId: editCategoryButton.dataset.adminCategoryEdit
-    });
+    openAdminCategoryModal(editCategoryButton.dataset.adminCategoryEdit);
     return;
   }
 
@@ -4603,7 +4580,12 @@ contentShell.addEventListener("input", (event) => {
 
     if (observerSearch) {
       const searchTerm = getEffectiveSearchTerm(observerSearch.value);
-      contentShell.innerHTML = await renderAdminObserversView(searchTerm, 1);
+      adminObserversState.searchTerm = searchTerm;
+      const rows = contentShell.querySelector("[data-admin-observer-rows]");
+      const pageInfo = paginateItems(getAdminFilteredObserversFromBackend(searchTerm), 1);
+
+      rows.innerHTML = renderAdminObserverRows(searchTerm, 1);
+      updateAdminPagination("observers", pageInfo);
       return;
     }
 
@@ -4642,6 +4624,28 @@ function validateNewCategoryForm() {
   createCategoryButton.disabled = !newCategoryName.value.trim();
 }
 
+function openAdminCategoryModal(categoryId = "") {
+  if (!newCategoryModalElement || !newCategoryForm) return;
+
+  const category = adminCategoriesState.items.find((item) => String(item.id) === String(categoryId));
+  newCategoryForm.reset();
+  if (newCategoryId) newCategoryId.value = category?.id || "";
+  if (newCategoryName) newCategoryName.value = category?.nombre || "";
+  if (newCategoryDescription) newCategoryDescription.value = category?.descripcion || "";
+
+  if (createCategoryButton) {
+    createCategoryButton.disabled = !newCategoryName?.value.trim();
+    createCategoryButton.innerHTML = `<i class="bi ${category ? "bi-save-fill" : "bi-plus-circle-fill"}"></i> ${category ? "Guardar cambios" : "Crear categor&iacute;a"}`;
+  }
+
+  const title = document.querySelector("#newCategoryModalLabel");
+  if (title) {
+    title.innerHTML = category ? "Editar categor&iacute;a" : "Cargar nueva categor&iacute;a";
+  }
+
+  bootstrap.Modal.getOrCreateInstance(newCategoryModalElement).show();
+}
+
 function populateAdminDivisionCategorySelect(selectedId = "") {
   if (!adminDivisionCategory) return;
 
@@ -4653,34 +4657,6 @@ function populateAdminDivisionCategorySelect(selectedId = "") {
   `;
 }
 
-function populateAdminObserverUserSelect(selectedId = "") {
-  if (!adminObserverUser) return;
-
-  if (!adminObserversState.users.length) {
-    adminObserverUser.innerHTML = `<option value="">No hay usuarios disponibles</option>`;
-    adminObserverUser.disabled = true;
-    if (adminObserverFeedback) {
-      adminObserverFeedback.textContent = "No hay usuarios disponibles para asignar como veedor.";
-      adminObserverFeedback.classList.add("is-error");
-    }
-    return;
-  }
-
-  adminObserverUser.disabled = false;
-  adminObserverUser.innerHTML = `
-    <option value="">Seleccionar usuario</option>
-    ${adminObserversState.users.map((user) => `
-      <option value="${user.id}" ${String(user.id) === String(selectedId) ? "selected" : ""}>
-        ${escapeHtml(user.nombre || user.email || "Usuario")} - ${escapeHtml(user.email || user.rol || "")}
-      </option>
-    `).join("")}
-  `;
-  if (adminObserverFeedback) {
-    adminObserverFeedback.textContent = "";
-    adminObserverFeedback.classList.remove("is-error");
-  }
-}
-
 function validateAdminDivisionForm() {
   if (!saveDivisionButton) return;
   saveDivisionButton.disabled = !(adminDivisionCategory?.value && adminDivisionName?.value.trim());
@@ -4688,7 +4664,41 @@ function validateAdminDivisionForm() {
 
 function validateAdminObserverForm() {
   if (!saveObserverButton) return;
-  saveObserverButton.disabled = !(adminObserverUser?.value && !adminObserverUser.disabled);
+  const observerId = adminObserverId?.value || "";
+  const username = adminObserverUsername?.value.trim().toLowerCase() || "";
+  const password = adminObserverPassword?.value || "";
+  const isUsernameFormatValid = /^[a-z0-9._-]{3,}$/i.test(username);
+  const isUsernameUnique = !adminObserversState.items.some((observer) =>
+    String(observer.id) !== String(observerId) &&
+    String(observer.usuario?.usuario || "").trim().toLowerCase() === username
+  );
+  const isPasswordValid = observerId ? !password || password.length >= 6 : password.length >= 6;
+  const isContactValid = /^[0-9]+$/.test(adminObserverContact?.value.trim() || "");
+  const isValid = Boolean(
+    adminObserverFirstName?.value.trim() &&
+    adminObserverLastName?.value.trim() &&
+    isContactValid &&
+    isUsernameFormatValid &&
+    isUsernameUnique &&
+    isPasswordValid
+  );
+
+  if (adminObserverFeedback) {
+    if (username && !isUsernameFormatValid) {
+      adminObserverFeedback.textContent = "El usuario debe tener al menos 3 caracteres y no usar espacios.";
+    } else if (username && !isUsernameUnique) {
+      adminObserverFeedback.textContent = "El usuario ya existe.";
+    } else if (password && !isPasswordValid) {
+      adminObserverFeedback.textContent = "La contraseña debe tener al menos 6 caracteres.";
+    } else if (adminObserverContact?.value && !isContactValid) {
+      adminObserverFeedback.textContent = "El contacto debe contener solo números.";
+    } else {
+      adminObserverFeedback.textContent = "";
+    }
+    adminObserverFeedback.classList.toggle("is-error", Boolean(adminObserverFeedback.textContent));
+  }
+
+  saveObserverButton.disabled = !isValid;
 }
 
 async function openAdminDivisionModal(divisionId = "") {
@@ -4715,14 +4725,22 @@ async function openAdminDivisionModal(divisionId = "") {
 async function openAdminObserverModal(observerId = "") {
   if (!adminObserverModalElement || !adminObserverForm) return;
 
-  if (!adminObserversState.users.length) {
-    adminObserversState.users = await fetchAdminUsers();
-  }
-
   const observer = adminObserversState.items.find((item) => String(item.id) === String(observerId));
+  const user = observer?.usuario || {};
   adminObserverForm.reset();
   adminObserverId.value = observer?.id || "";
-  populateAdminObserverUserSelect(observer?.usuario_id || "");
+  adminObserverFirstName.value = user.nombre || "";
+  adminObserverLastName.value = user.apellido || "";
+  adminObserverContact.value = user.contacto || "";
+  adminObserverUsername.value = user.usuario || "";
+  adminObserverPassword.value = "";
+  adminObserverPassword.placeholder = observer ? "Dejar vacía para no cambiar" : "";
+  adminObserverPassword.required = !observer;
+  adminObserverPassword.type = "password";
+  if (adminObserverFeedback) {
+    adminObserverFeedback.textContent = "";
+    adminObserverFeedback.classList.remove("is-error");
+  }
 
   if (saveObserverButton) {
     saveObserverButton.innerHTML = `<i class="bi ${observer ? "bi-save-fill" : "bi-plus-circle-fill"}"></i> ${observer ? "Guardar cambios" : "Crear veedor"}`;
@@ -4738,16 +4756,23 @@ newCategoryForm?.addEventListener("submit", async (event) => {
   if (!newCategoryForm || !newCategoryName || !createCategoryButton || createCategoryButton.disabled) return;
 
   createCategoryButton.disabled = true;
-  createCategoryButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Creando`;
+  createCategoryButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
 
   try {
-    await apiPost("/categorias", {
+    const categoryId = newCategoryId?.value || "";
+    const payload = {
       nombre: newCategoryName.value.trim(),
       descripcion: newCategoryDescription?.value.trim() || ""
-    });
+    };
+
+    if (categoryId) {
+      await apiPut(`/categorias/${categoryId}`, payload);
+    } else {
+      await apiPost("/categorias", payload);
+    }
 
     createCategoryButton.classList.add("is-saved");
-    createCategoryButton.innerHTML = `<i class="bi bi-check2-circle"></i> Categor&iacute;a creada`;
+    createCategoryButton.innerHTML = `<i class="bi bi-check2-circle"></i> Categor&iacute;a guardada`;
 
     window.setTimeout(async () => {
       createCategoryButton.classList.remove("is-saved");
@@ -4806,15 +4831,43 @@ adminDivisionForm?.addEventListener("submit", async (event) => {
   }
 });
 
+adminObserverContact?.addEventListener("input", () => {
+  adminObserverContact.value = adminObserverContact.value.replace(/\D/g, "");
+  validateAdminObserverForm();
+});
+
+adminObserverPasswordToggle?.addEventListener("click", () => {
+  const isPasswordVisible = adminObserverPassword.type === "text";
+
+  adminObserverPassword.type = isPasswordVisible ? "password" : "text";
+  adminObserverPasswordToggle.setAttribute("aria-label", isPasswordVisible ? "Mostrar contraseña" : "Ocultar contraseña");
+  adminObserverPasswordToggle.innerHTML = `<i class="bi ${isPasswordVisible ? "bi-eye-fill" : "bi-eye-slash-fill"}"></i>`;
+});
+
 adminObserverForm?.addEventListener("input", validateAdminObserverForm);
 adminObserverForm?.addEventListener("change", validateAdminObserverForm);
+
+adminObserverUsername?.addEventListener("input", () => {
+  adminObserverUsername.value = adminObserverUsername.value.trim().toLowerCase();
+  validateAdminObserverForm();
+});
 
 adminObserverForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!saveObserverButton || saveObserverButton.disabled) return;
 
   const id = adminObserverId?.value || "";
-  const payload = { usuario_id: adminObserverUser.value };
+  const payload = {
+    nombre: adminObserverFirstName.value.trim(),
+    apellido: adminObserverLastName.value.trim(),
+    contacto: adminObserverContact.value.trim(),
+    usuario: adminObserverUsername.value.trim(),
+    password: adminObserverPassword.value
+  };
+
+  if (id && !payload.password) {
+    delete payload.password;
+  }
 
   saveObserverButton.disabled = true;
   saveObserverButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
@@ -4833,6 +4886,10 @@ adminObserverForm?.addEventListener("submit", async (event) => {
     }, 550);
   } catch (error) {
     console.error("Error al guardar el veedor:", error);
+    if (adminObserverFeedback) {
+      adminObserverFeedback.textContent = error.message || "No se pudo guardar el veedor.";
+      adminObserverFeedback.classList.add("is-error");
+    }
     saveObserverButton.disabled = false;
     saveObserverButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
   }
@@ -4934,11 +4991,11 @@ newObserverForm.addEventListener("submit", (event) => {
   createObserverButton.classList.add("is-saved");
   createObserverButton.innerHTML = `<i class="bi bi-check2-circle"></i> Veedor creado`;
 
-  window.setTimeout(() => {
+  window.setTimeout(async () => {
     createObserverButton.classList.remove("is-saved");
     createObserverButton.innerHTML = `<i class="bi bi-plus-circle-fill"></i> Crear veedor`;
     bootstrap.Modal.getInstance(newObserverModalElement)?.hide();
-    contentShell.innerHTML = renderAdminObserversView();
+    contentShell.innerHTML = await renderAdminObserversView();
   }, 900);
 });
 
@@ -5000,7 +5057,18 @@ if (openLoginButton && loginModalElement) {
   });
 }
 
-loginForm.addEventListener("submit", (event) => {
+if (loginRetryButton && loginErrorModalElement && loginModalElement) {
+  loginRetryButton.addEventListener("click", () => {
+    const errorModal = bootstrap.Modal.getOrCreateInstance(loginErrorModalElement);
+    errorModal.hide();
+
+    loginErrorModalElement.addEventListener("hidden.bs.modal", () => {
+      bootstrap.Modal.getOrCreateInstance(loginModalElement).show();
+    }, { once: true });
+  });
+}
+
+loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const username = document.querySelector("#username").value.trim();
@@ -5020,22 +5088,42 @@ loginForm.addEventListener("submit", (event) => {
     return;
   }
 
-  const observer = observers.find((item) =>
-    item.username.toLowerCase() === username.toLowerCase() &&
-    item.password === password
-  );
+  if (role === "Veedor") {
+    try {
+      await apiPost("/veedores/login", {
+        usuario: username,
+        password
+      });
 
-  if (role === "Veedor" && observer) {
-    const modalElement = document.querySelector("#loginModal");
-    const modalInstance = bootstrap.Modal.getInstance(modalElement);
+      const modalElement = document.querySelector("#loginModal");
+      const modalInstance = bootstrap.Modal.getInstance(modalElement);
 
-    if (modalInstance) {
-      modalInstance.hide();
+      if (modalInstance) {
+        modalInstance.hide();
+      }
+
+      showProfileLoader("Veedor", enterObserverView);
+      loginForm.reset();
+      return;
+    } catch (error) {
+      const observer = observers.find((item) =>
+        item.username.toLowerCase() === username.toLowerCase() &&
+        item.password === password
+      );
+
+      if (observer) {
+        const modalElement = document.querySelector("#loginModal");
+        const modalInstance = bootstrap.Modal.getInstance(modalElement);
+
+        if (modalInstance) {
+          modalInstance.hide();
+        }
+
+        showProfileLoader("Veedor", enterObserverView);
+        loginForm.reset();
+        return;
+      }
     }
-
-    showProfileLoader("Veedor", enterObserverView);
-    loginForm.reset();
-    return;
   }
 
   const team = getTeamFromUsername(username);
@@ -5053,7 +5141,7 @@ loginForm.addEventListener("submit", (event) => {
     return;
   }
 
-  alert("Usuario o contraseña incorrectos.");
+  showLoginError("Usuario o contraseña incorrectos.");
 });
 // ============================================================
 // FRAME0 - PRUEBA DE CONEXIÓN CON SUPABASE

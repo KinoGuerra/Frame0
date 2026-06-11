@@ -5,7 +5,7 @@ export const usuariosController = {
   async list(req, res) {
     const { data, error } = await supabase
       .from("usuarios_app")
-      .select("id,nombre,email,rol,activo")
+      .select("id,nombre,apellido,contacto,usuario,rol,activo")
       .eq("activo", true)
       .order("nombre", { ascending: true });
 
