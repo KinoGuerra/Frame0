@@ -35,6 +35,19 @@ const newCategoryForm = document.querySelector("#newCategoryForm");
 const newCategoryName = document.querySelector("#newCategoryName");
 const newCategoryDescription = document.querySelector("#newCategoryDescription");
 const createCategoryButton = document.querySelector("#createCategoryButton");
+const adminDivisionModalElement = document.querySelector("#adminDivisionModal");
+const adminDivisionForm = document.querySelector("#adminDivisionForm");
+const adminDivisionId = document.querySelector("#adminDivisionId");
+const adminDivisionCategory = document.querySelector("#adminDivisionCategory");
+const adminDivisionName = document.querySelector("#adminDivisionName");
+const adminDivisionDescription = document.querySelector("#adminDivisionDescription");
+const saveDivisionButton = document.querySelector("#saveDivisionButton");
+const adminObserverModalElement = document.querySelector("#adminObserverModal");
+const adminObserverForm = document.querySelector("#adminObserverForm");
+const adminObserverId = document.querySelector("#adminObserverId");
+const adminObserverUser = document.querySelector("#adminObserverUser");
+const adminObserverFeedback = document.querySelector("#adminObserverFeedback");
+const saveObserverButton = document.querySelector("#saveObserverButton");
 const newDelegateModalElement = document.querySelector("#newDelegateModal");
 const newDelegateForm = document.querySelector("#newDelegateForm");
 const newDelegateLastName = document.querySelector("#newDelegateLastName");
@@ -66,6 +79,20 @@ const adminCategoriesState = {
   includeInactive: false,
   items: [],
   editingId: null
+};
+const adminDivisionsState = {
+  includeInactive: false,
+  items: [],
+  categories: [],
+  selectedCategory: "",
+  editingId: null
+};
+const adminObserversState = {
+  includeInactive: false,
+  items: [],
+  users: [],
+  editingId: null,
+  searchTerm: ""
 };
 
 const ADMIN_PAGE_SIZE = 20;
@@ -3362,6 +3389,285 @@ function renderAdminObserversView(searchTerm = "", page = 1) {
   `;
 }
 
+async function fetchAdminDivisions(includeInactive = false) {
+  const endpoint = includeInactive ? "/divisiones?verBajas=true" : "/divisiones";
+  const response = await apiGet(endpoint);
+  return getApiData(response);
+}
+
+async function fetchActiveAdminCategories() {
+  const response = await apiGet("/categorias");
+  return getApiData(response);
+}
+
+async function fetchAdminObservers(includeInactive = false) {
+  const endpoint = includeInactive ? "/veedores?verBajas=true" : "/veedores";
+  const response = await apiGet(endpoint);
+  return getApiData(response);
+}
+
+async function fetchAdminUsers() {
+  const response = await apiGet("/usuarios");
+  return getApiData(response);
+}
+
+function getDivisionCategoryName(division) {
+  return division.categoria?.nombre || adminDivisionsState.categories.find((category) => String(category.id) === String(division.categoria_id))?.nombre || "-";
+}
+
+function getAdminDivisionStatus(division) {
+  return division.activa === false ? "Dado de baja" : "Activa";
+}
+
+function getAdminObserverStatus(observer) {
+  return observer.activo === false ? "Dado de baja" : "Activo";
+}
+
+function renderAdminDivisionRows(page = 1) {
+  let divisions = adminDivisionsState.items;
+
+  if (adminDivisionsState.selectedCategory) {
+    divisions = divisions.filter((division) => String(division.categoria_id) === String(adminDivisionsState.selectedCategory));
+  }
+
+  if (!divisions.length) {
+    return `
+      <tr>
+        <td colspan="6" class="admin-empty-row">No se encontraron divisiones.</td>
+      </tr>
+    `;
+  }
+
+  const pageInfo = paginateItems(divisions, page, 30);
+
+  return pageInfo.items.map((division, index) => `
+    <tr>
+      <td>${(pageInfo.page - 1) * pageInfo.pageSize + index + 1}</td>
+      <td>${escapeHtml(division.nombre || "")}</td>
+      <td>${escapeHtml(getDivisionCategoryName(division))}</td>
+      <td>${escapeHtml(division.descripcion || "-")}</td>
+      <td>
+        <span class="admin-status-pill ${division.activa === false ? "inactive" : "active"}">
+          ${getAdminDivisionStatus(division)}
+        </span>
+      </td>
+      <td>
+        <div class="table-actions">
+          <button type="button" aria-label="Editar division ${escapeHtml(division.nombre || "")}" data-admin-division-edit="${division.id}">
+            <i class="bi bi-pencil-fill"></i>
+          </button>
+          ${division.activa === false
+            ? `<button type="button" aria-label="Reactivar division ${escapeHtml(division.nombre || "")}" data-admin-division-activate="${division.id}">
+                <i class="bi bi-arrow-counterclockwise"></i>
+              </button>`
+            : `<button type="button" aria-label="Dar de baja division ${escapeHtml(division.nombre || "")}" data-admin-division-deactivate="${division.id}">
+                <i class="bi bi-trash-fill"></i>
+              </button>`
+          }
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+async function renderAdminDivisionsView(selectedCategory = adminDivisionsState.selectedCategory, page = 1, options = {}) {
+  adminDivisionsState.includeInactive = options.includeInactive ?? adminDivisionsState.includeInactive;
+  adminDivisionsState.selectedCategory = selectedCategory || "";
+
+  try {
+    const [divisions, categories] = await Promise.all([
+      fetchAdminDivisions(adminDivisionsState.includeInactive),
+      fetchActiveAdminCategories()
+    ]);
+    adminDivisionsState.items = divisions;
+    adminDivisionsState.categories = categories;
+  } catch (error) {
+    console.error("Error al cargar divisiones desde backend:", error);
+    adminDivisionsState.items = [];
+  }
+
+  const filteredDivisions = adminDivisionsState.selectedCategory
+    ? adminDivisionsState.items.filter((division) => String(division.categoria_id) === String(adminDivisionsState.selectedCategory))
+    : adminDivisionsState.items;
+  const divisionsPageInfo = paginateItems(filteredDivisions, page, 30);
+
+  return `
+    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Torneo</p>
+        <h2>Divisiones</h2>
+      </div>
+      <button class="btn btn-ingreso delegate-add-player" type="button" data-admin-division-new>
+        <i class="bi bi-plus-lg"></i>
+        Cargar nueva divisi&oacute;n
+      </button>
+    </div>
+
+    <section class="division-table-panel admin-teams-panel">
+      <div class="admin-filter-grid admin-single-filter-grid" aria-label="Filtro de divisiones">
+        <label class="admin-filter-field admin-search-field">
+          <span>Categor&iacute;a</span>
+          <select class="form-select" data-admin-division-category>
+            <option value="">Todas las categor&iacute;as</option>
+            ${adminDivisionsState.categories.map((category) => `
+              <option value="${category.id}" ${String(category.id) === String(adminDivisionsState.selectedCategory) ? "selected" : ""}>${escapeHtml(category.nombre)}</option>
+            `).join("")}
+          </select>
+        </label>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table frame-table admin-divisions-table mb-0">
+          <thead>
+            <tr>
+              <th>N&deg;</th>
+              <th>Nombre</th>
+              <th>Categor&iacute;a</th>
+              <th>Descripci&oacute;n</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody data-admin-division-rows>${renderAdminDivisionRows(divisionsPageInfo.page)}</tbody>
+        </table>
+      </div>
+      ${renderAdminPagination("tournament-divisions", divisionsPageInfo)}
+    </section>
+
+    <div class="admin-category-footer-actions">
+      <button class="btn btn-ingreso admin-view-inactive-btn" type="button" data-admin-divisions-toggle-bajas>
+        <i class="bi ${adminDivisionsState.includeInactive ? "bi-eye-slash-fill" : "bi-eye-fill"}"></i>
+        ${adminDivisionsState.includeInactive ? "Ocultar bajas" : "Ver bajas"}
+      </button>
+    </div>
+  `;
+}
+
+function renderAdminObserverRows(searchTerm = adminObserversState.searchTerm, page = 1) {
+  const normalizedSearch = normalizeSearchText(searchTerm);
+  const filteredObservers = adminObserversState.items.filter((observer) => {
+    const user = observer.usuario || {};
+    return `${user.nombre || ""} ${user.email || ""} ${user.rol || ""}`.toLowerCase().includes(normalizedSearch);
+  });
+
+  if (!filteredObservers.length) {
+    return `
+      <tr>
+        <td colspan="6" class="admin-empty-row">No se encontraron veedores.</td>
+      </tr>
+    `;
+  }
+
+  const pageInfo = paginateItems(filteredObservers, page);
+
+  return pageInfo.items.map((observer, index) => {
+    const user = observer.usuario || {};
+
+    return `
+      <tr>
+        <td>${(pageInfo.page - 1) * ADMIN_PAGE_SIZE + index + 1}</td>
+        <td>${escapeHtml(user.nombre || "Usuario sin nombre")}</td>
+        <td>${escapeHtml(user.email || "-")}</td>
+        <td>${escapeHtml(user.rol || "-")}</td>
+        <td>
+          <span class="admin-status-pill ${observer.activo === false ? "inactive" : "active"}">
+            ${getAdminObserverStatus(observer)}
+          </span>
+        </td>
+        <td>
+          <div class="table-actions">
+            <button type="button" aria-label="Editar veedor ${escapeHtml(user.nombre || "")}" data-admin-observer-edit="${observer.id}">
+              <i class="bi bi-pencil-fill"></i>
+            </button>
+            ${observer.activo === false
+              ? `<button type="button" aria-label="Reactivar veedor ${escapeHtml(user.nombre || "")}" data-admin-observer-activate="${observer.id}">
+                  <i class="bi bi-arrow-counterclockwise"></i>
+                </button>`
+              : `<button type="button" aria-label="Dar de baja veedor ${escapeHtml(user.nombre || "")}" data-admin-observer-deactivate="${observer.id}">
+                  <i class="bi bi-trash-fill"></i>
+                </button>`
+            }
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+async function renderAdminObserversView(searchTerm = adminObserversState.searchTerm, page = 1, options = {}) {
+  adminObserversState.includeInactive = options.includeInactive ?? adminObserversState.includeInactive;
+  adminObserversState.searchTerm = searchTerm || "";
+
+  try {
+    const [observersList, usersList] = await Promise.all([
+      fetchAdminObservers(adminObserversState.includeInactive),
+      fetchAdminUsers()
+    ]);
+    adminObserversState.items = observersList;
+    adminObserversState.users = usersList;
+  } catch (error) {
+    console.error("Error al cargar veedores desde backend:", error);
+    adminObserversState.items = [];
+    adminObserversState.users = [];
+  }
+
+  const normalizedSearch = normalizeSearchText(adminObserversState.searchTerm);
+  const filteredObservers = adminObserversState.items.filter((observer) => {
+    const user = observer.usuario || {};
+    return `${user.nombre || ""} ${user.email || ""} ${user.rol || ""}`.toLowerCase().includes(normalizedSearch);
+  });
+  const observerPageInfo = paginateItems(filteredObservers, page);
+
+  return `
+    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
+      <div class="division-section-heading">
+        <p class="section-kicker mb-1">Administrador</p>
+        <h2>Veedores</h2>
+      </div>
+      <button class="btn btn-ingreso delegate-add-player" type="button" data-admin-observer-new>
+        <i class="bi bi-plus-lg"></i>
+        Cargar nuevo veedor
+      </button>
+    </div>
+
+    <section class="division-table-panel admin-teams-panel">
+      ${adminObserversState.users.length ? "" : `
+        <div class="admin-empty-row admin-inline-message">No hay usuarios disponibles para asignar como veedor.</div>
+      `}
+      <div class="admin-filter-grid admin-single-filter-grid" aria-label="Filtro de veedores">
+        <label class="admin-filter-field admin-search-field">
+          <span>Buscar veedor</span>
+          <input class="form-control" type="search" value="${escapeHtml(adminObserversState.searchTerm)}" placeholder="Nombre o email" data-admin-observer-search>
+        </label>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table frame-table admin-observers-table mb-0">
+          <thead>
+            <tr>
+              <th>N&deg;</th>
+              <th>Nombre</th>
+              <th>Email</th>
+              <th>Rol</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody data-admin-observer-rows>${renderAdminObserverRows(adminObserversState.searchTerm, observerPageInfo.page)}</tbody>
+        </table>
+      </div>
+      ${renderAdminPagination("observers", observerPageInfo)}
+    </section>
+
+    <div class="admin-category-footer-actions">
+      <button class="btn btn-ingreso admin-view-inactive-btn" type="button" data-admin-observers-toggle-bajas>
+        <i class="bi ${adminObserversState.includeInactive ? "bi-eye-slash-fill" : "bi-eye-fill"}"></i>
+        ${adminObserversState.includeInactive ? "Ocultar bajas" : "Ver bajas"}
+      </button>
+    </div>
+  `;
+}
+
 function getAdminPlayers(hasCompletedFilters, selectedTeamId = "", searchTerm = "") {
   if (!hasCompletedFilters) return [];
 
@@ -3706,7 +4012,7 @@ sidebarContent.addEventListener("click", (event) => {
       }
 
       if (actionName === "Veedores") {
-        contentShell.innerHTML = renderAdminObserversView();
+        contentShell.innerHTML = await renderAdminObserversView("", 1, { includeInactive: false });
         return;
       }
 
@@ -3716,7 +4022,7 @@ sidebarContent.addEventListener("click", (event) => {
       }
 
       if (actionName === "Divisiones") {
-        contentShell.innerHTML = renderAdminDivisionsView();
+        contentShell.innerHTML = await renderAdminDivisionsView("", 1, { includeInactive: false });
         return;
       }
 
@@ -3760,6 +4066,75 @@ contentShell.addEventListener("click", async (event) => {
   const cancelCategoryButton = event.target.closest("[data-admin-category-cancel]");
   const deactivateCategoryButton = event.target.closest("[data-admin-category-deactivate]");
   const activateCategoryButton = event.target.closest("[data-admin-category-activate]");
+  const newDivisionButton = event.target.closest("[data-admin-division-new]");
+  const editDivisionButton = event.target.closest("[data-admin-division-edit]");
+  const deactivateDivisionButton = event.target.closest("[data-admin-division-deactivate]");
+  const activateDivisionButton = event.target.closest("[data-admin-division-activate]");
+  const toggleDivisionsBajasButton = event.target.closest("[data-admin-divisions-toggle-bajas]");
+  const newAdminObserverButton = event.target.closest("[data-admin-observer-new]");
+  const editAdminObserverButton = event.target.closest("[data-admin-observer-edit]");
+  const deactivateAdminObserverButton = event.target.closest("[data-admin-observer-deactivate]");
+  const activateAdminObserverButton = event.target.closest("[data-admin-observer-activate]");
+  const toggleObserversBajasButton = event.target.closest("[data-admin-observers-toggle-bajas]");
+
+  if (newDivisionButton) {
+    await openAdminDivisionModal();
+    return;
+  }
+
+  if (editDivisionButton) {
+    await openAdminDivisionModal(editDivisionButton.dataset.adminDivisionEdit);
+    return;
+  }
+
+  if (toggleDivisionsBajasButton) {
+    contentShell.innerHTML = await renderAdminDivisionsView(adminDivisionsState.selectedCategory, 1, {
+      includeInactive: !adminDivisionsState.includeInactive
+    });
+    return;
+  }
+
+  if (deactivateDivisionButton || activateDivisionButton) {
+    const id = deactivateDivisionButton?.dataset.adminDivisionDeactivate || activateDivisionButton?.dataset.adminDivisionActivate;
+    const action = deactivateDivisionButton ? "desactivar" : "activar";
+    try {
+      await apiPatch(`/divisiones/${id}/${action}`);
+      contentShell.innerHTML = await renderAdminDivisionsView(adminDivisionsState.selectedCategory, 1);
+      cargarMenuCategorias();
+    } catch (error) {
+      console.error(`Error al ${action} la division:`, error);
+    }
+    return;
+  }
+
+  if (newAdminObserverButton) {
+    await openAdminObserverModal();
+    return;
+  }
+
+  if (editAdminObserverButton) {
+    await openAdminObserverModal(editAdminObserverButton.dataset.adminObserverEdit);
+    return;
+  }
+
+  if (toggleObserversBajasButton) {
+    contentShell.innerHTML = await renderAdminObserversView(adminObserversState.searchTerm, 1, {
+      includeInactive: !adminObserversState.includeInactive
+    });
+    return;
+  }
+
+  if (deactivateAdminObserverButton || activateAdminObserverButton) {
+    const id = deactivateAdminObserverButton?.dataset.adminObserverDeactivate || activateAdminObserverButton?.dataset.adminObserverActivate;
+    const action = deactivateAdminObserverButton ? "desactivar" : "activar";
+    try {
+      await apiPatch(`/veedores/${id}/${action}`);
+      contentShell.innerHTML = await renderAdminObserversView(adminObserversState.searchTerm, 1);
+    } catch (error) {
+      console.error(`Error al ${action} el veedor:`, error);
+    }
+    return;
+  }
 
   if (toggleCategoriesBajasButton) {
     contentShell.innerHTML = await renderAdminCategoriesView({
@@ -3951,13 +4326,13 @@ contentShell.addEventListener("click", async (event) => {
 
     if (type === "observers") {
       const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-observer-search]")?.value || "");
-      contentShell.innerHTML = renderAdminObserversView(searchTerm, page);
+      contentShell.innerHTML = await renderAdminObserversView(searchTerm, page);
       return;
     }
 
     if (type === "tournament-divisions") {
       const category = contentShell.querySelector("[data-admin-division-category]")?.value || "";
-      contentShell.innerHTML = renderAdminDivisionsView(category, page);
+      contentShell.innerHTML = await renderAdminDivisionsView(category, page);
       return;
     }
 
@@ -4014,7 +4389,7 @@ contentShell.addEventListener("click", async (event) => {
   }
 });
 
-contentShell.addEventListener("change", (event) => {
+contentShell.addEventListener("change", async (event) => {
   const categorySelect = event.target.closest("[data-admin-team-category]");
   const divisionSelect = event.target.closest("[data-admin-team-division]");
   const delegateCategorySelect = event.target.closest("[data-admin-delegate-category]");
@@ -4131,7 +4506,7 @@ contentShell.addEventListener("change", (event) => {
   }
 
   if (tournamentDivisionCategorySelect) {
-    contentShell.innerHTML = renderAdminDivisionsView(tournamentDivisionCategorySelect.value);
+    contentShell.innerHTML = await renderAdminDivisionsView(tournamentDivisionCategorySelect.value, 1);
   }
 });
 
@@ -4201,7 +4576,7 @@ contentShell.addEventListener("input", (event) => {
   if (!teamSearch && !delegateSearch && !playerSearch && !observerSearch) return;
 
   window.clearTimeout(adminSearchTimer);
-  adminSearchTimer = window.setTimeout(() => {
+  adminSearchTimer = window.setTimeout(async () => {
     if (teamSearch) {
       const category = contentShell.querySelector("[data-admin-team-category]")?.value || "";
       const division = contentShell.querySelector("[data-admin-team-division]")?.value || "";
@@ -4228,11 +4603,7 @@ contentShell.addEventListener("input", (event) => {
 
     if (observerSearch) {
       const searchTerm = getEffectiveSearchTerm(observerSearch.value);
-      const rows = contentShell.querySelector("[data-admin-observer-rows]");
-      const pageInfo = paginateItems(getAdminFilteredObservers(searchTerm), 1);
-
-      rows.innerHTML = renderAdminObserverRows(searchTerm, 1);
-      updateAdminPagination("observers", pageInfo);
+      contentShell.innerHTML = await renderAdminObserversView(searchTerm, 1);
       return;
     }
 
@@ -4271,6 +4642,95 @@ function validateNewCategoryForm() {
   createCategoryButton.disabled = !newCategoryName.value.trim();
 }
 
+function populateAdminDivisionCategorySelect(selectedId = "") {
+  if (!adminDivisionCategory) return;
+
+  adminDivisionCategory.innerHTML = `
+    <option value="">Seleccionar categor&iacute;a</option>
+    ${adminDivisionsState.categories.map((category) => `
+      <option value="${category.id}" ${String(category.id) === String(selectedId) ? "selected" : ""}>${escapeHtml(category.nombre)}</option>
+    `).join("")}
+  `;
+}
+
+function populateAdminObserverUserSelect(selectedId = "") {
+  if (!adminObserverUser) return;
+
+  if (!adminObserversState.users.length) {
+    adminObserverUser.innerHTML = `<option value="">No hay usuarios disponibles</option>`;
+    adminObserverUser.disabled = true;
+    if (adminObserverFeedback) {
+      adminObserverFeedback.textContent = "No hay usuarios disponibles para asignar como veedor.";
+      adminObserverFeedback.classList.add("is-error");
+    }
+    return;
+  }
+
+  adminObserverUser.disabled = false;
+  adminObserverUser.innerHTML = `
+    <option value="">Seleccionar usuario</option>
+    ${adminObserversState.users.map((user) => `
+      <option value="${user.id}" ${String(user.id) === String(selectedId) ? "selected" : ""}>
+        ${escapeHtml(user.nombre || user.email || "Usuario")} - ${escapeHtml(user.email || user.rol || "")}
+      </option>
+    `).join("")}
+  `;
+  if (adminObserverFeedback) {
+    adminObserverFeedback.textContent = "";
+    adminObserverFeedback.classList.remove("is-error");
+  }
+}
+
+function validateAdminDivisionForm() {
+  if (!saveDivisionButton) return;
+  saveDivisionButton.disabled = !(adminDivisionCategory?.value && adminDivisionName?.value.trim());
+}
+
+function validateAdminObserverForm() {
+  if (!saveObserverButton) return;
+  saveObserverButton.disabled = !(adminObserverUser?.value && !adminObserverUser.disabled);
+}
+
+async function openAdminDivisionModal(divisionId = "") {
+  if (!adminDivisionModalElement || !adminDivisionForm) return;
+
+  if (!adminDivisionsState.categories.length) {
+    adminDivisionsState.categories = await fetchActiveAdminCategories();
+  }
+
+  const division = adminDivisionsState.items.find((item) => String(item.id) === String(divisionId));
+  adminDivisionForm.reset();
+  adminDivisionId.value = division?.id || "";
+  adminDivisionName.value = division?.nombre || "";
+  adminDivisionDescription.value = division?.descripcion || "";
+  populateAdminDivisionCategorySelect(division?.categoria_id || "");
+
+  if (saveDivisionButton) {
+    saveDivisionButton.innerHTML = `<i class="bi ${division ? "bi-save-fill" : "bi-plus-circle-fill"}"></i> ${division ? "Guardar cambios" : "Crear divisi&oacute;n"}`;
+  }
+  validateAdminDivisionForm();
+  bootstrap.Modal.getOrCreateInstance(adminDivisionModalElement).show();
+}
+
+async function openAdminObserverModal(observerId = "") {
+  if (!adminObserverModalElement || !adminObserverForm) return;
+
+  if (!adminObserversState.users.length) {
+    adminObserversState.users = await fetchAdminUsers();
+  }
+
+  const observer = adminObserversState.items.find((item) => String(item.id) === String(observerId));
+  adminObserverForm.reset();
+  adminObserverId.value = observer?.id || "";
+  populateAdminObserverUserSelect(observer?.usuario_id || "");
+
+  if (saveObserverButton) {
+    saveObserverButton.innerHTML = `<i class="bi ${observer ? "bi-save-fill" : "bi-plus-circle-fill"}"></i> ${observer ? "Guardar cambios" : "Crear veedor"}`;
+  }
+  validateAdminObserverForm();
+  bootstrap.Modal.getOrCreateInstance(adminObserverModalElement).show();
+}
+
 newCategoryForm?.addEventListener("input", validateNewCategoryForm);
 
 newCategoryForm?.addEventListener("submit", async (event) => {
@@ -4306,6 +4766,75 @@ newCategoryForm?.addEventListener("submit", async (event) => {
     console.error("Error al crear la categoria:", error);
     createCategoryButton.disabled = false;
     createCategoryButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
+  }
+});
+
+adminDivisionForm?.addEventListener("input", validateAdminDivisionForm);
+adminDivisionForm?.addEventListener("change", validateAdminDivisionForm);
+
+adminDivisionForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!saveDivisionButton || saveDivisionButton.disabled) return;
+
+  const id = adminDivisionId?.value || "";
+  const payload = {
+    categoria_id: adminDivisionCategory.value,
+    nombre: adminDivisionName.value.trim(),
+    descripcion: adminDivisionDescription?.value.trim() || ""
+  };
+
+  saveDivisionButton.disabled = true;
+  saveDivisionButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
+
+  try {
+    if (id) {
+      await apiPut(`/divisiones/${id}`, payload);
+    } else {
+      await apiPost("/divisiones", payload);
+    }
+
+    saveDivisionButton.innerHTML = `<i class="bi bi-check2-circle"></i> Divisi&oacute;n guardada`;
+    window.setTimeout(async () => {
+      bootstrap.Modal.getInstance(adminDivisionModalElement)?.hide();
+      contentShell.innerHTML = await renderAdminDivisionsView(adminDivisionsState.selectedCategory, 1);
+      cargarMenuCategorias();
+    }, 550);
+  } catch (error) {
+    console.error("Error al guardar la division:", error);
+    saveDivisionButton.disabled = false;
+    saveDivisionButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
+  }
+});
+
+adminObserverForm?.addEventListener("input", validateAdminObserverForm);
+adminObserverForm?.addEventListener("change", validateAdminObserverForm);
+
+adminObserverForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!saveObserverButton || saveObserverButton.disabled) return;
+
+  const id = adminObserverId?.value || "";
+  const payload = { usuario_id: adminObserverUser.value };
+
+  saveObserverButton.disabled = true;
+  saveObserverButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
+
+  try {
+    if (id) {
+      await apiPut(`/veedores/${id}`, payload);
+    } else {
+      await apiPost("/veedores", payload);
+    }
+
+    saveObserverButton.innerHTML = `<i class="bi bi-check2-circle"></i> Veedor guardado`;
+    window.setTimeout(async () => {
+      bootstrap.Modal.getInstance(adminObserverModalElement)?.hide();
+      contentShell.innerHTML = await renderAdminObserversView(adminObserversState.searchTerm, 1);
+    }, 550);
+  } catch (error) {
+    console.error("Error al guardar el veedor:", error);
+    saveObserverButton.disabled = false;
+    saveObserverButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
   }
 });
 

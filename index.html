@@ -511,6 +511,77 @@
       </div>
     </div>
 
+    <div class="modal fade frame-form-modal" id="adminDivisionModal" tabindex="-1" aria-labelledby="adminDivisionModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content login-modal team-create-modal">
+          <div class="modal-header">
+            <div class="login-brand">
+              <img src="assets/frame0-logo.png" alt="Logo Frame0">
+              <div>
+                <p class="section-kicker mb-1">Administrador</p>
+                <h2 class="modal-title fs-5" id="adminDivisionModalLabel">Cargar nueva divisi&oacute;n</h2>
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="adminDivisionForm" class="team-create-form">
+              <input id="adminDivisionId" type="hidden">
+
+              <label class="form-label" for="adminDivisionCategory">Categor&iacute;a</label>
+              <select class="form-select" id="adminDivisionCategory" required>
+                <option value="">Seleccionar categor&iacute;a</option>
+              </select>
+
+              <label class="form-label" for="adminDivisionName">Nombre</label>
+              <input class="form-control" id="adminDivisionName" type="text" autocomplete="off" required>
+
+              <label class="form-label" for="adminDivisionDescription">Descripci&oacute;n</label>
+              <textarea class="form-control" id="adminDivisionDescription" rows="3" autocomplete="off"></textarea>
+
+              <button class="btn btn-login-submit w-100 mt-3" type="submit" id="saveDivisionButton" disabled>
+                <i class="bi bi-plus-circle-fill"></i>
+                Crear divisi&oacute;n
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade frame-form-modal" id="adminObserverModal" tabindex="-1" aria-labelledby="adminObserverModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content login-modal team-create-modal">
+          <div class="modal-header">
+            <div class="login-brand">
+              <img src="assets/frame0-logo.png" alt="Logo Frame0">
+              <div>
+                <p class="section-kicker mb-1">Administrador</p>
+                <h2 class="modal-title fs-5" id="adminObserverModalLabel">Cargar nuevo veedor</h2>
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="adminObserverForm" class="team-create-form">
+              <input id="adminObserverId" type="hidden">
+
+              <label class="form-label" for="adminObserverUser">Usuario</label>
+              <select class="form-select" id="adminObserverUser" required>
+                <option value="">Seleccionar usuario</option>
+              </select>
+              <p class="form-helper-text" id="adminObserverFeedback" aria-live="polite"></p>
+
+              <button class="btn btn-login-submit w-100 mt-3" type="submit" id="saveObserverButton" disabled>
+                <i class="bi bi-plus-circle-fill"></i>
+                Crear veedor
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal fade frame-form-modal" id="newDelegateModal" tabindex="-1" aria-labelledby="newDelegateModalLabel" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content login-modal team-create-modal">
