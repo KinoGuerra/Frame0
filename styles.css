@@ -487,6 +487,28 @@ select {
   gap: 0.5rem;
 }
 
+.admin-actions .division-link {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.menu-alert-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0 0.35rem;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #ffcf33, #ff8f1f);
+  color: #061827;
+  font-size: 0.78rem;
+  font-weight: 950;
+  box-shadow: 0 6px 14px rgba(255, 143, 31, 0.26);
+}
+
 .admin-menu-accordion {
   display: grid;
   gap: 0.3rem;
@@ -549,6 +571,11 @@ select {
   color: var(--frame-muted);
   font-size: 0.72rem;
   font-weight: 800;
+}
+
+.profile-theme-switcher {
+  margin-top: auto;
+  margin-bottom: 0.7rem;
 }
 
 .theme-switch {
@@ -1232,9 +1259,122 @@ select {
 
 .admin-players-table th:nth-child(6),
 .admin-players-table td:nth-child(6) {
+  width: 150px;
+  min-width: 150px;
+}
+
+.admin-players-table th:nth-child(7),
+.admin-players-table td:nth-child(7) {
   width: 128px;
   min-width: 128px;
   text-align: center;
+}
+
+.admin-check-field {
+  justify-content: end;
+}
+
+.admin-check-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 38px;
+  width: 100%;
+  border: 1px solid rgba(29, 183, 255, 0.28);
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(232, 248, 255, 0.94), rgba(255, 255, 255, 0.86));
+  color: var(--frame-ink);
+  font-size: 0.82rem;
+  font-weight: 900;
+  padding: 0.45rem 0.58rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.admin-check-control .form-check-input {
+  flex: 0 0 auto;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  border-color: rgba(13, 78, 162, 0.38);
+  cursor: pointer;
+}
+
+.admin-check-control .form-check-input:checked {
+  border-color: var(--frame-blue);
+  background-color: var(--frame-blue);
+}
+
+.admin-player-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+}
+
+.admin-player-metric {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.18rem 0.55rem;
+  min-height: 72px;
+  border: 1px solid rgba(29, 183, 255, 0.24);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(232, 248, 255, 0.96), rgba(255, 255, 255, 0.86));
+  padding: 0.62rem 0.7rem;
+}
+
+.admin-player-metric i {
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(13, 78, 162, 0.1);
+  color: var(--frame-blue);
+  font-size: 1.05rem;
+}
+
+.admin-player-metric span {
+  color: var(--frame-muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-player-metric strong {
+  min-width: 0;
+  color: var(--frame-dark);
+  font-size: 1rem;
+  font-weight: 950;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-player-metric.is-alert i {
+  background: rgba(255, 207, 51, 0.18);
+  color: #b36b00;
+}
+
+.admin-observation-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  border: 1px solid rgba(29, 183, 255, 0.34);
+  border-radius: 6px;
+  background: rgba(232, 248, 255, 0.9);
+  color: var(--frame-blue);
+  padding: 0.26rem 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.admin-observation-empty {
+  color: #7a8794;
+  font-size: 0.78rem;
+  font-weight: 850;
 }
 
 .player-status-select {
@@ -3881,6 +4021,7 @@ body.dark-mode .admin-empty-row {
 body.dark-mode .table-actions button,
 body.dark-mode .event-btn,
 body.dark-mode .observation-btn,
+body.dark-mode .admin-observation-view,
 body.dark-mode .score-control button,
 body.dark-mode .goal-counter button,
 body.dark-mode .admin-save-row-btn {
@@ -3895,6 +4036,8 @@ body.dark-mode .event-btn:hover,
 body.dark-mode .event-btn:focus,
 body.dark-mode .observation-btn:hover,
 body.dark-mode .observation-btn:focus,
+body.dark-mode .admin-observation-view:hover,
+body.dark-mode .admin-observation-view:focus,
 body.dark-mode .score-control button:hover,
 body.dark-mode .score-control button:focus,
 body.dark-mode .goal-counter button:hover,
@@ -3902,6 +4045,41 @@ body.dark-mode .goal-counter button:focus,
 body.dark-mode .admin-save-row-btn:hover,
 body.dark-mode .admin-save-row-btn:focus {
   background: #3a404a;
+}
+
+body.dark-mode .menu-alert-badge {
+  background: linear-gradient(135deg, #e5e7eb, #8fdcff);
+  color: #050608;
+}
+
+body.dark-mode .admin-check-control,
+body.dark-mode .admin-observation-empty {
+  color: #e7edf5;
+}
+
+body.dark-mode .admin-check-control,
+body.dark-mode .admin-player-metric {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: linear-gradient(135deg, rgba(42, 46, 54, 0.96), rgba(18, 20, 24, 0.9));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .admin-player-metric i {
+  background: rgba(143, 220, 255, 0.14);
+  color: #8fdcff;
+}
+
+body.dark-mode .admin-player-metric span {
+  color: #b9c8d8;
+}
+
+body.dark-mode .admin-player-metric strong {
+  color: #ffffff;
+}
+
+body.dark-mode .admin-player-metric.is-alert i {
+  background: rgba(229, 231, 235, 0.14);
+  color: #e5e7eb;
 }
 
 body.dark-mode .score-team,

@@ -82,6 +82,7 @@ const createObserverButton = document.querySelector("#createObserverButton");
 let divisionLoadTimer;
 let selectedTeamId = null;
 let activeObservationButton = null;
+const playerObservations = {};
 let adminSearchTimer;
 let teamCarouselActiveIndex = 0;
 const adminCategoriesState = {
@@ -156,10 +157,30 @@ const aboutMembers = [
 
 function applyDarkMode(isDarkMode) {
   document.body.classList.toggle("dark-mode", isDarkMode);
-  if (darkModeToggle) {
-    darkModeToggle.checked = isDarkMode;
-  }
+  syncDarkModeControls(isDarkMode);
   localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? "true" : "false");
+}
+
+function syncDarkModeControls(isDarkMode) {
+  document.querySelectorAll("[data-dark-mode-control]").forEach((control) => {
+    control.checked = isDarkMode;
+  });
+}
+
+function renderDarkModeSwitcher() {
+  const isDarkMode = localStorage.getItem(THEME_STORAGE_KEY) === "true";
+
+  return `
+    <div class="theme-switcher profile-theme-switcher">
+      <div>
+        <span>DarkMode</span>
+      </div>
+      <label class="theme-switch">
+        <input type="checkbox" data-dark-mode-control aria-label="Activar modo oscuro" ${isDarkMode ? "checked" : ""}>
+        <span class="theme-slider"></span>
+      </label>
+    </div>
+  `;
 }
 
 function getWhatsappUrl(phone) {
@@ -764,6 +785,50 @@ const observers = [
 
 function getTeam(teamId) {
   return teams.find((team) => team.id === teamId);
+}
+
+function getPlayerObservationKey(matchId, teamId, player) {
+  return `${matchId || "sin-partido"}::${teamId}::${player.number}::${player.name}`;
+}
+
+function getPlayerObservationCount() {
+  return Object.values(playerObservations).filter((text) => String(text || "").trim()).length;
+}
+
+function updatePlayerObservationBadge() {
+  document.querySelectorAll("[data-player-observation-count]").forEach((badge) => {
+    badge.textContent = getPlayerObservationCount();
+  });
+}
+
+function getPlayerObservationsForAdmin(player) {
+  return Object.entries(playerObservations)
+    .filter(([key, text]) => key.includes(`::${player.team.id}::${player.number}::${player.name}`) && String(text || "").trim())
+    .map(([key, text]) => {
+      const [matchId] = key.split("::");
+      const match = getObserverMatch(matchId);
+      const matchLabel = match ? `${match.date} - ${getTeam(match.home)?.shortName || ""} vs ${getTeam(match.away)?.shortName || ""}` : "Partido";
+
+      return {
+        matchLabel,
+        text: String(text).trim()
+      };
+    });
+}
+
+function renderPlayerObservationSummary(observations) {
+  if (!observations.length) {
+    return `<span class="admin-observation-empty">Sin observaciones</span>`;
+  }
+
+  const fullText = observations.map((observation) => `${observation.matchLabel}: ${observation.text}`).join("\n");
+
+  return `
+    <button class="admin-observation-view" type="button" data-admin-player-observation="${escapeHtml(fullText)}">
+      <i class="bi bi-file-earmark-text-fill"></i>
+      Ver (${observations.length})
+    </button>
+  `;
 }
 
 function getBadgeStyle(team) {
@@ -2108,11 +2173,13 @@ function renderScoreCounter(label, value, key) {
   `;
 }
 
-function renderObserverPlayerRows(team) {
+function renderObserverPlayerRows(team, matchId) {
   return team.players.map((player) => {
     const status = getPlayerStatus(player);
     const isDisabledPlayer = status !== "Habilitado";
     const disabledAttribute = isDisabledPlayer ? "disabled" : "";
+    const observationKey = getPlayerObservationKey(matchId, team.id, player);
+    const currentObservation = playerObservations[observationKey] || "";
 
     return `
     <tr class="${isDisabledPlayer ? "observer-player-disabled" : ""}">
@@ -2141,7 +2208,7 @@ function renderObserverPlayerRows(team) {
         </div>
       </td>
       <td>
-        <button class="observation-btn" type="button" data-observation aria-label="Agregar observación disciplinaria">
+        <button class="observation-btn ${currentObservation ? "has-observation" : ""}" type="button" data-observation data-observation-key="${escapeHtml(observationKey)}" data-observation-text="${escapeHtml(currentObservation)}" aria-label="Agregar observación disciplinaria">
           <i class="bi bi-file-earmark-text-fill"></i>
         </button>
       </td>
@@ -2150,7 +2217,7 @@ function renderObserverPlayerRows(team) {
   }).join("");
 }
 
-function renderObserverPlayersTable(team, sideLabel) {
+function renderObserverPlayersTable(team, sideLabel, matchId) {
   return `
     <section class="division-table-panel observer-team-panel">
       <div class="division-section-heading">
@@ -2169,7 +2236,7 @@ function renderObserverPlayersTable(team, sideLabel) {
               <th>Obs.</th>
             </tr>
           </thead>
-          <tbody>${renderObserverPlayerRows(team)}</tbody>
+          <tbody>${renderObserverPlayerRows(team, matchId)}</tbody>
         </table>
       </div>
     </section>
@@ -2215,8 +2282,8 @@ function renderObserverEditMatch(matchId) {
     </section>
 
     <div class="observer-edit-grid">
-      ${renderObserverPlayersTable(homeTeam, "Equipo 1")}
-      ${renderObserverPlayersTable(awayTeam, "Equipo 2")}
+      ${renderObserverPlayersTable(homeTeam, "Equipo 1", match.id)}
+      ${renderObserverPlayersTable(awayTeam, "Equipo 2", match.id)}
     </div>
   `;
 }
@@ -3653,7 +3720,7 @@ async function renderAdminObserversView(searchTerm = adminObserversState.searchT
   `;
 }
 
-function getAdminPlayers(hasCompletedFilters, selectedTeamId = "", searchTerm = "") {
+function getAdminPlayers(hasCompletedFilters, selectedTeamId = "", searchTerm = "", onlyWithObservations = false) {
   if (!hasCompletedFilters) return [];
 
   const normalizedSearch = normalizeSearchText(searchTerm);
@@ -3661,34 +3728,38 @@ function getAdminPlayers(hasCompletedFilters, selectedTeamId = "", searchTerm = 
     .filter((team) => !selectedTeamId || team.id === selectedTeamId)
     .flatMap((team) => team.players.map((player) => ({ ...player, team })))
     .filter((player) => player.name.toLowerCase().includes(normalizedSearch))
+    .filter((player) => !onlyWithObservations || getPlayerObservationsForAdmin(player).length > 0)
     .sort((a, b) => {
       const teamOrder = a.team.shortName.localeCompare(b.team.shortName);
       return teamOrder || a.name.localeCompare(b.name);
     });
 }
 
-function renderAdminPlayerRows(hasCompletedFilters, selectedTeamId = "", searchTerm = "", page = 1) {
+function renderAdminPlayerRows(hasCompletedFilters, selectedTeamId = "", searchTerm = "", page = 1, onlyWithObservations = false) {
   if (!hasCompletedFilters) {
     return `
       <tr>
-        <td colspan="6" class="admin-empty-row">Seleccioná categoría y división para visualizar jugadores.</td>
+        <td colspan="7" class="admin-empty-row">Seleccioná categoría y división para visualizar jugadores.</td>
       </tr>
     `;
   }
 
-  const players = getAdminPlayers(hasCompletedFilters, selectedTeamId, searchTerm);
+  const players = getAdminPlayers(hasCompletedFilters, selectedTeamId, searchTerm, onlyWithObservations);
 
   if (!players.length) {
     return `
       <tr>
-        <td colspan="6" class="admin-empty-row">No se encontraron jugadores para la búsqueda indicada.</td>
+        <td colspan="7" class="admin-empty-row">No se encontraron jugadores para la búsqueda indicada.</td>
       </tr>
     `;
   }
 
   const pageInfo = paginateItems(players, page);
 
-  return pageInfo.items.map((player, index) => `
+  return pageInfo.items.map((player, index) => {
+    const observations = getPlayerObservationsForAdmin(player);
+
+    return `
     <tr>
       <td>${(pageInfo.page - 1) * ADMIN_PAGE_SIZE + index + 1}</td>
       <td>${player.name}</td>
@@ -3703,6 +3774,7 @@ function renderAdminPlayerRows(hasCompletedFilters, selectedTeamId = "", searchT
           `).join("")}
         </select>
       </td>
+      <td>${renderPlayerObservationSummary(observations)}</td>
       <td>
         <button class="btn btn-ingreso admin-save-row-btn" type="button" disabled>
           <i class="bi bi-save-fill"></i>
@@ -3710,16 +3782,18 @@ function renderAdminPlayerRows(hasCompletedFilters, selectedTeamId = "", searchT
         </button>
       </td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 }
 
-function renderAdminPlayersView(selectedCategory = "", selectedDivision = "", selectedTeamId = "", searchTerm = "", page = 1) {
+function renderAdminPlayersView(selectedCategory = "", selectedDivision = "", selectedTeamId = "", searchTerm = "", page = 1, onlyWithObservations = false) {
   const divisionMap = getAdminDivisionMap();
   const categories = Object.keys(divisionMap);
   const divisions = selectedCategory ? divisionMap[selectedCategory] : [];
   const hasCompletedFilters = Boolean(selectedCategory && selectedDivision);
   const availableTeams = getAdminTeamsForFilters(selectedCategory, selectedDivision);
-  const playerPageInfo = paginateItems(getAdminPlayers(hasCompletedFilters, selectedTeamId, searchTerm), page);
+  const observedPlayersCount = getAdminPlayers(hasCompletedFilters, selectedTeamId, "", true).length;
+  const playerPageInfo = paginateItems(getAdminPlayers(hasCompletedFilters, selectedTeamId, searchTerm, onlyWithObservations), page);
 
   return `
     <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
@@ -3730,6 +3804,24 @@ function renderAdminPlayersView(selectedCategory = "", selectedDivision = "", se
     </div>
 
     <section class="division-table-panel admin-teams-panel">
+      <div class="admin-player-metrics" aria-label="Resumen de filtros de jugadores">
+        <div class="admin-player-metric">
+          <i class="bi bi-diagram-3-fill"></i>
+          <span>Categor&iacute;a</span>
+          <strong>${selectedCategory || "Sin seleccionar"}</strong>
+        </div>
+        <div class="admin-player-metric">
+          <i class="bi bi-trophy-fill"></i>
+          <span>Divisi&oacute;n</span>
+          <strong>${selectedDivision || "Sin seleccionar"}</strong>
+        </div>
+        <div class="admin-player-metric is-alert">
+          <i class="bi bi-file-earmark-text-fill"></i>
+          <span>Observados</span>
+          <strong>${observedPlayersCount}</strong>
+        </div>
+      </div>
+
       <div class="admin-filter-grid admin-player-filter-grid" aria-label="Filtros obligatorios de jugadores">
         <label class="admin-filter-field">
           <span>Categoría</span>
@@ -3761,6 +3853,14 @@ function renderAdminPlayersView(selectedCategory = "", selectedDivision = "", se
           </select>
         </label>
 
+        <label class="admin-filter-field admin-check-field">
+          <span>Observaciones</span>
+          <span class="admin-check-control">
+            <input class="form-check-input" type="checkbox" data-admin-player-observations-only ${onlyWithObservations ? "checked" : ""} ${hasCompletedFilters ? "" : "disabled"}>
+            Ver jugadores observados
+          </span>
+        </label>
+
         <label class="admin-filter-field admin-search-field">
           <span>Buscar jugador</span>
           <input class="form-control" type="search" value="${searchTerm}" placeholder="Apellido y nombre" data-admin-player-search ${hasCompletedFilters ? "" : "disabled"}>
@@ -3776,10 +3876,11 @@ function renderAdminPlayersView(selectedCategory = "", selectedDivision = "", se
               <th>Equipo</th>
               <th>Contacto</th>
               <th>Estado</th>
+              <th>Observaci&oacute;n</th>
               <th>Guardar</th>
             </tr>
           </thead>
-          <tbody data-admin-player-rows>${renderAdminPlayerRows(hasCompletedFilters, selectedTeamId, searchTerm, playerPageInfo.page)}</tbody>
+          <tbody data-admin-player-rows>${renderAdminPlayerRows(hasCompletedFilters, selectedTeamId, searchTerm, playerPageInfo.page, onlyWithObservations)}</tbody>
         </table>
       </div>
       ${hasCompletedFilters ? renderAdminPagination("players", playerPageInfo) : ""}
@@ -3811,6 +3912,7 @@ function enterDelegateView(team) {
           </button>
         </div>
       </div>
+      ${renderDarkModeSwitcher()}
       <button class="btn btn-ingreso w-100" type="button" data-admin-logout>
         <i class="bi bi-box-arrow-left"></i>
         Salir
@@ -3843,6 +3945,7 @@ function enterAdminView() {
           <button class="division-link" type="button" data-admin-action="Jugadores">
             <i class="bi bi-people-fill"></i>
             Jugadores
+            <span class="menu-alert-badge" data-player-observation-count>${getPlayerObservationCount()}</span>
           </button>
           <button class="division-link" type="button" data-admin-action="Veedores">
             <i class="bi bi-clipboard2-check-fill"></i>
@@ -3873,6 +3976,7 @@ function enterAdminView() {
           </button>
         </div>
       </div>
+      ${renderDarkModeSwitcher()}
       <button class="btn btn-ingreso w-100" type="button" data-admin-logout>
         <i class="bi bi-box-arrow-left"></i>
         Salir
@@ -3904,6 +4008,7 @@ function enterObserverView() {
           </button>
         </div>
       </div>
+      ${renderDarkModeSwitcher()}
       <button class="btn btn-ingreso w-100" type="button" data-admin-logout>
         <i class="bi bi-box-arrow-left"></i>
         Salir
@@ -4027,6 +4132,14 @@ sidebarContent.addEventListener("click", (event) => {
   window.location.reload();
 });
 
+sidebarContent.addEventListener("change", (event) => {
+  const themeControl = event.target.closest("[data-dark-mode-control]");
+
+  if (themeControl && sidebarContent.contains(themeControl)) {
+    applyDarkMode(themeControl.checked);
+  }
+});
+
 contentShell.addEventListener("click", async (event) => {
   const editButton = event.target.closest("[data-observer-edit-match]");
   const observerBackButton = event.target.closest("[data-observer-back]");
@@ -4036,6 +4149,7 @@ contentShell.addEventListener("click", async (event) => {
   const goalDecButton = event.target.closest("[data-goal-dec]");
   const eventButton = event.target.closest(".event-btn");
   const observationButton = event.target.closest("[data-observation]");
+  const adminPlayerObservationButton = event.target.closest("[data-admin-player-observation]");
   const observerSaveButton = event.target.closest("[data-observer-save]");
   const adminPageButton = event.target.closest("[data-admin-page]");
   const openNewTeamButton = event.target.closest("[data-open-new-team-modal]");
@@ -4317,7 +4431,8 @@ contentShell.addEventListener("click", async (event) => {
     const division = contentShell.querySelector("[data-admin-player-division]")?.value || "";
     const teamId = contentShell.querySelector("[data-admin-player-team]")?.value || "";
     const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-player-search]")?.value || "");
-    contentShell.innerHTML = renderAdminPlayersView(category, division, teamId, searchTerm, page);
+    const onlyWithObservations = contentShell.querySelector("[data-admin-player-observations-only]")?.checked || false;
+    contentShell.innerHTML = renderAdminPlayersView(category, division, teamId, searchTerm, page, onlyWithObservations);
     return;
   }
 
@@ -4360,7 +4475,18 @@ contentShell.addEventListener("click", async (event) => {
 
   if (observationButton) {
     activeObservationButton = observationButton;
+    observationText.readOnly = false;
+    saveObservationButton.hidden = false;
     observationText.value = observationButton.dataset.observationText || "";
+    const observationModal = bootstrap.Modal.getOrCreateInstance(observationModalElement);
+    observationModal.show();
+  }
+
+  if (adminPlayerObservationButton) {
+    activeObservationButton = null;
+    observationText.value = adminPlayerObservationButton.dataset.adminPlayerObservation || "";
+    observationText.readOnly = true;
+    saveObservationButton.hidden = true;
     const observationModal = bootstrap.Modal.getOrCreateInstance(observationModalElement);
     observationModal.show();
   }
@@ -4375,6 +4501,7 @@ contentShell.addEventListener("change", async (event) => {
   const playerDivisionSelect = event.target.closest("[data-admin-player-division]");
   const playerTeamSelect = event.target.closest("[data-admin-player-team]");
   const playerStatusSelect = event.target.closest("[data-admin-player-status]");
+  const playerObservationFilter = event.target.closest("[data-admin-player-observations-only]");
   const tournamentDivisionCategorySelect = event.target.closest("[data-admin-division-category]");
   const observerDateSelect = event.target.closest("[data-observer-date-select]");
   const registrationFromInput = event.target.closest("[data-registration-from]");
@@ -4471,7 +4598,17 @@ contentShell.addEventListener("change", async (event) => {
     const category = contentShell.querySelector("[data-admin-player-category]")?.value || "";
     const division = contentShell.querySelector("[data-admin-player-division]")?.value || "";
     const teamId = playerTeamSelect.value;
-    contentShell.innerHTML = renderAdminPlayersView(category, division, teamId);
+    const onlyWithObservations = contentShell.querySelector("[data-admin-player-observations-only]")?.checked || false;
+    contentShell.innerHTML = renderAdminPlayersView(category, division, teamId, "", 1, onlyWithObservations);
+    return;
+  }
+
+  if (playerObservationFilter) {
+    const category = contentShell.querySelector("[data-admin-player-category]")?.value || "";
+    const division = contentShell.querySelector("[data-admin-player-division]")?.value || "";
+    const teamId = contentShell.querySelector("[data-admin-player-team]")?.value || "";
+    const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-player-search]")?.value || "");
+    contentShell.innerHTML = renderAdminPlayersView(category, division, teamId, searchTerm, 1, playerObservationFilter.checked);
     return;
   }
 
@@ -4592,11 +4729,12 @@ contentShell.addEventListener("input", (event) => {
     const category = contentShell.querySelector("[data-admin-player-category]")?.value || "";
     const division = contentShell.querySelector("[data-admin-player-division]")?.value || "";
     const teamId = contentShell.querySelector("[data-admin-player-team]")?.value || "";
+    const onlyWithObservations = contentShell.querySelector("[data-admin-player-observations-only]")?.checked || false;
     const searchTerm = getEffectiveSearchTerm(playerSearch.value);
     const rows = contentShell.querySelector("[data-admin-player-rows]");
-    const pageInfo = paginateItems(getAdminPlayers(Boolean(category && division), teamId, searchTerm), 1);
+    const pageInfo = paginateItems(getAdminPlayers(Boolean(category && division), teamId, searchTerm, onlyWithObservations), 1);
 
-    rows.innerHTML = renderAdminPlayerRows(Boolean(category && division), teamId, searchTerm, 1);
+    rows.innerHTML = renderAdminPlayerRows(Boolean(category && division), teamId, searchTerm, 1, onlyWithObservations);
     updateAdminPagination("players", pageInfo);
   }, 220);
 });
@@ -4607,6 +4745,10 @@ saveObservationButton.addEventListener("click", () => {
   const text = observationText.value.trim();
   activeObservationButton.dataset.observationText = text;
   activeObservationButton.classList.toggle("has-observation", Boolean(text));
+  if (activeObservationButton.dataset.observationKey) {
+    playerObservations[activeObservationButton.dataset.observationKey] = text;
+    updatePlayerObservationBadge();
+  }
 
   const observationModal = bootstrap.Modal.getInstance(observationModalElement);
   if (observationModal) {
