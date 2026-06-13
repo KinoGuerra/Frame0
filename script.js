@@ -135,6 +135,7 @@ Los partidos tendrán una duración definida por la organización según categor
 
 La organización podrá reprogramar encuentros por razones climáticas, disponibilidad de cancha o fuerza mayor. Todo reclamo deberá ser presentado por el delegado dentro de los plazos establecidos y será evaluado por la mesa organizadora.`
 };
+const PUBLIC_SETTINGS_CONFIG_KEY = "public_settings";
 const tournamentSettings = {
   playerRegistrationFrom: "2026-06-01",
   playerRegistrationTo: "2026-07-31",
@@ -222,6 +223,66 @@ function applyPublicSettings() {
   setLinkIfExists("#loginFacebookLink", publicSettings.facebookUrl);
   setLinkIfExists("#homeWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
   setLinkIfExists("#loginWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
+}
+
+function getPublicSettingsPayload() {
+  return {
+    instagramUrl: publicSettings.instagramUrl,
+    facebookUrl: publicSettings.facebookUrl,
+    whatsappPhone: publicSettings.whatsappPhone,
+    locationTitle: publicSettings.locationTitle,
+    locationText: publicSettings.locationText,
+    contactTitle: publicSettings.contactTitle,
+    contactText: publicSettings.contactText,
+    regulationText: publicSettings.regulationText
+  };
+}
+
+function mergePublicSettings(settings = {}) {
+  Object.keys(publicSettings).forEach((key) => {
+    if (settings[key] !== undefined && settings[key] !== null) {
+      publicSettings[key] = String(settings[key]);
+    }
+  });
+}
+
+async function loadPublicSettingsFromSupabase() {
+  if (typeof supabaseClient === "undefined") return;
+
+  const { data, error } = await supabaseClient
+    .from("configuraciones")
+    .select("valor")
+    .eq("clave", PUBLIC_SETTINGS_CONFIG_KEY)
+    .eq("activa", true)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Error al cargar redes y contacto desde Supabase:", error);
+    return;
+  }
+
+  if (data?.valor && typeof data.valor === "object") {
+    mergePublicSettings(data.valor);
+    applyPublicSettings();
+  }
+}
+
+async function savePublicSettingsToSupabase() {
+  if (typeof supabaseClient === "undefined") {
+    throw new Error("Supabase no esta disponible.");
+  }
+
+  const { error } = await supabaseClient
+    .from("configuraciones")
+    .upsert({
+      clave: PUBLIC_SETTINGS_CONFIG_KEY,
+      valor: getPublicSettingsPayload(),
+      descripcion: "Redes, contacto, ubicacion y reglamento publico de Frame0.",
+      activa: true,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "clave" });
+
+  if (error) throw error;
 }
 
 // Cuenta registros de una tabla de Supabase sin traer filas al navegador.
@@ -4826,13 +4887,26 @@ contentShell.addEventListener("click", async (event) => {
     contentShell.querySelectorAll("[data-setting]").forEach((field) => {
       publicSettings[field.dataset.setting] = field.value.trim();
     });
-    applyPublicSettings();
-    savePublicSettingsButton.classList.add("is-saved");
-    savePublicSettingsButton.innerHTML = `<i class="bi bi-check2-circle"></i> Guardado`;
-    window.setTimeout(() => {
-      savePublicSettingsButton.classList.remove("is-saved");
-      savePublicSettingsButton.innerHTML = `<i class="bi bi-save-fill"></i> ${originalLabel}`;
-    }, 1400);
+
+    savePublicSettingsButton.disabled = true;
+    savePublicSettingsButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
+
+    try {
+      await savePublicSettingsToSupabase();
+      applyPublicSettings();
+      savePublicSettingsButton.classList.add("is-saved");
+      savePublicSettingsButton.innerHTML = `<i class="bi bi-check2-circle"></i> Guardado`;
+      window.setTimeout(() => {
+        savePublicSettingsButton.classList.remove("is-saved");
+        savePublicSettingsButton.disabled = false;
+        savePublicSettingsButton.innerHTML = `<i class="bi bi-save-fill"></i> ${originalLabel}`;
+      }, 1400);
+    } catch (error) {
+      console.error("Error al guardar redes y contacto en Supabase:", error);
+      savePublicSettingsButton.disabled = false;
+      savePublicSettingsButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
+      return;
+    }
 
     if (!publicInfoContent.classList.contains("d-none")) {
       const regulationTitle = publicInfoContent.querySelector("h2");
@@ -5763,6 +5837,7 @@ if (darkModeToggle) {
 }
 
 applyPublicSettings();
+loadPublicSettingsFromSupabase();
 cargarResumenDashboard();
 cargarMenuCategorias();
 
