@@ -191,6 +191,40 @@ async function apiSignInWithRole(role, username, password) {
   return profile;
 }
 
+async function apiSignInWithPasswordHash(role, username, password) {
+  const usuarioLimpio = String(username || "").trim();
+  const allowedRoles = Array.isArray(role) ? role : [role];
+
+  const { data, error } = await getSupabaseClient()
+    .from("usuarios_app")
+    .select("*")
+    .ilike("usuario", usuarioLimpio)
+    .eq("activo", true)
+    .maybeSingle();
+
+  console.log("usuarioLimpio:", usuarioLimpio);
+  console.log("data usuarios_app:", data);
+  console.log("error usuarios_app:", error);
+
+  if (error) {
+    throw new Error(`Error consultando Supabase: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error(`Usuario "${usuarioLimpio}" no encontrado en usuarios_app.`);
+  }
+
+  if (data.password_hash !== String(password || "").trim()) {
+    throw new Error("Contraseña incorrecta.");
+  }
+
+  if (!allowedRoles.includes(data.rol)) {
+    throw new Error(`El rol "${data.rol}" no esta autorizado para este ingreso.`);
+  }
+
+  return data;
+}
+
 async function ensureUniqueUsername(username, currentUserId = "") {
   const normalizedUsername = normalizeUsername(username);
   if (!normalizedUsername) return;
