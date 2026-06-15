@@ -1,66 +1,84 @@
-# Frame0 - Guia para agentes
+# Frame0 - Guía para agentes
 
-## Contexto del proyecto
-Frame0 es un frontend estatico para una plataforma de torneos amateur de futbol. El proyecto usa HTML5, CSS3, Bootstrap 5, Bootstrap Icons, JavaScript vanilla y Supabase como fuente unica de datos, autenticacion y almacenamiento.
+## Contexto
+Frame0 es un frontend estático para una plataforma de torneos amateur de fútbol. Usa HTML5, CSS3, Bootstrap 5, Bootstrap Icons, JavaScript vanilla y Supabase como fuente de datos.
 
-El sitio debe seguir funcionando como frontend estatico publicado desde la raiz del repositorio en GitHub Pages. No requiere backend local para ejecutarse.
+El sitio se publica desde la raíz del repositorio en GitHub Pages. Debe funcionar sin build system y sin backend local.
 
-## Arquitectura actual
-- El frontend consulta Supabase directamente con `supabase-js` cargado por CDN.
-- `supabaseClient.js` centraliza la configuracion publica de Supabase.
-- `apiClient.js` es un adaptador de datos compatible con la UI existente, pero no debe llamar a APIs locales ni usar `fetch()` hacia un backend propio.
-- `supabase/migrations/` contiene la estructura SQL y datos iniciales del proyecto.
-- `deprecated-backend/` conserva el backend Express anterior solo como referencia historica. No agregar nuevas dependencias ni nuevas llamadas hacia esa carpeta.
-
-## Archivos principales
-- `index.html`: estructura principal, modales y carga de dependencias CDN.
+## Arquitectura
+- `index.html`: estructura principal, modales y dependencias CDN.
 - `styles.css`: estilos visuales, responsive, dark mode y componentes.
-- `script.js`: datos demo, navegacion, roles, renderizados dinamicos y logica de interaccion.
-- `supabaseClient.js`: cliente Supabase del navegador. Solo debe usar `SUPABASE_URL` y `SUPABASE_ANON_KEY`.
-- `apiClient.js`: consultas directas a Supabase para categorias, divisiones, usuarios, veedores y otros modulos que se migren.
-- `assets/`: logos, escudos, SVG e imagenes usadas por la interfaz.
-- `README.md`: documentacion de arquitectura y configuracion.
+- `script.js`: navegación, roles, renderizado dinámico, login y lógica de interacción.
+- `supabaseClient.js`: conexión pública del navegador a Supabase con `SUPABASE_URL` y `SUPABASE_ANON_KEY`.
+- `apiClient.js`: adaptador de datos directo a Supabase. No debe llamar a un backend local.
+- `supabase/migrations/`: migraciones SQL, RLS y permisos.
+- `assets/`: logos, escudos, SVG e imágenes.
+- `deprecated-backend/`: backend Express archivado solo como referencia histórica.
 
-## Reglas de trabajo
+## Reglas generales
 - Mantener separados HTML, CSS y JavaScript.
-- No agregar frameworks ni build system sin necesidad.
-- Conservar rutas relativas para que funcione en GitHub Pages.
-- Validar cambios de JavaScript con `node --check script.js`.
-- Evitar romper el comportamiento existente de roles: publico, administrador, delegado y veedor.
-- Cuidar contraste en modo claro y dark mode.
-- No modificar estilos visuales salvo que sea necesario para la tarea.
-- No reactivar ni depender del backend local archivado.
+- No agregar frameworks, bundlers ni package managers sin necesidad explícita.
+- Conservar rutas relativas compatibles con GitHub Pages.
+- No modificar estilos visuales salvo que la tarea lo pida o sea imprescindible.
+- Evitar cambios amplios: preferir ediciones pequeñas y localizadas.
+- No reactivar ni depender de `deprecated-backend/`.
+- Validar JavaScript con `node --check script.js`; si se toca `apiClient.js`, validar también `node --check apiClient.js`.
 
 ## Supabase
-- Usar siempre la anon key / publishable key en el frontend.
-- No usar `service_role_key` en archivos del frontend.
-- No hardcodear secretos privados.
-- Preparar consultas para funcionar con Row Level Security (RLS).
-- El login administrador debe aceptar el usuario visible `admin` o `admin@frame0.local`, sin distinguir mayusculas/minusculas. Primero se resuelve por `usuarios_app.usuario`; luego se usa `admin@frame0.local` para Supabase Auth.
-- El perfil administrador debe estar activo en `usuarios_app` con rol `admin` o `superadmin`.
-- No validar manualmente `password_hash` cuando el login usa Supabase Auth.
-- Para probar escrituras, aplicar las migraciones RLS, incluidas `supabase/migrations/006_enable_rls_policies.sql` y `supabase/migrations/007_fix_login_profile_resolution.sql`, en el proyecto Supabase remoto.
-- Para datos visibles publicamente, usar consultas de lectura directas con `supabase.from("tabla").select()`.
-- Para altas, bajas logicas y ediciones, usar `insert()`, `update()` y, solo cuando corresponda, `delete()`.
-- Las operaciones de delegado deben depender del usuario autenticado y de su equipo asociado.
-- Operaciones sensibles de Auth Admin, como cambiar contrasenas de otros usuarios, deben resolverse fuera del navegador mediante Supabase Dashboard o Edge Functions seguras.
+- Usar solo anon key / publishable key en frontend.
+- No usar `service_role_key` ni secretos privados en archivos del navegador.
+- Las lecturas/escrituras deben usar `supabase-js` directo: `from().select()`, `insert()`, `update()`, `delete()` o `upsert()`.
+- Mantener RLS y grants sincronizados con el flujo real de la UI.
+- Para cambios de login o permisos, revisar y actualizar migraciones nuevas en `supabase/migrations/`.
 
-## Backend deprecado
-- `deprecated-backend/` no forma parte del flujo activo de la aplicacion.
-- No moverlo, borrarlo ni reutilizarlo sin confirmacion explicita.
-- Si se toma como referencia, migrar la logica al frontend con Supabase o a una Edge Function segura segun corresponda.
+## Login actual
+El login admin/delegado usa la tabla `public.usuarios_app`, no Supabase Auth.
 
-## Estilo de codigo
-- Usar nombres descriptivos para clases, funciones y atributos `data-*`.
-- Priorizar cambios pequenos y localizados.
-- Reutilizar componentes visuales existentes antes de crear nuevos patrones.
-- Mantener el diseno responsive.
-- Agregar comentarios solo cuando aclaren una decision no evidente.
+Consulta obligatoria para login:
 
-## Limpieza y validacion
-- Buscar referencias obsoletas con terminos como `localhost`, `127.0.0.1`, `/api`, `fetch(` y `axios` cuando se toque la capa de datos.
-- Revisar que no se introduzcan dependencias de backend local.
-- Despues de cambios JavaScript, ejecutar `node --check script.js`.
+```js
+const usuarioLimpio = usuarioIngresado.trim();
 
-## Publicacion
-El sitio se publica como frontend estatico en GitHub Pages desde la raiz del repositorio.
+const { data, error } = await supabaseClient
+  .from("usuarios_app")
+  .select("*")
+  .ilike("usuario", usuarioLimpio)
+  .eq("activo", true)
+  .maybeSingle();
+```
+
+Reglas del login:
+- Buscar solo por columna `usuario`.
+- No buscar por `nombre`.
+- No buscar por email.
+- No buscar en otra tabla.
+- Comparar la contraseña ingresada contra `data.password_hash`.
+- Usar `data.rol`, `data.nombre` y `data.id` para continuar el flujo.
+- Admin acepta `rol = admin` o `rol = superadmin`.
+- Delegado acepta `rol = delegado`.
+- Mantener logs temporales mientras se depura: `usuarioLimpio`, `data usuarios_app`, `error usuarios_app`, y URL de Supabase si ayuda.
+- Si el usuario existe pero `data` llega `null`, revisar que estén aplicados los grants/RLS de login, especialmente `supabase/migrations/009_grant_login_lookup_select.sql`.
+
+## Configuraciones públicas
+- `Administrador > Configuraciones > Redes y Contacto` guarda en `configuraciones` con clave `public_settings`.
+- Al guardar, debe actualizar Supabase y refrescar la landing pública en la misma sesión.
+- Al cargar la página, `script.js` debe leer `public_settings` desde Supabase y aplicar esos valores.
+
+## Roles y navegación
+- No romper los roles existentes: público, administrador, delegado y veedor.
+- Los botones `Salir` de administrador, delegado y veedor deben compartir el mismo comportamiento.
+- El delegado no debe quedar recargando o restaurando su propio perfil al salir.
+
+## RLS y migraciones relevantes
+- `006_enable_rls_policies.sql`: políticas base para datos públicos y escritura admin.
+- `007_fix_login_profile_resolution.sql`: legado de resolución usuario/email; no usar para el login actual salvo que una tarea lo pida.
+- `008_allow_password_hash_login_lookup.sql`: legado de login con RPC; no es el flujo principal actual.
+- `009_grant_login_lookup_select.sql`: permisos necesarios para que la consulta directa de login lea usuarios activos con anon key.
+
+## Limpieza
+- Buscar referencias obsoletas con `localhost`, `127.0.0.1`, `/api`, `fetch(` y `axios` cuando se toque la capa de datos.
+- No introducir dependencias del backend local.
+- No borrar archivos archivados o migraciones sin confirmación explícita.
+
+## Publicación
+El sitio se publica como frontend estático en GitHub Pages desde la raíz del repositorio.

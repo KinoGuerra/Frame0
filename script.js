@@ -7,6 +7,8 @@ const divisionLoader = document.querySelector(".division-loader");
 const divisionView = document.querySelector("#divisionView");
 const divisionTitle = document.querySelector("#divisionTitle");
 const teamCarousel = document.querySelector("#teamCarousel");
+const sponsorBanner = document.querySelector("#sponsorBanner");
+const sponsorCarousel = document.querySelector("[data-sponsor-carousel]");
 const teamDetailView = document.querySelector("#teamDetailView");
 const divisionTables = document.querySelector("#divisionTables");
 const standingsBody = document.querySelector("#standingsBody");
@@ -95,6 +97,9 @@ const playerObservations = {};
 const playerObservationResolutions = {};
 let adminSearchTimer;
 let teamCarouselActiveIndex = 0;
+let sponsorCarouselActiveIndex = 0;
+let sponsorCarouselTimer = null;
+const MAX_SPONSOR_IMAGES = 15;
 const adminCategoriesState = {
   includeInactive: false,
   items: [],
@@ -127,17 +132,24 @@ const publicSettings = {
   instagramUrl: "#",
   facebookUrl: "#",
   whatsappPhone: "3510000000",
-  locationTitle: "CÃ³rdoba Capital",
-  locationText: "La sede principal del torneo estarÃ¡ ubicada en CÃ³rdoba Capital, con programaciÃ³n semanal y comunicaciÃ³n oficial para delegados antes de cada fecha.",
+  locationTitle: "Córdoba Capital",
+  locationText: "La sede principal del torneo estará ubicada en Córdoba Capital, con programación semanal y comunicación oficial para delegados antes de cada fecha.",
   contactTitle: "351 XXX XXXX",
-  contactText: "Consultas por cupos, inscripciÃ³n, documentaciÃ³n y calendario inicial. La atenciÃ³n se centraliza para mantener una comunicaciÃ³n clara con cada equipo.",
-  regulationText: `La competencia se disputa bajo principios de juego limpio, respeto entre participantes y cumplimiento de la programaciÃ³n oficial informada por la organizaciÃ³n. Cada equipo deberÃ¡ presentar su lista de buena fe, contar con jugadores habilitados y respetar los horarios asignados para cada fecha.
+  contactText: "Consultas por cupos, inscripción, documentación y calendario inicial. La atención se centraliza para mantener una comunicación clara con cada equipo.",
+  sponsorImages: [],
+  regulationText: `La competencia se disputa bajo principios de juego limpio, respeto entre participantes y cumplimiento de la programación oficial informada por la organización. Cada equipo deberá presentar su lista de buena fe, contar con jugadores habilitados y respetar los horarios asignados para cada fecha.
 
-Los partidos tendrÃ¡n una duraciÃ³n definida por la organizaciÃ³n segÃºn categorÃ­a y divisiÃ³n. La tabla de posiciones se ordenarÃ¡ por puntos obtenidos, diferencia de gol, goles a favor y resultado entre equipos cuando corresponda. Las sanciones disciplinarias podrÃ¡n incluir suspensiÃ³n por acumulaciÃ³n de tarjetas, expulsiones directas o informes del veedor.
+Los partidos tendrán una duración definida por la organización según categoría y división. La tabla de posiciones se ordenará por puntos obtenidos, diferencia de gol, goles a favor y resultado entre equipos cuando corresponda. Las sanciones disciplinarias podrán incluir suspensión por acumulación de tarjetas, expulsiones directas o informes del veedor.
 
-La organizaciÃ³n podrÃ¡ reprogramar encuentros por razones climÃ¡ticas, disponibilidad de cancha o fuerza mayor. Todo reclamo deberÃ¡ ser presentado por el delegado dentro de los plazos establecidos y serÃ¡ evaluado por la mesa organizadora.`
+La organización podrá reprogramar encuentros por razones climáticas, disponibilidad de cancha o fuerza mayor. Todo reclamo deberá ser presentado por el delegado dentro de los plazos establecidos y será evaluado por la mesa organizadora.`
 };
 const PUBLIC_SETTINGS_CONFIG_KEY = "public_settings";
+let adminSettingsSession = null;
+let currentAppUser = null;
+let tournamentCatalog = [];
+let activeDivisionId = "";
+let adminTeamsForView = [];
+let adminMetricsState = null;
 const tournamentSettings = {
   playerRegistrationFrom: "2026-06-01",
   playerRegistrationTo: "2026-07-31",
@@ -225,6 +237,7 @@ function applyPublicSettings() {
   setLinkIfExists("#loginFacebookLink", publicSettings.facebookUrl);
   setLinkIfExists("#homeWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
   setLinkIfExists("#loginWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
+  renderSponsorCarousel();
 }
 
 function getPublicSettingsPayload() {
@@ -236,6 +249,7 @@ function getPublicSettingsPayload() {
     locationText: publicSettings.locationText,
     contactTitle: publicSettings.contactTitle,
     contactText: publicSettings.contactText,
+    sponsorImages: publicSettings.sponsorImages,
     regulationText: publicSettings.regulationText
   };
 }
@@ -243,9 +257,119 @@ function getPublicSettingsPayload() {
 function mergePublicSettings(settings = {}) {
   Object.keys(publicSettings).forEach((key) => {
     if (settings[key] !== undefined && settings[key] !== null) {
-      publicSettings[key] = String(settings[key]);
+      publicSettings[key] = Array.isArray(publicSettings[key])
+        ? (Array.isArray(settings[key]) ? settings[key] : []).filter(Boolean).slice(0, MAX_SPONSOR_IMAGES)
+        : String(settings[key]);
     }
   });
+}
+
+function getSponsorCarouselClass(index, activeIndex, total) {
+  if (!total) return "hidden";
+  const offset = ((index - activeIndex + total + Math.floor(total / 2)) % total) - Math.floor(total / 2);
+  const previousIndex = (activeIndex - 1 + total) % total;
+  const nextIndex = (activeIndex + 1) % total;
+  const farPreviousIndex = (activeIndex - 2 + total) % total;
+  const farNextIndex = (activeIndex + 2) % total;
+  const edgePreviousIndex = (activeIndex - 3 + total) % total;
+  const edgeNextIndex = (activeIndex + 3) % total;
+
+  if (index === activeIndex) return "active";
+  if (index === previousIndex) return "previous";
+  if (index === nextIndex) return "next";
+  if (total > 3 && index === farPreviousIndex) return "far-previous";
+  if (total > 3 && index === farNextIndex) return "far-next";
+  if (total > 5 && index === edgePreviousIndex) return "edge-previous";
+  if (total > 5 && index === edgeNextIndex) return "edge-next";
+  if (Math.abs(offset) <= 2) return offset < 0 ? "far-previous" : "far-next";
+  if (Math.abs(offset) === 3) return offset < 0 ? "edge-previous" : "edge-next";
+  return "hidden";
+}
+
+function renderSponsorCarousel() {
+  if (!sponsorBanner || !sponsorCarousel) return;
+
+  const images = publicSettings.sponsorImages || [];
+  sponsorBanner.classList.toggle("is-empty", images.length === 0);
+  window.clearInterval(sponsorCarouselTimer);
+  sponsorCarouselTimer = null;
+
+  if (!images.length) {
+    sponsorCarousel.innerHTML = "";
+    return;
+  }
+
+  sponsorCarouselActiveIndex = Math.min(sponsorCarouselActiveIndex, images.length - 1);
+  sponsorCarousel.innerHTML = images.map((image, index) => `
+    <div class="sponsor-slide ${getSponsorCarouselClass(index, sponsorCarouselActiveIndex, images.length)}">
+      <img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.name || `Auspiciante ${index + 1}`)}" loading="lazy">
+    </div>
+  `).join("");
+
+  if (images.length > 1) {
+    sponsorCarouselTimer = window.setInterval(() => {
+      sponsorCarouselActiveIndex = (sponsorCarouselActiveIndex + 1) % images.length;
+      renderSponsorCarousel();
+    }, 2000);
+  }
+}
+
+function renderSponsorAdminImages() {
+  const images = publicSettings.sponsorImages || [];
+
+  if (!images.length) {
+    return `<div class="admin-empty-row sponsor-empty">Sin auspiciantes cargados.</div>`;
+  }
+
+  return images.map((image, index) => `
+    <div class="sponsor-admin-card">
+      <img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.name || `Auspiciante ${index + 1}`)}">
+      <div>
+        <strong>${escapeHtml(image.name || `Auspiciante ${index + 1}`)}</strong>
+        <small>${index + 1} de ${MAX_SPONSOR_IMAGES}</small>
+      </div>
+      <button type="button" aria-label="Eliminar auspiciante ${index + 1}" data-remove-sponsor-image="${index}">
+        <i class="bi bi-trash-fill"></i>
+      </button>
+    </div>
+  `).join("");
+}
+
+function refreshSponsorAdminPreview() {
+  const preview = contentShell.querySelector("[data-sponsor-preview]");
+  const counter = contentShell.querySelector("[data-sponsor-count]");
+  const input = contentShell.querySelector("[data-sponsor-upload]");
+
+  if (preview) preview.innerHTML = renderSponsorAdminImages();
+  if (counter) counter.textContent = `${publicSettings.sponsorImages.length}/${MAX_SPONSOR_IMAGES}`;
+  if (input) input.disabled = publicSettings.sponsorImages.length >= MAX_SPONSOR_IMAGES;
+  renderSponsorCarousel();
+}
+
+function readSponsorFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      name: file.name,
+      type: file.type || "image/svg+xml",
+      src: String(reader.result || "")
+    });
+    reader.onerror = () => reject(reader.error || new Error("No se pudo leer la imagen."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addSponsorImages(files = []) {
+  const availableSlots = MAX_SPONSOR_IMAGES - publicSettings.sponsorImages.length;
+  const validFiles = [...files]
+    .filter((file) => file.type.startsWith("image/") || file.name.toLowerCase().endsWith(".svg"))
+    .slice(0, availableSlots);
+
+  if (!validFiles.length) return;
+
+  const images = await Promise.all(validFiles.map(readSponsorFile));
+  publicSettings.sponsorImages = [...publicSettings.sponsorImages, ...images].slice(0, MAX_SPONSOR_IMAGES);
+  refreshSponsorAdminPreview();
 }
 
 async function loadPublicSettingsFromSupabase() {
@@ -271,18 +395,18 @@ async function loadPublicSettingsFromSupabase() {
 
 async function savePublicSettingsToSupabase() {
   if (typeof supabaseClient === "undefined") {
-    throw new Error("Supabase no esta disponible.");
+    throw new Error("Supabase no está disponible.");
   }
 
-  const { error } = await supabaseClient
-    .from("configuraciones")
-    .upsert({
-      clave: PUBLIC_SETTINGS_CONFIG_KEY,
-      valor: getPublicSettingsPayload(),
-      descripcion: "Redes, contacto, ubicacion y reglamento publico de Frame0.",
-      activa: true,
-      updated_at: new Date().toISOString()
-    }, { onConflict: "clave" });
+  if (!adminSettingsSession?.usuario || !adminSettingsSession?.password) {
+    throw new Error("La sesión de administrador no está disponible. Cerrá sesión e ingresá nuevamente.");
+  }
+
+  const { error } = await supabaseClient.rpc("guardar_configuracion_publica", {
+    p_usuario: adminSettingsSession.usuario,
+    p_password: adminSettingsSession.password,
+    p_valor: getPublicSettingsPayload()
+  });
 
   if (error) throw error;
 }
@@ -290,7 +414,7 @@ async function savePublicSettingsToSupabase() {
 // Cuenta registros de una tabla de Supabase sin traer filas al navegador.
 async function contarRegistrosSupabase(nombreTabla) {
   if (typeof supabaseClient === "undefined") {
-    console.error("Supabase no estÃ¡ disponible. RevisÃ¡ la carga de supabaseClient.js.");
+    console.error("Supabase no está disponible. Revisá la carga de supabaseClient.js.");
     return 0;
   }
 
@@ -353,7 +477,7 @@ function renderMenuCategorias(categorias, divisiones) {
   });
 
   if (!categoriasOrdenadas.length) {
-    menuCategorias.innerHTML = `<div class="menu-empty">Sin categorÃ­as activas.</div>`;
+    menuCategorias.innerHTML = `<div class="menu-empty">Sin categorías activas.</div>`;
     return;
   }
 
@@ -364,7 +488,7 @@ function renderMenuCategorias(categorias, divisiones) {
     console.log(`Divisiones para ${categoria.nombre}:`, divisionesCategoria);
     const divisionesHtml = divisionesCategoria.length
       ? divisionesCategoria.map((division) => `
-        <button class="division-link" type="button" data-division="${escapeHtml(division.nombre)}" data-division-id="${division.id}">
+        <button class="division-link" type="button" data-division="${escapeHtml(division.nombre)}" data-division-id="${division.id}" data-category="${escapeHtml(categoria.nombre)}">
           ${escapeHtml(division.nombre)}
         </button>
       `).join("")
@@ -405,23 +529,33 @@ async function cargarMenuCategorias() {
     ]);
 
     if (categoriasError) {
-      console.error("Error al cargar categorÃ­as del menÃº:", categoriasError);
+      console.error("Error al cargar categorías del menú:", categoriasError);
     }
 
     if (divisionesError) {
-      console.error("Error al cargar divisiones del menÃº:", divisionesError);
+      console.error("Error al cargar divisiones del menú:", divisionesError);
     }
 
     const categoriasActivas = categoriasError ? [] : (categorias || []);
     const divisionesActivas = divisionesError ? [] : (divisiones || []);
+    tournamentCatalog = categoriasActivas.map((categoria) => ({
+      id: categoria.id,
+      name: categoria.nombre,
+      divisions: divisionesActivas
+        .filter((division) => String(division.categoria_id) === String(categoria.id))
+        .map((division) => ({
+          id: division.id,
+          name: division.nombre
+        }))
+    }));
 
-    console.log("MenÃº categorÃ­as:", categoriasActivas);
-    console.log("MenÃº divisiones:", divisionesActivas);
+    console.log("Menú categorías:", categoriasActivas);
+    console.log("Menú divisiones:", divisionesActivas);
 
     renderMenuCategorias(categoriasActivas, divisionesActivas);
   } catch (error) {
-    console.error("Error al cargar el menÃº de categorÃ­as:", error);
-    menuCategorias.innerHTML = `<div class="menu-empty">No se pudo cargar el menÃº.</div>`;
+    console.error("Error al cargar el menú de categorías:", error);
+    menuCategorias.innerHTML = `<div class="menu-empty">No se pudo cargar el menú.</div>`;
   }
 }
 
@@ -436,411 +570,11 @@ function getAboutCarouselClass(index, activeIndex) {
   return "hidden";
 }
 
-function createDemoPlayers(prefix, goalsBase = 0) {
-  const names = [
-    "Santiago Molina",
-    "Lucas Pereira",
-    "Mateo Vargas",
-    "NicolÃ¡s Duarte",
-    "Franco Acosta",
-    "TomÃ¡s Rivas",
-    "Bruno Herrera",
-    "JuliÃ¡n Morales",
-    "AgustÃ­n Campos",
-    "Pablo Ferreyra",
-    "Ramiro Costa",
-    "Enzo Medina",
-    "Alan Cabrera",
-    "MartÃ­n Castro",
-    "Lautaro DÃ­az"
-  ];
-
-  return names.map((name, index) => ({
-    number: index + 1,
-    name: `${name} ${prefix}`,
-    age: 22 + (index % 10),
-    goals: index % 4 === 0 ? goalsBase + 2 : index % 5 === 0 ? 1 : 0,
-    yellow: index % 3,
-    red: index === 4 ? 1 : 0
-  }));
-}
-
-const teams = [
-  {
-    id: "belgrano",
-    name: "Belgrano de CÃ³rdoba",
-    legalName: "Club AtlÃ©tico Belgrano",
-    abbreviation: "CAB",
-    shortName: "Belgrano",
-    initials: "BEL",
-    crest: "assets/team-belgrano.svg",
-    colors: ["#58aee8", "#111827"],
-    shirtColors: ["#58aee8", "#111827", "#ffffff"],
-    city: "CÃ³rdoba Capital",
-    captain: "MatÃ­as Rojas",
-    delegate: "HernÃ¡n SuÃ¡rez",
-    contact: "351555555",
-    topScorer: "Pablo Heredia",
-    mostSanctioned: "IvÃ¡n Molina",
-    players: [
-      { number: 1, name: "Pablo Heredia", age: 28, goals: 6, yellow: 1, red: 0 },
-      { number: 4, name: "IvÃ¡n Molina", age: 31, goals: 0, yellow: 4, red: 1 },
-      { number: 7, name: "Franco Nieto", age: 24, goals: 3, yellow: 0, red: 0 },
-      { number: 9, name: "AgustÃ­n Peralta", age: 27, goals: 5, yellow: 2, red: 0 },
-      { number: 10, name: "Juan Sosa", age: 25, goals: 2, yellow: 1, red: 0 },
-      { number: 14, name: "Lucas Arce", age: 29, goals: 0, yellow: 2, red: 0 },
-      { number: 18, name: "TomÃ¡s Ferreyra", age: 23, goals: 1, yellow: 0, red: 0 },
-      { number: 22, name: "MartÃ­n Quiroga", age: 32, goals: 0, yellow: 1, red: 0 },
-      { number: 2, name: "Emiliano DÃ­az", age: 26, goals: 0, yellow: 1, red: 0 },
-      { number: 5, name: "Rodrigo Ponce", age: 30, goals: 1, yellow: 2, red: 0 },
-      { number: 6, name: "Maximiliano AcuÃ±a", age: 28, goals: 0, yellow: 0, red: 0 },
-      { number: 11, name: "GermÃ¡n Salvatierra", age: 24, goals: 2, yellow: 1, red: 0 },
-      { number: 15, name: "Ezequiel Molina", age: 27, goals: 0, yellow: 3, red: 0 },
-      { number: 19, name: "Nahuel Ortiz", age: 23, goals: 1, yellow: 0, red: 0 },
-      { number: 21, name: "SebastiÃ¡n RoldÃ¡n", age: 29, goals: 0, yellow: 1, red: 0 }
-    ],
-    founded: "Equipo invitado",
-    description: "Plantel competitivo de la zona norte, fuerte en pelota parada y transiciones rÃ¡pidas."
-  },
-  {
-    id: "instituto",
-    name: "Instituto AtlÃ©tico Central CÃ³rdoba",
-    legalName: "Instituto AtlÃ©tico Central CÃ³rdoba",
-    abbreviation: "IACC",
-    shortName: "Instituto",
-    initials: "INS",
-    crest: "assets/team-instituto.svg",
-    colors: ["#e11d48", "#ffffff"],
-    shirtColors: ["#e11d48", "#ffffff"],
-    city: "Alta CÃ³rdoba",
-    captain: "Lucas GÃ³mez",
-    delegate: "Ignacio Cerutti",
-    contact: "351444444",
-    topScorer: "Lucas GÃ³mez",
-    mostSanctioned: "Emanuel PÃ©rez",
-    players: [
-      { number: 1, name: "Lucas GÃ³mez", age: 30, goals: 4, yellow: 1, red: 0 },
-      { number: 2, name: "Emanuel PÃ©rez", age: 29, goals: 0, yellow: 5, red: 1 },
-      { number: 5, name: "Mateo RoldÃ¡n", age: 22, goals: 1, yellow: 2, red: 0 },
-      { number: 8, name: "Facundo Vega", age: 26, goals: 2, yellow: 1, red: 0 },
-      { number: 11, name: "JoaquÃ­n Ruiz", age: 24, goals: 3, yellow: 0, red: 0 },
-      { number: 13, name: "NicolÃ¡s Castro", age: 28, goals: 0, yellow: 2, red: 0 },
-      { number: 17, name: "Alan Moreno", age: 25, goals: 1, yellow: 1, red: 0 },
-      { number: 20, name: "Brian DÃ­az", age: 27, goals: 0, yellow: 0, red: 0 },
-      { number: 3, name: "Gonzalo AlarcÃ³n", age: 25, goals: 0, yellow: 1, red: 0 },
-      { number: 4, name: "Ramiro JuÃ¡rez", age: 31, goals: 0, yellow: 2, red: 0 },
-      { number: 6, name: "SebastiÃ¡n Vera", age: 26, goals: 1, yellow: 0, red: 0 },
-      { number: 9, name: "Ignacio Cerutti", age: 29, goals: 2, yellow: 1, red: 0 },
-      { number: 14, name: "Mauricio Cabrera", age: 28, goals: 0, yellow: 3, red: 0 },
-      { number: 18, name: "Franco Bustos", age: 24, goals: 1, yellow: 0, red: 0 },
-      { number: 22, name: "TomÃ¡s Navarro", age: 23, goals: 0, yellow: 1, red: 0 }
-    ],
-    founded: "Equipo invitado",
-    description: "Equipo intenso, con presiÃ³n alta y buen volumen ofensivo por las bandas."
-  },
-  {
-    id: "boca",
-    name: "Boca Juniors",
-    legalName: "Club AtlÃ©tico Boca Juniors",
-    abbreviation: "CABJ",
-    shortName: "Boca",
-    initials: "BOC",
-    crest: "assets/team-boca.svg",
-    colors: ["#0033a0", "#f7c600"],
-    shirtColors: ["#0033a0", "#f7c600"],
-    city: "Buenos Aires",
-    captain: "NicolÃ¡s Vega",
-    delegate: "Rodrigo MÃ©ndez",
-    contact: "351333333",
-    topScorer: "NicolÃ¡s Vega",
-    mostSanctioned: "Lautaro Silva",
-    players: [
-      { number: 1, name: "NicolÃ¡s Vega", age: 29, goals: 5, yellow: 1, red: 0 },
-      { number: 3, name: "Lautaro Silva", age: 27, goals: 0, yellow: 4, red: 0 },
-      { number: 6, name: "Diego Romero", age: 31, goals: 1, yellow: 2, red: 0 },
-      { number: 9, name: "MatÃ­as Ocampo", age: 25, goals: 3, yellow: 1, red: 0 },
-      { number: 10, name: "Enzo FarÃ­as", age: 24, goals: 2, yellow: 0, red: 0 },
-      { number: 15, name: "Bruno Acosta", age: 28, goals: 0, yellow: 1, red: 1 },
-      { number: 18, name: "Santiago Leiva", age: 23, goals: 1, yellow: 0, red: 0 },
-      { number: 21, name: "Kevin Torres", age: 26, goals: 0, yellow: 2, red: 0 },
-      { number: 2, name: "AgustÃ­n Ledesma", age: 23, goals: 0, yellow: 1, red: 0 },
-      { number: 5, name: "Gabriel Moyano", age: 30, goals: 0, yellow: 2, red: 0 },
-      { number: 8, name: "Lucas Ceballos", age: 27, goals: 1, yellow: 1, red: 0 },
-      { number: 11, name: "JuliÃ¡n Molina", age: 24, goals: 2, yellow: 0, red: 0 },
-      { number: 13, name: "Fernando Salas", age: 29, goals: 0, yellow: 3, red: 0 },
-      { number: 16, name: "MatÃ­as Barrera", age: 25, goals: 1, yellow: 0, red: 0 },
-      { number: 22, name: "TomÃ¡s Herrera", age: 22, goals: 0, yellow: 1, red: 0 }
-    ],
-    founded: "Equipo invitado",
-    description: "Conjunto ordenado, de bloque compacto y buen rendimiento en partidos cerrados."
-  },
-  {
-    id: "river",
-    name: "River Plate",
-    legalName: "Club AtlÃ©tico River Plate",
-    abbreviation: "CARP",
-    shortName: "River",
-    initials: "RIV",
-    crest: "assets/team-river.svg",
-    colors: ["#ffffff", "#d71920"],
-    shirtColors: ["#ffffff", "#d71920", "#111827"],
-    city: "Buenos Aires",
-    captain: "Santiago Arias",
-    delegate: "Gabriel NÃºÃ±ez",
-    contact: "351222222",
-    topScorer: "Santiago Arias",
-    mostSanctioned: "Ramiro Luna",
-    players: [
-      { number: 1, name: "Santiago Arias", age: 27, goals: 4, yellow: 1, red: 0 },
-      { number: 4, name: "Ramiro Luna", age: 30, goals: 0, yellow: 4, red: 1 },
-      { number: 6, name: "Federico Vera", age: 25, goals: 1, yellow: 2, red: 0 },
-      { number: 8, name: "Ignacio Campos", age: 26, goals: 2, yellow: 1, red: 0 },
-      { number: 10, name: "Ezequiel RÃ­os", age: 24, goals: 3, yellow: 0, red: 0 },
-      { number: 14, name: "Gonzalo Medina", age: 28, goals: 0, yellow: 2, red: 0 },
-      { number: 19, name: "Manuel Cabrera", age: 22, goals: 1, yellow: 1, red: 0 },
-      { number: 23, name: "AndrÃ©s Godoy", age: 29, goals: 0, yellow: 0, red: 0 },
-      { number: 2, name: "Pablo GimÃ©nez", age: 26, goals: 0, yellow: 1, red: 0 },
-      { number: 3, name: "Leandro Morales", age: 28, goals: 0, yellow: 2, red: 0 },
-      { number: 7, name: "Franco Mercado", age: 24, goals: 2, yellow: 0, red: 0 },
-      { number: 9, name: "NicolÃ¡s SuÃ¡rez", age: 27, goals: 3, yellow: 1, red: 0 },
-      { number: 15, name: "Juan Maldonado", age: 30, goals: 0, yellow: 3, red: 0 },
-      { number: 18, name: "Alan Pereyra", age: 23, goals: 1, yellow: 0, red: 0 },
-      { number: 21, name: "Marcos Toledo", age: 25, goals: 0, yellow: 1, red: 0 }
-    ],
-    founded: "Equipo invitado",
-    description: "Equipo de posesiÃ³n, salida limpia y mucha llegada desde segunda lÃ­nea."
-  },
-  {
-    id: "real",
-    name: "Real Madrid",
-    legalName: "Real Madrid Club de FÃºtbol",
-    abbreviation: "RMA",
-    shortName: "Real Madrid",
-    initials: "RMA",
-    crest: "assets/team-real.svg",
-    colors: ["#ffffff", "#d4af37"],
-    shirtColors: ["#ffffff", "#d4af37", "#4f46e5"],
-    city: "Madrid",
-    captain: "Federico Luna",
-    delegate: "Daniel Ortega",
-    contact: "351666666",
-    topScorer: "Federico Luna",
-    mostSanctioned: "Ãlvaro MartÃ­n",
-    players: [
-      { number: 1, name: "Federico Luna", age: 28, goals: 5, yellow: 1, red: 0 },
-      { number: 2, name: "Ãlvaro MartÃ­n", age: 30, goals: 0, yellow: 4, red: 0 },
-      { number: 5, name: "Mario BenÃ­tez", age: 31, goals: 1, yellow: 2, red: 0 },
-      { number: 7, name: "Rafael Gil", age: 25, goals: 4, yellow: 0, red: 0 },
-      { number: 10, name: "Hugo Blanco", age: 27, goals: 2, yellow: 1, red: 0 },
-      { number: 12, name: "Carlos MÃ©ndez", age: 24, goals: 0, yellow: 3, red: 1 },
-      { number: 16, name: "Sergio Vidal", age: 29, goals: 1, yellow: 1, red: 0 },
-      { number: 20, name: "Pablo Costa", age: 26, goals: 0, yellow: 0, red: 0 },
-      { number: 3, name: "JoaquÃ­n Serrano", age: 24, goals: 0, yellow: 1, red: 0 },
-      { number: 4, name: "Esteban Castro", age: 29, goals: 0, yellow: 2, red: 0 },
-      { number: 6, name: "MartÃ­n Salcedo", age: 27, goals: 1, yellow: 1, red: 0 },
-      { number: 9, name: "Lucas FernÃ¡ndez", age: 25, goals: 3, yellow: 0, red: 0 },
-      { number: 13, name: "Diego Ibarra", age: 31, goals: 0, yellow: 3, red: 0 },
-      { number: 17, name: "Nahuel PÃ©rez", age: 23, goals: 1, yellow: 0, red: 0 },
-      { number: 22, name: "Rodrigo Ãlvarez", age: 28, goals: 0, yellow: 1, red: 0 }
-    ],
-    founded: "Equipo invitado",
-    description: "Plantel equilibrado, con buen manejo de tiempos y pegada desde media distancia."
-  },
-  {
-    id: "barcelona",
-    name: "Barcelona",
-    legalName: "FÃºtbol Club Barcelona",
-    abbreviation: "FCB",
-    shortName: "Barcelona",
-    initials: "BAR",
-    crest: "assets/team-barcelona.svg",
-    colors: ["#a50044", "#004d98"],
-    shirtColors: ["#a50044", "#004d98", "#fbbf24"],
-    city: "Barcelona",
-    captain: "JuliÃ¡n Paredes",
-    delegate: "SebastiÃ¡n Rivas",
-    contact: "351777777",
-    topScorer: "JuliÃ¡n Paredes",
-    mostSanctioned: "Maxi Salas",
-    players: [
-      { number: 1, name: "JuliÃ¡n Paredes", age: 26, goals: 6, yellow: 0, red: 0 },
-      { number: 3, name: "Maxi Salas", age: 28, goals: 1, yellow: 4, red: 1 },
-      { number: 5, name: "Pedro Font", age: 30, goals: 0, yellow: 2, red: 0 },
-      { number: 8, name: "Axel Ramos", age: 24, goals: 3, yellow: 1, red: 0 },
-      { number: 10, name: "Cristian DÃ­az", age: 27, goals: 5, yellow: 0, red: 0 },
-      { number: 11, name: "Leo SuÃ¡rez", age: 25, goals: 2, yellow: 1, red: 0 },
-      { number: 17, name: "Marcos PeÃ±a", age: 23, goals: 1, yellow: 0, red: 0 },
-      { number: 22, name: "AdriÃ¡n Vera", age: 29, goals: 0, yellow: 2, red: 0 },
-      { number: 2, name: "Federico Sosa", age: 26, goals: 0, yellow: 1, red: 0 },
-      { number: 4, name: "Bruno Medina", age: 30, goals: 0, yellow: 2, red: 0 },
-      { number: 6, name: "Lautaro GimÃ©nez", age: 25, goals: 1, yellow: 1, red: 0 },
-      { number: 9, name: "Mateo AlmirÃ³n", age: 24, goals: 3, yellow: 0, red: 0 },
-      { number: 13, name: "GermÃ¡n PÃ¡ez", age: 31, goals: 0, yellow: 3, red: 0 },
-      { number: 16, name: "TomÃ¡s Quiroga", age: 23, goals: 1, yellow: 0, red: 0 },
-      { number: 19, name: "IvÃ¡n Cabrera", age: 28, goals: 0, yellow: 1, red: 0 }
-    ],
-    founded: "Equipo invitado",
-    description: "Equipo asociado, de pases cortos y ataques elaborados por dentro."
-  },
-  {
-    id: "manchester",
-    name: "Manchester United",
-    legalName: "Manchester United Football Club",
-    abbreviation: "MUFC",
-    shortName: "Man. United",
-    initials: "MUN",
-    crest: "assets/team-manchester.svg",
-    colors: ["#da291c", "#111827"],
-    shirtColors: ["#da291c", "#111827", "#ffffff"],
-    city: "Manchester",
-    captain: "Bruno Silva",
-    delegate: "Mauro GutiÃ©rrez",
-    contact: "351888888",
-    topScorer: "Bruno Silva",
-    mostSanctioned: "TomÃ¡s Brown",
-    players: [
-      { number: 1, name: "Bruno Silva", age: 29, goals: 4, yellow: 1, red: 0 },
-      { number: 4, name: "TomÃ¡s Brown", age: 31, goals: 0, yellow: 5, red: 1 },
-      { number: 6, name: "Alan Smith", age: 27, goals: 1, yellow: 2, red: 0 },
-      { number: 8, name: "Franco GÃ³mez", age: 25, goals: 2, yellow: 1, red: 0 },
-      { number: 9, name: "Miguel Torres", age: 24, goals: 3, yellow: 0, red: 0 },
-      { number: 12, name: "Javier Ruiz", age: 28, goals: 0, yellow: 3, red: 0 },
-      { number: 18, name: "Nico Herrera", age: 23, goals: 1, yellow: 1, red: 0 },
-      { number: 21, name: "DamiÃ¡n LÃ³pez", age: 30, goals: 0, yellow: 0, red: 0 },
-      { number: 2, name: "Cristian Romero", age: 27, goals: 0, yellow: 1, red: 0 },
-      { number: 5, name: "Pablo NÃºÃ±ez", age: 29, goals: 0, yellow: 2, red: 0 },
-      { number: 7, name: "Emiliano Torres", age: 24, goals: 2, yellow: 0, red: 0 },
-      { number: 10, name: "JoaquÃ­n LÃ³pez", age: 25, goals: 3, yellow: 1, red: 0 },
-      { number: 14, name: "MatÃ­as Robles", age: 31, goals: 0, yellow: 3, red: 0 },
-      { number: 17, name: "AgustÃ­n Arias", age: 23, goals: 1, yellow: 0, red: 0 },
-      { number: 22, name: "Santiago Molina", age: 28, goals: 0, yellow: 1, red: 0 }
-    ],
-    founded: "Equipo invitado",
-    description: "Equipo fÃ­sico, vertical y peligroso cuando encuentra espacios para correr."
-  },
-  {
-    id: "inter",
-    name: "Inter de MilÃ¡n",
-    legalName: "Football Club Internazionale Milano",
-    abbreviation: "INT",
-    shortName: "Inter",
-    initials: "INT",
-    crest: "assets/team-inter.svg",
-    colors: ["#0057b8", "#111827"],
-    shirtColors: ["#0057b8", "#111827", "#ffffff"],
-    city: "MilÃ¡n",
-    captain: "ValentÃ­n Moretti",
-    delegate: "Federico Conti",
-    contact: "351999101",
-    topScorer: "ValentÃ­n Moretti",
-    mostSanctioned: "Bruno Herrera Inter",
-    players: createDemoPlayers("Inter", 3),
-    founded: "Equipo invitado",
-    description: "Plantel compacto, con buena presiÃ³n tras pÃ©rdida y ataques rÃ¡pidos por los costados."
-  },
-  {
-    id: "roma",
-    name: "Roma",
-    legalName: "Associazione Sportiva Roma",
-    abbreviation: "ASR",
-    shortName: "Roma",
-    initials: "ROM",
-    crest: "assets/team-roma.svg",
-    colors: ["#8e1f2f", "#f0bc42"],
-    shirtColors: ["#8e1f2f", "#f0bc42", "#ffffff"],
-    city: "Roma",
-    captain: "MatÃ­as Mancini",
-    delegate: "Diego Romano",
-    contact: "351999102",
-    topScorer: "MatÃ­as Mancini",
-    mostSanctioned: "Ramiro Costa Roma",
-    players: createDemoPlayers("Roma", 2),
-    founded: "Equipo invitado",
-    description: "Equipo de mucha intensidad, fuerte en duelos individuales y con buen juego directo."
-  },
-  {
-    id: "coritiba",
-    name: "Coritiba",
-    legalName: "Coritiba Foot Ball Club",
-    abbreviation: "CFC",
-    shortName: "Coritiba",
-    initials: "CFC",
-    crest: "assets/team-coritiba.svg",
-    colors: ["#006b3f", "#ffffff"],
-    shirtColors: ["#006b3f", "#ffffff"],
-    city: "Curitiba",
-    captain: "JoÃ£o Ferreira",
-    delegate: "Rafael Silva",
-    contact: "351999103",
-    topScorer: "JoÃ£o Ferreira",
-    mostSanctioned: "Mateo Vargas Coritiba",
-    players: createDemoPlayers("Coritiba", 1),
-    founded: "Equipo invitado",
-    description: "Conjunto ordenado, solidario en defensa y peligroso cuando acelera en transiciÃ³n."
-  }
-];
-
-playerObservations[getPlayerObservationKey("v-3", "real", teams.find((team) => team.id === "real").players[0])] = "InsultÃ³ al arbitro, agravante 2";
-
-const standings = [
-  { teamId: "belgrano", pts: 12, pj: 4, g: 4, e: 0, p: 0, dg: 9 },
-  { teamId: "barcelona", pts: 10, pj: 4, g: 3, e: 1, p: 0, dg: 8 },
-  { teamId: "real", pts: 9, pj: 4, g: 3, e: 0, p: 1, dg: 6 },
-  { teamId: "river", pts: 7, pj: 4, g: 2, e: 1, p: 1, dg: 3 },
-  { teamId: "boca", pts: 6, pj: 4, g: 2, e: 0, p: 2, dg: 1 },
-  { teamId: "inter", pts: 6, pj: 4, g: 1, e: 3, p: 0, dg: 2 },
-  { teamId: "roma", pts: 4, pj: 4, g: 1, e: 1, p: 2, dg: -1 },
-  { teamId: "instituto", pts: 3, pj: 4, g: 1, e: 0, p: 3, dg: -4 },
-  { teamId: "coritiba", pts: 2, pj: 4, g: 0, e: 2, p: 2, dg: -5 },
-  { teamId: "manchester", pts: 1, pj: 4, g: 0, e: 1, p: 3, dg: -8 }
-];
-
-const fixtures = {
-  1: [
-    { status: "Final", home: "belgrano", away: "instituto", homeGoals: 2, awayGoals: 1 },
-    { status: "Final", home: "boca", away: "river", homeGoals: 1, awayGoals: 1 },
-    { status: "Final", home: "real", away: "barcelona", homeGoals: 2, awayGoals: 3 },
-    { status: "Final", home: "inter", away: "roma", homeGoals: 2, awayGoals: 2 },
-    { status: "Final", home: "coritiba", away: "manchester", homeGoals: 1, awayGoals: 1 }
-  ],
-  2: [
-    { status: "Final", home: "barcelona", away: "manchester", homeGoals: 4, awayGoals: 0 },
-    { status: "Final", home: "river", away: "belgrano", homeGoals: 2, awayGoals: 0 },
-    { status: "Final", home: "instituto", away: "boca", homeGoals: 0, awayGoals: 1 },
-    { status: "Final", home: "roma", away: "coritiba", homeGoals: 1, awayGoals: 0 },
-    { status: "Final", home: "inter", away: "real", homeGoals: 1, awayGoals: 1 }
-  ],
-  3: [
-    { status: "A disputar", home: "belgrano", away: "boca", homeGoals: null, awayGoals: null },
-    { status: "A disputar", home: "instituto", away: "real", homeGoals: null, awayGoals: null },
-    { status: "A disputar", home: "manchester", away: "river", homeGoals: null, awayGoals: null },
-    { status: "A disputar", home: "roma", away: "barcelona", homeGoals: null, awayGoals: null },
-    { status: "A disputar", home: "coritiba", away: "inter", homeGoals: null, awayGoals: null }
-  ],
-  4: [
-    { status: "A disputar", home: "barcelona", away: "belgrano", homeGoals: null, awayGoals: null },
-    { status: "A disputar", home: "boca", away: "real", homeGoals: null, awayGoals: null },
-    { status: "A disputar", home: "river", away: "instituto", homeGoals: null, awayGoals: null },
-    { status: "A disputar", home: "inter", away: "manchester", homeGoals: null, awayGoals: null },
-    { status: "A disputar", home: "coritiba", away: "roma", homeGoals: null, awayGoals: null }
-  ]
-};
-
-const observerMatches = [
-  { id: "v-1", date: "08/06/2026", home: "belgrano", away: "instituto", homeGoals: 2, awayGoals: 1 },
-  { id: "v-2", date: "08/06/2026", home: "boca", away: "river", homeGoals: 1, awayGoals: 1 },
-  { id: "v-3", date: "08/06/2026", fixtureDate: "Fecha 3", home: "real", away: "barcelona", homeGoals: null, awayGoals: null, reporter: "Carlos Gigli" },
-  { id: "v-4", date: "08/06/2026", home: "manchester", away: "belgrano", homeGoals: null, awayGoals: null },
-  { id: "v-5", date: "09/06/2026", home: "inter", away: "roma", homeGoals: null, awayGoals: null },
-  { id: "v-6", date: "10/06/2026", home: "coritiba", away: "barcelona", homeGoals: null, awayGoals: null }
-];
-
-const observers = [
-  { id: 1, name: "Santiago Ferreyra", contact: "351555101", username: "veedor", password: "123456" },
-  { id: 2, name: "Marcos Bustos", contact: "351555102", username: "veedor.bustos", password: "123456" },
-  { id: 3, name: "Camila RoldÃ¡n", contact: "351555103", username: "veedor.roldan", password: "123456" },
-  { id: 4, name: "NicolÃ¡s Peralta", contact: "351555104", username: "veedor.peralta", password: "123456" }
-];
+let teams = [];
+let standings = [];
+let fixtures = {};
+let observerMatches = [];
+let observers = [];
 
 function getTeam(teamId) {
   return teams.find((team) => team.id === teamId);
@@ -1035,13 +769,13 @@ function setObservationModalHeading(kicker, title) {
 }
 
 function renderObservationEditorBody(text = "") {
-  setObservationModalHeading("Veedor", "ObservaciÃ³n disciplinaria");
+  setObservationModalHeading("Veedor", "Observación disciplinaria");
   observationModalBody.innerHTML = `
-    <label for="observationText" class="form-label">Detalle de la observaciÃ³n</label>
-    <textarea class="form-control observation-textarea" id="observationText" rows="5" placeholder="EscribÃ­ la observaciÃ³n del jugador...">${escapeHtml(text)}</textarea>
+    <label for="observationText" class="form-label">Detalle de la observación</label>
+    <textarea class="form-control observation-textarea" id="observationText" rows="5" placeholder="Escribí la observación del jugador...">${escapeHtml(text)}</textarea>
     <button class="btn btn-login-submit w-100 mt-3" type="button" id="saveObservation">
       <i class="bi bi-check2-circle"></i>
-      Guardar observaciÃ³n
+      Guardar observación
     </button>
   `;
 }
@@ -1067,8 +801,8 @@ function renderObservationReviewBody(observationKey, options = {}) {
   const { player, observation } = getObservationContext(observationKey);
 
   if (!player || !observation) {
-    setObservationModalHeading("Administrador", "ObservaciÃ³n disciplinaria");
-    observationModalBody.innerHTML = `<div class="admin-empty-row">No se encontrÃ³ la observaciÃ³n seleccionada.</div>`;
+    setObservationModalHeading("Administrador", "Observación disciplinaria");
+    observationModalBody.innerHTML = `<div class="admin-empty-row">No se encontró la observación seleccionada.</div>`;
     return;
   }
 
@@ -1076,7 +810,7 @@ function renderObservationReviewBody(observationKey, options = {}) {
   const selectedDivision = contentShell.querySelector("[data-admin-player-division]")?.value || getAdminMetrics().categories[0]?.divisions[0]?.name || "-";
   const resolution = observation.resolution || {};
 
-  setObservationModalHeading("Administrador", readOnlyResolution ? "Historial disciplinario" : "ResoluciÃ³n de observaciÃ³n");
+  setObservationModalHeading("Administrador", readOnlyResolution ? "Historial disciplinario" : "Resolución de observación");
   observationModalBody.innerHTML = `
     <div class="observation-review" data-observation-review="${escapeHtml(observationKey)}">
       <div class="observation-review-meta">
@@ -1086,8 +820,8 @@ function renderObservationReviewBody(observationKey, options = {}) {
       </div>
 
       <div class="observation-review-pair">
-        <div><span>CategorÃ­a</span><strong>${escapeHtml(selectedCategory)}</strong></div>
-        <div><span>DivisiÃ³n</span><strong>${escapeHtml(selectedDivision)}</strong></div>
+        <div><span>Categoría</span><strong>${escapeHtml(selectedCategory)}</strong></div>
+        <div><span>División</span><strong>${escapeHtml(selectedDivision)}</strong></div>
       </div>
 
       <div class="observation-review-player">
@@ -1096,13 +830,13 @@ function renderObservationReviewBody(observationKey, options = {}) {
         <small>${escapeHtml(player.team.shortName)}</small>
       </div>
 
-      <label class="form-label" for="observationReadonlyText">Detalle de la observaciÃ³n</label>
+      <label class="form-label" for="observationReadonlyText">Detalle de la observación</label>
       <textarea class="form-control observation-textarea observation-readonly-viewer" id="observationReadonlyText" rows="1" readonly data-auto-resize-textarea>${escapeHtml(observation.text)}</textarea>
 
       ${readOnlyResolution ? `
         <label class="admin-filter-field observation-resolution-readonly">
-          <span>Detalle de la resoluciÃ³n</span>
-          <textarea class="form-control observation-auto-textarea" rows="1" readonly data-auto-resize-textarea>${escapeHtml(resolution.detail || "Sin resoluciÃ³n cargada")}</textarea>
+          <span>Detalle de la resolución</span>
+          <textarea class="form-control observation-auto-textarea" rows="1" readonly data-auto-resize-textarea>${escapeHtml(resolution.detail || "Sin resolución cargada")}</textarea>
         </label>
       ` : `
         <div class="observation-resolution-grid">
@@ -1111,7 +845,7 @@ function renderObservationReviewBody(observationKey, options = {}) {
             <textarea class="form-control observation-auto-textarea" rows="1" data-resolution-detail data-auto-resize-textarea>${escapeHtml(resolution.detail || "")}</textarea>
           </label>
           <label class="admin-filter-field">
-            <span>Partidos de suspensiÃ³n</span>
+            <span>Partidos de suspensión</span>
             <input class="form-control" type="number" min="0" value="${Number(resolution.suspensionMatches || 0)}" data-resolution-suspension>
           </label>
           <label class="admin-filter-field">
@@ -1128,7 +862,7 @@ function renderObservationReviewBody(observationKey, options = {}) {
       ${readOnlyResolution ? "" : `
         <button class="btn btn-login-submit w-100 mt-3" type="button" data-save-observation-resolution>
           <i class="bi bi-check2-circle"></i>
-          Guardar resoluciÃ³n
+          Guardar resolución
         </button>
       `}
     </div>
@@ -1163,7 +897,7 @@ function renderPlayerHistoryBody(playerKey) {
             <th>Fecha calendario</th>
             <th>Fecha fixture</th>
             <th>Ver</th>
-            <th>Editar resoluciÃ³n</th>
+            <th>Editar resolución</th>
           </tr>
         </thead>
         <tbody>
@@ -1183,7 +917,7 @@ function renderPlayerHistoryBody(playerKey) {
                     <i class="bi bi-pencil-fill"></i>
                     Editar
                   </button>
-                ` : `<span class="admin-observation-empty">Sin resoluciÃ³n</span>`}
+                ` : `<span class="admin-observation-empty">Sin resolución</span>`}
               </td>
             </tr>
           `).join("")}
@@ -1265,12 +999,204 @@ function renderTeamBadge(team, sizeClass = "") {
   return `<span class="team-badge ${sizeClass}" style="${getBadgeStyle(team)}">${team.initials}</span>`;
 }
 
+function getInitialsFromName(name = "") {
+  return String(name)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "EQ";
+}
+
+function getShortTeamName(name = "") {
+  return String(name).replace(/^Club\s+/i, "").trim() || "Equipo";
+}
+
+function calculateAgeFromDate(dateValue) {
+  if (!dateValue) return "-";
+
+  const birthDate = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(birthDate.getTime())) return "-";
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age -= 1;
+  }
+
+  return age;
+}
+
+function normalizeSupabasePlayer(player = {}) {
+  const fullName = `${player.nombre || ""} ${player.apellido || ""}`.trim() || "Jugador";
+
+  return {
+    id: player.id,
+    number: player.dorsal || "-",
+    name: fullName,
+    age: calculateAgeFromDate(player.fecha_nacimiento),
+    goals: 0,
+    yellow: 0,
+    red: 0,
+    birthDate: player.fecha_nacimiento || "",
+    dni: player.dni || ""
+  };
+}
+
+function normalizeSupabaseTeam(team = {}) {
+  const colors = [
+    team.color_principal || "#64748b",
+    team.color_secundario || "#111827"
+  ];
+
+  return {
+    id: team.id,
+    division_id: team.division_id || "",
+    name: team.nombre || "Equipo",
+    legalName: team.nombre || "Equipo",
+    abbreviation: getInitialsFromName(team.nombre),
+    shortName: getShortTeamName(team.nombre),
+    initials: getInitialsFromName(team.nombre),
+    crest: team.escudo_url || "",
+    colors,
+    shirtColors: [...colors, "#ffffff"],
+    city: "-",
+    captain: "-",
+    delegate: "-",
+    contact: "-",
+    topScorer: "-",
+    mostSanctioned: "-",
+    players: (team.jugadores || [])
+      .filter((player) => player.activo !== false)
+      .sort((a, b) => (a.dorsal || 999) - (b.dorsal || 999))
+      .map(normalizeSupabasePlayer),
+    founded: "Supabase",
+    description: "Datos cargados desde Supabase."
+  };
+}
+
+function getFixtureRound(match = {}, index = 0) {
+  const observation = String(match.observaciones || "");
+  const roundMatch = observation.match(/fecha\s*(\d+)/i);
+  if (roundMatch) return roundMatch[1];
+  if (match.fecha_hora) {
+    const date = new Date(match.fecha_hora);
+    if (!Number.isNaN(date.getTime())) return String(index + 1);
+  }
+  return String(index + 1);
+}
+
+function normalizeSupabaseMatch(match = {}, index = 0) {
+  return {
+    id: match.id,
+    status: match.estado === "finalizado" ? "Final" : "A disputar",
+    home: match.equipo_local_id,
+    away: match.equipo_visitante_id,
+    homeGoals: match.estado === "finalizado" ? match.goles_local : null,
+    awayGoals: match.estado === "finalizado" ? match.goles_visitante : null,
+    dateNumber: getFixtureRound(match, index),
+    fechaHora: match.fecha_hora || ""
+  };
+}
+
+function calculateStandingsFromMatches(teamList = [], groupedFixtures = {}) {
+  const table = new Map(teamList.map((team) => [team.id, {
+    teamId: team.id,
+    pts: 0,
+    pj: 0,
+    g: 0,
+    e: 0,
+    p: 0,
+    gf: 0,
+    gc: 0,
+    dg: 0
+  }]));
+
+  Object.values(groupedFixtures).flat().forEach((match) => {
+    if (match.homeGoals === null || match.awayGoals === null) return;
+
+    const home = table.get(match.home);
+    const away = table.get(match.away);
+    if (!home || !away) return;
+
+    home.pj += 1;
+    away.pj += 1;
+    home.gf += match.homeGoals;
+    home.gc += match.awayGoals;
+    away.gf += match.awayGoals;
+    away.gc += match.homeGoals;
+
+    if (match.homeGoals === match.awayGoals) {
+      home.e += 1;
+      away.e += 1;
+      home.pts += 1;
+      away.pts += 1;
+    } else if (match.homeGoals > match.awayGoals) {
+      home.g += 1;
+      away.p += 1;
+      home.pts += 3;
+    } else {
+      away.g += 1;
+      home.p += 1;
+      away.pts += 3;
+    }
+  });
+
+  return Array.from(table.values())
+    .map((row) => ({ ...row, dg: row.gf - row.gc }))
+    .sort((a, b) =>
+      b.pts - a.pts ||
+      b.dg - a.dg ||
+      b.gf - a.gf ||
+      getTeam(a.teamId)?.name.localeCompare(getTeam(b.teamId)?.name || "", "es")
+    );
+}
+
+async function loadDivisionDataFromSupabase(divisionId) {
+  if (!divisionId || typeof supabaseClient === "undefined") {
+    teams = [];
+    standings = [];
+    fixtures = {};
+    return;
+  }
+
+  const [{ data: equipos, error: equiposError }, { data: partidos, error: partidosError }] = await Promise.all([
+    supabaseClient
+      .from("equipos")
+      .select("id,nombre,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .eq("division_id", divisionId)
+      .eq("activo", true)
+      .order("nombre", { ascending: true }),
+    supabaseClient
+      .from("partidos")
+      .select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones")
+      .eq("division_id", divisionId)
+      .order("fecha_hora", { ascending: true })
+  ]);
+
+  if (equiposError) throw equiposError;
+  if (partidosError) throw partidosError;
+
+  teams = (equipos || []).map(normalizeSupabaseTeam);
+  fixtures = (partidos || []).reduce((grouped, match, index) => {
+    const normalized = normalizeSupabaseMatch(match, index);
+    const round = normalized.dateNumber;
+    if (!grouped[round]) grouped[round] = [];
+    grouped[round].push(normalized);
+    return grouped;
+  }, {});
+  standings = calculateStandingsFromMatches(teams, fixtures);
+}
+
 function truncateTeamName(name) {
   return name.length > 12 ? `${name.slice(0, 12)}...` : name;
 }
 
 function getTeamCarouselClass(index, activeIndex) {
   const total = teams.length;
+  if (!total) return "hidden";
   const offset = ((index - activeIndex + total + Math.floor(total / 2)) % total) - Math.floor(total / 2);
   const previousIndex = (activeIndex - 1 + total) % total;
   const nextIndex = (activeIndex + 1) % total;
@@ -1287,6 +1213,11 @@ function getTeamCarouselClass(index, activeIndex) {
 
 function renderTeamCarousel() {
   teamCarousel.dataset.teamCarouselActive = String(teamCarouselActiveIndex);
+  if (!teams.length) {
+    teamCarousel.innerHTML = `<div class="admin-empty-row">Sin equipos cargados en Supabase para esta división.</div>`;
+    return;
+  }
+
   teamCarousel.innerHTML = teams.map((team, index) => `
     <button class="team-card ${getTeamCarouselClass(index, teamCarouselActiveIndex)} ${team.id === selectedTeamId ? "selected" : ""}" type="button" data-team-id="${team.id}" data-team-carousel-index="${index}" aria-hidden="${getTeamCarouselClass(index, teamCarouselActiveIndex) === "hidden" ? "true" : "false"}">
       ${renderTeamBadge(team)}
@@ -1296,12 +1227,23 @@ function renderTeamCarousel() {
 }
 
 function moveTeamCarousel(direction) {
+  if (!teams.length) return;
   teamCarouselActiveIndex = (teamCarouselActiveIndex + direction + teams.length) % teams.length;
   renderTeamCarousel();
 }
 
 function getTeamStanding(teamId) {
-  return standings.find((row) => row.teamId === teamId);
+  return standings.find((row) => row.teamId === teamId) || {
+    teamId,
+    pts: 0,
+    pj: 0,
+    g: 0,
+    e: 0,
+    p: 0,
+    gf: 0,
+    gc: 0,
+    dg: 0
+  };
 }
 
 function renderShirt(team) {
@@ -1377,7 +1319,12 @@ function getMatchResultClass(match, teamId) {
 }
 
 function renderTeamMatches(teamId) {
-  return getTeamMatches(teamId).map((match) => {
+  const matches = getTeamMatches(teamId);
+  if (!matches.length) {
+    return `<tr><td colspan="3">Sin partidos cargados</td></tr>`;
+  }
+
+  return matches.map((match) => {
     const isHome = match.home === teamId;
     const rival = getTeam(isHome ? match.away : match.home);
     const hasResult = match.homeGoals !== null && match.awayGoals !== null;
@@ -1411,9 +1358,18 @@ function formatDateInputToDisplay(value) {
 
 function renderTeamDetail() {
   const team = getTeam(selectedTeamId);
+  if (!team) {
+    teamDetailView.innerHTML = `
+      <section class="admin-empty-row">
+        No se encontró el equipo seleccionado en Supabase.
+      </section>
+    `;
+    return;
+  }
+
   const standing = getTeamStanding(selectedTeamId);
-  const goalsAgainst = Math.max(0, standing.g * 2 + standing.e - standing.dg);
-  const goalsFor = goalsAgainst + standing.dg;
+  const goalsAgainst = standing.gc || 0;
+  const goalsFor = standing.gf || 0;
 
   teamDetailView.innerHTML = `
     <button class="back-to-division" type="button" data-back-to-division>
@@ -1423,7 +1379,7 @@ function renderTeamDetail() {
     <div class="team-detail-header">
       ${renderTeamBadge(team)}
       <div>
-        <p class="section-kicker mb-1">InformaciÃ³n del equipo</p>
+        <p class="section-kicker mb-1">Información del equipo</p>
         <h2>${team.legalName}</h2>
         <p>${team.description}</p>
       </div>
@@ -1505,7 +1461,7 @@ function renderTeamDetail() {
       <section class="division-table-panel">
         <div class="fixture-toolbar">
           <div class="division-section-heading">
-            <p class="section-kicker mb-1">EstadÃ­sticas</p>
+            <p class="section-kicker mb-1">Estadísticas</p>
             <h2>Detalle</h2>
           </div>
           <label class="fixture-select-label" for="teamStatSelect">
@@ -1543,14 +1499,20 @@ function updateTeamStats(statType) {
 }
 
 function renderStandings() {
+  if (!standings.length) {
+    standingsBody.innerHTML = `<tr><td colspan="8">Sin equipos cargados en Supabase para esta división.</td></tr>`;
+    return;
+  }
+
   standingsBody.innerHTML = standings.map((row, index) => {
     const team = getTeam(row.teamId);
+    if (!team) return "";
 
     return `
       <tr class="${index === 0 ? "standing-leader" : ""} ${index === standings.length - 1 ? "standing-relegation" : ""}">
         <td class="standings-rank">${index + 1}</td>
         <td>
-          <a href="#" class="team-table-link" data-team-id="${team.id}" title="${team.name}" aria-label="Ver informaciÃ³n de ${team.name}">
+          <a href="#" class="team-table-link" data-team-id="${team.id}" title="${team.name}" aria-label="Ver información de ${team.name}">
             ${renderTeamBadge(team, "small")}
             ${truncateTeamName(team.name)}
           </a>
@@ -1568,10 +1530,15 @@ function renderStandings() {
 
 function renderFixture() {
   const matches = fixtures[fixtureDateSelect.value] || [];
+  if (!matches.length) {
+    fixtureBody.innerHTML = `<tr><td colspan="4">Sin partidos cargados en Supabase para esta fecha.</td></tr>`;
+    return;
+  }
 
   fixtureBody.innerHTML = matches.map((match) => {
     const home = getTeam(match.home);
     const away = getTeam(match.away);
+    if (!home || !away) return "";
     const hasResult = match.homeGoals !== null && match.awayGoals !== null;
 
     return `
@@ -1599,6 +1566,8 @@ function showDivisionTables() {
 }
 
 function selectTeam(teamId) {
+  if (!getTeam(teamId)) return;
+
   selectedTeamId = teamId;
   const teamIndex = teams.findIndex((team) => team.id === teamId);
   if (teamIndex >= 0) {
@@ -1610,10 +1579,20 @@ function selectTeam(teamId) {
   teamDetailView.classList.remove("d-none");
 }
 
-function renderDivisionView(divisionName) {
+function renderFixtureDateOptions() {
+  const rounds = Object.keys(fixtures).sort((a, b) => Number(a) - Number(b));
+  fixtureDateSelect.innerHTML = rounds.length
+    ? rounds.map((round) => `<option value="${escapeHtml(round)}">Fecha ${escapeHtml(round)}</option>`).join("")
+    : `<option value="">Sin fechas</option>`;
+}
+
+async function renderDivisionView(divisionName, divisionId) {
   selectedTeamId = null;
   teamCarouselActiveIndex = 0;
+  activeDivisionId = divisionId || "";
   divisionTitle.textContent = divisionName;
+  await loadDivisionDataFromSupabase(activeDivisionId);
+  renderFixtureDateOptions();
   renderTeamCarousel();
   renderStandings();
   renderFixture();
@@ -1623,12 +1602,15 @@ function renderDivisionView(divisionName) {
 
 function setSelectedDivision(button) {
   const divisionName = button.dataset.division;
+  const divisionId = button.dataset.divisionId || "";
+  const categoryName = button.dataset.category || "";
+  const displayName = categoryName ? `${categoryName} / ${divisionName}` : divisionName;
 
   limpiarSeleccionDivisiones();
   button.classList.add("active");
   button.classList.add("is-clicking");
 
-  selectedDivision.textContent = `DivisiÃ³n seleccionada: ${divisionName}`;
+  selectedDivision.textContent = `División seleccionada: ${displayName}`;
   selectedDivision.classList.remove("d-none");
   homeContent.classList.add("d-none");
   publicInfoContent.classList.add("d-none");
@@ -1637,10 +1619,22 @@ function setSelectedDivision(button) {
   divisionView.classList.add("d-none");
 
   window.clearTimeout(divisionLoadTimer);
-  divisionLoadTimer = window.setTimeout(() => {
-    renderDivisionView(divisionName);
-    divisionLoader.classList.add("is-hidden");
-    divisionView.classList.remove("d-none");
+  divisionLoadTimer = window.setTimeout(async () => {
+    try {
+      await renderDivisionView(displayName, divisionId);
+    } catch (error) {
+      console.error("Error al cargar la división desde Supabase:", error);
+      teams = [];
+      standings = [];
+      fixtures = {};
+      renderFixtureDateOptions();
+      renderTeamCarousel();
+      renderStandings();
+      renderFixture();
+    } finally {
+      divisionLoader.classList.add("is-hidden");
+      divisionView.classList.remove("d-none");
+    }
   }, 800);
 
   window.setTimeout(() => {
@@ -1660,8 +1654,11 @@ function showHome() {
 }
 
 async function exitProfileToPublicHome() {
+  adminSettingsSession = null;
+  currentAppUser = null;
+
   supabaseClient?.auth?.signOut?.().catch((error) => {
-    console.error("Error al cerrar sesion de Supabase:", error);
+    console.error("Error al cerrar sesión de Supabase:", error);
   });
 
   const homeUrl = new URL("index.html", window.location.href);
@@ -1695,8 +1692,8 @@ function renderPhotosContent() {
       <div class="photos-heading">
         <div>
           <p class="section-kicker mb-2">Fotos</p>
-          <h2>GalerÃ­a del torneo</h2>
-          <p>AquÃ­ puedes visualizar todas las fotos del torneo, se encuentran organizadas por fecha.</p>
+          <h2>Galería del torneo</h2>
+          <p>Aquí puedes visualizar todas las fotos del torneo, se encuentran organizadas por fecha.</p>
         </div>
       </div>
       <iframe class="drive-photos-frame" src="${embedUrl}" title="Fotos del torneo Frame0 en Google Drive"></iframe>
@@ -1784,7 +1781,7 @@ function getActiveLoginRole() {
   return activeTab ? activeTab.dataset.role : "Delegado";
 }
 
-function showLoginError(message = "Usuario o contraseÃ±a incorrectos.") {
+function showLoginError(message = "Usuario o contraseña incorrectos.") {
   if (loginErrorMessage) {
     loginErrorMessage.textContent = message;
   }
@@ -1793,17 +1790,95 @@ function showLoginError(message = "Usuario o contraseÃ±a incorrectos.") {
   bootstrap.Modal.getOrCreateInstance(loginErrorModalElement).show();
 }
 
+function getConfirmationModalElement() {
+  let modal = document.querySelector("#frameConfirmModal");
+  if (modal) return modal;
+
+  modal = document.createElement("div");
+  modal.className = "modal fade";
+  modal.id = "frameConfirmModal";
+  modal.tabIndex = -1;
+  modal.setAttribute("aria-labelledby", "frameConfirmModalLabel");
+  modal.setAttribute("aria-hidden", "true");
+  modal.innerHTML = `
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content login-modal">
+        <div class="modal-header">
+          <div class="login-brand">
+            <img src="assets/frame0-logo.png" alt="Logo Frame0">
+            <div>
+              <p class="section-kicker mb-1">Confirmación</p>
+              <h2 class="modal-title fs-5" id="frameConfirmModalLabel">Confirmar acción</h2>
+            </div>
+          </div>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-3" data-confirm-message>¿Querés continuar?</p>
+          <div class="d-grid gap-2">
+            <button class="btn btn-login-submit" type="button" data-confirm-accept>
+              Confirmar
+            </button>
+            <button class="btn btn-outline-light admin-secondary-btn" type="button" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function requestConfirmation({ title = "Confirmar acción", message = "¿Querés continuar?", confirmLabel = "Confirmar" } = {}) {
+  return new Promise((resolve) => {
+    const modalElement = getConfirmationModalElement();
+    const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+    const titleElement = modalElement.querySelector("#frameConfirmModalLabel");
+    const messageElement = modalElement.querySelector("[data-confirm-message]");
+    const acceptButton = modalElement.querySelector("[data-confirm-accept]");
+    let resolved = false;
+
+    titleElement.textContent = title;
+    messageElement.textContent = message;
+    acceptButton.textContent = confirmLabel;
+
+    const cleanup = () => {
+      acceptButton.removeEventListener("click", acceptHandler);
+      modalElement.removeEventListener("hidden.bs.modal", hiddenHandler);
+    };
+    const finish = (value) => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      resolve(value);
+    };
+    const acceptHandler = () => {
+      finish(true);
+      modal.hide();
+    };
+    const hiddenHandler = () => finish(false);
+
+    acceptButton.addEventListener("click", acceptHandler);
+    modalElement.addEventListener("hidden.bs.modal", hiddenHandler);
+    modal.show();
+  });
+}
+
 async function loginUsuariosApp(usuarioIngresado, passwordIngresada) {
   const usuarioLimpio = usuarioIngresado.trim();
+  const usuarioLookup = usuarioLimpio.includes("@") ? usuarioLimpio.split("@")[0] : usuarioLimpio;
 
   const { data, error } = await supabaseClient
     .from("usuarios_app")
     .select("*")
-    .ilike("usuario", usuarioLimpio)
+    .ilike("usuario", usuarioLookup)
     .eq("activo", true)
     .maybeSingle();
 
   console.log("usuarioLimpio:", usuarioLimpio);
+  console.log("usuarioLookup:", usuarioLookup);
   console.log("data usuarios_app:", data);
   console.log("error usuarios_app:", error);
   console.log("Supabase URL:", typeof SUPABASE_URL !== "undefined" ? SUPABASE_URL : "SUPABASE_URL no disponible");
@@ -1814,16 +1889,43 @@ async function loginUsuariosApp(usuarioIngresado, passwordIngresada) {
   }
 
   if (!data) {
-    showLoginError(`Usuario "${usuarioLimpio}" no encontrado en usuarios_app.`);
+    showLoginError(`Usuario "${usuarioLookup}" no encontrado en usuarios_app.`);
     return null;
   }
 
-  if (data.password_hash !== passwordIngresada.trim()) {
+  if (data.password_hash && data.password_hash !== passwordIngresada.trim()) {
     showLoginError("Contraseña incorrecta.");
     return null;
   }
 
+  const authReady = await ensureSupabaseAuthSessionForProfile(data, passwordIngresada);
+  if (!data.password_hash && !authReady) {
+    showLoginError("No hay contraseña configurada para este usuario en usuarios_app y no se pudo validar con Supabase Auth.");
+    return null;
+  }
+
   return data;
+}
+
+async function ensureSupabaseAuthSessionForProfile(usuarioApp, passwordIngresada) {
+  if (!usuarioApp?.usuario || typeof supabaseClient === "undefined") return false;
+
+  const email = `${String(usuarioApp.usuario).trim().toLowerCase()}@frame0.local`;
+  const password = String(passwordIngresada || "").trim();
+  if (!password) return false;
+
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  if (!error) return true;
+
+  if (usuarioApp.rol === "delegado" || usuarioApp.rol === "veedor") {
+    const { error: signUpError } = await supabaseClient.auth.signUp({ email, password });
+    if (!signUpError) return true;
+    console.warn("No se pudo crear sesión Supabase Auth para RLS:", signUpError.message);
+    return false;
+  }
+
+  console.warn("No se pudo iniciar sesión Supabase Auth para RLS:", error.message);
+  return false;
 }
 function renderProfileLoader(roleName) {
   return `
@@ -1851,7 +1953,7 @@ function showContentLoader(sectionName, callback) {
       contentShell.innerHTML = `
         <section class="admin-error-panel">
           <i class="bi bi-exclamation-triangle-fill"></i>
-          <h2>No se pudo cargar la secciÃ³n</h2>
+          <h2>No se pudo cargar la sección</h2>
           <p>Revis&aacute; la conexi&oacute;n con Supabase e intent&aacute; nuevamente.</p>
         </section>
       `;
@@ -1872,42 +1974,96 @@ function showProfileLoader(roleName, callback) {
   `;
   contentShell.innerHTML = renderProfileLoader(roleName);
   document.body.classList.add("admin-view");
-  window.setTimeout(callback, 800);
+  window.setTimeout(async () => {
+    try {
+      await callback();
+    } catch (error) {
+      console.error(`Error al cargar perfil ${roleName}:`, error);
+      contentShell.innerHTML = `
+        <section class="admin-error-panel">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <h2>No se pudo cargar el perfil</h2>
+          <p>Revisá la conexión con Supabase e intentá nuevamente.</p>
+        </section>
+      `;
+    }
+  }, 800);
 }
 
 function getAdminMetrics() {
-  const categories = [
-    {
-      name: "Libre",
-      divisions: [
-        { name: "Primera DivisiÃ³n", teams: 14 },
-        { name: "Segunda DivisiÃ³n", teams: 12 }
-      ]
-    },
-    {
-      name: "Senior",
-      divisions: [
-        { name: "Senior A", teams: 10 },
-        { name: "Senior B", teams: 8 }
-      ]
-    },
-    {
-      name: "Femenino",
-      divisions: [
-        { name: "Fem A", teams: 8 },
-        { name: "Fem B", teams: 6 }
-      ]
-    }
-  ];
+  const sourceCatalog = adminMetricsState?.categories || tournamentCatalog;
+  const categories = sourceCatalog.map((category) => ({
+    name: category.name,
+    divisions: category.divisions.map((division) => ({
+      name: division.name,
+      id: division.id,
+      teams: Number(division.teams || 0),
+      players: Number(division.players || 0)
+    }))
+  }));
   const totalTeams = categories.flatMap((category) => category.divisions).reduce((sum, division) => sum + division.teams, 0);
-  const averagePlayers = 15;
+  const totalPlayers = categories.flatMap((category) => category.divisions).reduce((sum, division) => sum + division.players, 0);
+  const averagePlayers = totalTeams ? Math.round(totalPlayers / totalTeams) : 0;
 
   return {
     categories,
     totalTeams,
     averagePlayers,
-    totalPlayers: totalTeams * averagePlayers
+    totalPlayers
   };
+}
+
+function invalidateAdminMetrics() {
+  adminMetricsState = null;
+}
+
+async function loadAdminMetricsFromSupabase() {
+  if (typeof supabaseClient === "undefined") return getAdminMetrics();
+
+  if (!tournamentCatalog.length) {
+    await cargarMenuCategorias();
+  }
+
+  const [{ data: equipos, error: equiposError }, { data: jugadores, error: jugadoresError }] = await Promise.all([
+    supabaseClient
+      .from("equipos")
+      .select("id,division_id,activo")
+      .eq("activo", true),
+    supabaseClient
+      .from("jugadores")
+      .select("id,equipo_id,activo")
+      .eq("activo", true)
+  ]);
+
+  if (equiposError) throw equiposError;
+  if (jugadoresError) throw jugadoresError;
+
+  const teamCountsByDivision = new Map();
+  const teamDivisionById = new Map();
+  (equipos || []).forEach((team) => {
+    teamDivisionById.set(String(team.id), String(team.division_id));
+    teamCountsByDivision.set(String(team.division_id), (teamCountsByDivision.get(String(team.division_id)) || 0) + 1);
+  });
+
+  const playerCountsByDivision = new Map();
+  (jugadores || []).forEach((player) => {
+    const divisionId = teamDivisionById.get(String(player.equipo_id));
+    if (!divisionId) return;
+    playerCountsByDivision.set(divisionId, (playerCountsByDivision.get(divisionId) || 0) + 1);
+  });
+
+  adminMetricsState = {
+    categories: tournamentCatalog.map((category) => ({
+      ...category,
+      divisions: category.divisions.map((division) => ({
+        ...division,
+        teams: teamCountsByDivision.get(String(division.id)) || 0,
+        players: playerCountsByDivision.get(String(division.id)) || 0
+      }))
+    }))
+  };
+
+  return getAdminMetrics();
 }
 
 function getAdminDivisionMap() {
@@ -1918,28 +2074,26 @@ function getAdminDivisionMap() {
 }
 
 function populateNewTeamCategories() {
-  const divisionMap = getAdminDivisionMap();
-  const categoryOptions = Object.keys(divisionMap).map((category) => `
-    <option value="${category}">${category}</option>
+  const categoryOptions = tournamentCatalog.map((category) => `
+    <option value="${escapeHtml(category.name)}">${escapeHtml(category.name)}</option>
   `).join("");
 
-  newTeamCategory.innerHTML = `<option value="">Seleccionar categorÃ­a</option>${categoryOptions}`;
+  newTeamCategory.innerHTML = `<option value="">Seleccionar categoría</option>${categoryOptions}`;
 }
 
 function populateNewTeamDivisions(category) {
-  const divisions = getAdminDivisionMap()[category] || [];
+  const divisions = tournamentCatalog.find((item) => item.name === category)?.divisions || [];
   const divisionOptions = divisions.map((division) => `
-    <option value="${division}">${division}</option>
+    <option value="${division.id}">${escapeHtml(division.name)}</option>
   `).join("");
 
-  newTeamDivision.innerHTML = `<option value="">Seleccionar divisiÃ³n</option>${divisionOptions}`;
+  newTeamDivision.innerHTML = `<option value="">Seleccionar división</option>${divisionOptions}`;
   newTeamDivision.disabled = !category;
 }
 
 function validateNewTeamForm() {
   const isValid = Boolean(
     newTeamName.value.trim() &&
-    newTeamShortName.value.trim() &&
     newTeamCategory.value &&
     newTeamDivision.value
   );
@@ -1952,12 +2106,12 @@ function populateNewDelegateCategories() {
     <option value="${category.name}">${category.name}</option>
   `).join("");
 
-  newDelegateCategory.innerHTML = `<option value="">Todas las categorÃ­as</option>${categories}`;
+  newDelegateCategory.innerHTML = `<option value="">Todas las categorías</option>${categories}`;
 }
 
 function populateNewDelegateTeams(category = "") {
   const filteredTeams = teams
-    .filter((team) => !category || getTournamentCategories().some(() => true))
+    .filter(() => true)
     .sort((a, b) => a.shortName.localeCompare(b.shortName));
 
   newDelegateTeam.innerHTML = `
@@ -1985,14 +2139,16 @@ function updateDelegateDefaultsFromTeam() {
 }
 
 function validateNewDelegateForm() {
+  const editingId = newDelegateForm?.dataset.editingId || "";
   const isValidPhone = /^[0-9]+$/.test(newDelegateContact.value.trim());
+  const isPasswordValid = editingId ? true : Boolean(newDelegatePassword.value.trim());
   const isValid = Boolean(
     newDelegateLastName.value.trim() &&
     newDelegateFirstName.value.trim() &&
     isValidPhone &&
     newDelegateTeam.value &&
     newDelegateUsername.value.trim() &&
-    newDelegatePassword.value.trim()
+    isPasswordValid
   );
 
   createDelegateButton.disabled = !isValid;
@@ -2014,7 +2170,7 @@ function prepareNewObserverForm() {
   newObserverUsername.value = `veedor${getNextObserverId()}`;
   newObserverPassword.value = "123456";
   newObserverPassword.type = "password";
-  observerPasswordToggle.setAttribute("aria-label", "Mostrar contraseÃ±a");
+  observerPasswordToggle.setAttribute("aria-label", "Mostrar contraseña");
   observerPasswordToggle.innerHTML = `<i class="bi bi-eye-fill"></i>`;
   validateNewObserverForm();
 }
@@ -2033,7 +2189,7 @@ function validateNewObserverForm() {
   );
 
   newObserverUserFeedback.textContent = username && !isUniqueUsername
-    ? "Ese usuario ya existe. IngresÃ¡ uno diferente."
+    ? "Ese usuario ya existe. Ingresá uno diferente."
     : "";
   newObserverUserFeedback.classList.toggle("is-error", Boolean(username && !isUniqueUsername));
   createObserverButton.disabled = !isValid;
@@ -2209,45 +2365,7 @@ function shuffleItems(items) {
 }
 
 function getFixtureTeamNames(categoryName, divisionName, teamCount) {
-  const fallbackNames = [
-    "La Reserva",
-    "Los Pibes FC",
-    "Barrio Norte",
-    "La Academia",
-    "Deportivo Sur",
-    "UniÃ³n Amateur",
-    "Los Halcones",
-    "AtlÃ©tico Centro",
-    "La Banda",
-    "Sportivo Alberdi",
-    "Nueva CÃ³rdoba",
-    "Villa UniÃ³n",
-    "Los Titanes",
-    "Defensores del Parque",
-    "San MartÃ­n",
-    "El FortÃ­n",
-    "La Cantera",
-    "Estrella Roja",
-    "Deportivo Oeste",
-    "Los CÃ³ndores",
-    "FÃ©nix FC",
-    "La Gloria Amateur"
-  ];
-  const loadedNames = teams.map((team) => team.shortName);
-  const contextSuffix = `${categoryName} ${divisionName}`.replace(/\s+/g, " ").trim();
-  const allNames = [...loadedNames];
-
-  fallbackNames.forEach((name) => {
-    if (allNames.length < teamCount) {
-      allNames.push(`${name} ${contextSuffix}`);
-    }
-  });
-
-  while (allNames.length < teamCount) {
-    allNames.push(`Club ${allNames.length + 1} ${contextSuffix}`);
-  }
-
-  return allNames.slice(0, teamCount);
+  return teams.map((team) => team.shortName).slice(0, teamCount);
 }
 
 function buildRoundRobinRounds(teamNames, requestedDates) {
@@ -2291,6 +2409,8 @@ function generateFixturePlan(categoryName, divisionName) {
   const config = row.config;
   const teamsCount = row.teams;
   const fixtureTeamNames = getFixtureTeamNames(categoryName, divisionName, teamsCount);
+  if (fixtureTeamNames.length < 2) return null;
+
   const rounds = buildRoundRobinRounds(fixtureTeamNames, config.datesCount);
   const datesCount = rounds.length;
   config.datesCount = datesCount;
@@ -2346,7 +2466,7 @@ function renderFixtureDownloadDocument(fixture) {
       </head>
       <body>
         <h1>Fixture ${fixture.category} - ${fixture.division}</h1>
-        <p class="meta">${fixture.teamsCount} equipos Â· ${fixture.datesCount} fechas Â· Generado: ${fixture.generatedAt}</p>
+        <p class="meta">${fixture.teamsCount} equipos ? ${fixture.datesCount} fechas · Generado: ${fixture.generatedAt}</p>
         ${roundsHtml}
         ${cupsHtml}
         <script>window.print();</script>
@@ -2365,14 +2485,37 @@ function renderAdminSummaryList(items) {
 }
 
 function getTeamFromUsername(username) {
-  const normalizedUsername = username.trim().toLowerCase();
+  const normalizedUsername = normalizeSearchText(username);
 
   return teams.find((team) =>
-    team.id.toLowerCase() === normalizedUsername ||
-    team.shortName.toLowerCase() === normalizedUsername ||
-    team.name.toLowerCase().includes(normalizedUsername) ||
-    team.legalName.toLowerCase().includes(normalizedUsername)
+    normalizeSearchText(team.id) === normalizedUsername ||
+    normalizeSearchText(team.shortName) === normalizedUsername ||
+    normalizeSearchText(team.name).includes(normalizedUsername) ||
+    normalizeSearchText(team.legalName).includes(normalizedUsername)
   );
+}
+
+async function getDelegateTeamFromSupabase(usuarioApp) {
+  if (!usuarioApp?.usuario || typeof supabaseClient === "undefined") return null;
+
+  const normalizedUsername = normalizeSearchText(usuarioApp.usuario);
+  const { data, error } = await supabaseClient
+    .from("equipos")
+    .select("id,nombre,division_id,activo")
+    .eq("activo", true);
+
+  if (error) throw error;
+
+  const team = (data || []).find((item) =>
+    normalizeSearchText(item.nombre).includes(normalizedUsername)
+  );
+  const divisionId = team?.division_id;
+  const teamId = team?.id;
+  if (!divisionId || !teamId) return null;
+
+  await loadDivisionDataFromSupabase(divisionId);
+  activeDivisionId = divisionId;
+  return getTeam(teamId);
 }
 
 function getTeamStatusCounts(team) {
@@ -2425,7 +2568,7 @@ function renderDelegateHome(team) {
       </div>
     </div>
 
-    <section class="quick-stats admin-quick-stats" aria-label="MÃ©tricas del equipo">
+    <section class="quick-stats admin-quick-stats" aria-label="Métricas del equipo">
       <div class="quick-stat">
         <i class="bi bi-calendar-check-fill"></i>
         <div class="quick-stat-content">
@@ -2540,7 +2683,7 @@ function renderDelegateTeamView(team, isEditing = false) {
             <input class="form-control" type="text" value="${escapeHtml(team.shortName || "")}" data-team-edit-field="shortName" maxlength="24">
           </label>
           <label class="admin-filter-field delegate-team-description-field">
-            <span>DescripciÃ³n del equipo</span>
+            <span>Descripción del equipo</span>
             <textarea class="form-control" rows="4" data-team-edit-field="description">${escapeHtml(team.description || "")}</textarea>
           </label>
           <div class="delegate-color-editor">
@@ -2571,8 +2714,8 @@ function renderDelegatePlayers(team) {
   const canEditPlayers = isPlayerRegistrationOpen();
   const disabledAttribute = canEditPlayers ? "" : "disabled";
   const registrationNotice = canEditPlayers
-    ? `<div class="delegate-edit-window is-open"><i class="bi bi-unlock-fill"></i> EdiciÃ³n habilitada hasta ${tournamentSettings.playerRegistrationTo}</div>`
-    : `<div class="delegate-edit-window is-closed"><i class="bi bi-lock-fill"></i> La ediciÃ³n de jugadores estÃ¡ cerrada. PerÃ­odo: ${tournamentSettings.playerRegistrationFrom} al ${tournamentSettings.playerRegistrationTo}</div>`;
+    ? `<div class="delegate-edit-window is-open"><i class="bi bi-unlock-fill"></i> Edición habilitada hasta ${tournamentSettings.playerRegistrationTo}</div>`
+    : `<div class="delegate-edit-window is-closed"><i class="bi bi-lock-fill"></i> La edición de jugadores está cerrada. Período: ${tournamentSettings.playerRegistrationFrom} al ${tournamentSettings.playerRegistrationTo}</div>`;
 
   return `
     <div class="fixture-toolbar delegate-players-toolbar">
@@ -2723,7 +2866,7 @@ function renderObserverMatches(selectedDate = getDefaultObserverDate()) {
           </select>
         </label>
       </div>
-      ${isFutureDate ? `<div class="delegate-edit-window is-closed"><i class="bi bi-lock-fill"></i> Esta fecha es futura. Los partidos todavÃ­a no pueden editarse.</div>` : ""}
+      ${isFutureDate ? `<div class="delegate-edit-window is-closed"><i class="bi bi-lock-fill"></i> Esta fecha es futura. Los partidos todavía no pueden editarse.</div>` : ""}
       <div class="table-responsive">
         <table class="table frame-table observer-matches-table mb-0">
           <thead>
@@ -2740,6 +2883,44 @@ function renderObserverMatches(selectedDate = getDefaultObserverDate()) {
       </div>
     </section>
   `;
+}
+
+async function loadObserverDataFromSupabase() {
+  if (typeof supabaseClient === "undefined") {
+    observerMatches = [];
+    return;
+  }
+
+  const [{ data: equipos, error: equiposError }, { data: partidos, error: partidosError }] = await Promise.all([
+    supabaseClient
+      .from("equipos")
+      .select("id,nombre,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .eq("activo", true)
+      .order("nombre", { ascending: true }),
+    supabaseClient
+      .from("partidos")
+      .select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones")
+      .order("fecha_hora", { ascending: true })
+  ]);
+
+  if (equiposError) throw equiposError;
+  if (partidosError) throw partidosError;
+
+  teams = (equipos || []).map(normalizeSupabaseTeam);
+  observerMatches = (partidos || []).map((match, index) => {
+    const normalized = normalizeSupabaseMatch(match, index);
+    const date = match.fecha_hora ? new Date(match.fecha_hora) : null;
+    return {
+      id: normalized.id,
+      date: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("es-AR") : "Sin fecha",
+      fixtureDate: `Fecha ${normalized.dateNumber}`,
+      home: normalized.home,
+      away: normalized.away,
+      homeGoals: normalized.homeGoals,
+      awayGoals: normalized.awayGoals,
+      reporter: currentAppUser?.nombre || "Veedor"
+    };
+  });
 }
 
 function renderScoreCounter(label, value, key) {
@@ -2790,7 +2971,7 @@ function renderObserverPlayerRows(team, matchId) {
         </div>
       </td>
       <td>
-        <button class="observation-btn ${currentObservation ? "has-observation" : ""}" type="button" data-observation data-observation-key="${escapeHtml(observationKey)}" data-observation-text="${escapeHtml(currentObservation)}" aria-label="Agregar observaciÃ³n disciplinaria">
+        <button class="observation-btn ${currentObservation ? "has-observation" : ""}" type="button" data-observation data-observation-key="${escapeHtml(observationKey)}" data-observation-text="${escapeHtml(currentObservation)}" aria-label="Agregar observación disciplinaria">
           <i class="bi bi-file-earmark-text-fill"></i>
         </button>
       </td>
@@ -2872,6 +3053,7 @@ function renderObserverEditMatch(matchId) {
 
 function renderAdminHome() {
   const metrics = getAdminMetrics();
+  const categoryNames = metrics.categories.map((category) => category.name).join(", ") || "Sin categorías";
   const divisions = metrics.categories.flatMap((category) =>
     category.divisions.map((division) => ({
       name: `${category.name} - ${division.name}`,
@@ -2891,14 +3073,14 @@ function renderAdminHome() {
       </div>
     </div>
 
-    <section class="quick-stats admin-quick-stats" aria-label="MÃ©tricas generales de administrador">
+    <section class="quick-stats admin-quick-stats" aria-label="Métricas generales de administrador">
       <div class="quick-stat">
         <i class="bi bi-grid-1x2-fill"></i>
         <div class="quick-stat-content">
           <strong data-dashboard-count="categorias">${metrics.categories.length}</strong>
           <div class="quick-stat-copy">
-            <span>CategorÃ­as</span>
-            <small>Libre, Senior, Femenino</small>
+            <span>Categorías</span>
+            <small>${escapeHtml(categoryNames)}</small>
           </div>
         </div>
       </div>
@@ -2937,15 +3119,15 @@ function renderAdminHome() {
     <div class="admin-summary-grid">
       <section class="admin-summary-panel">
         <div class="division-section-heading">
-          <p class="section-kicker mb-1">DistribuciÃ³n</p>
-          <h2>Equipos por categorÃ­a</h2>
+          <p class="section-kicker mb-1">Distribución</p>
+          <h2>Equipos por categoría</h2>
         </div>
         ${renderAdminSummaryList(categories)}
       </section>
       <section class="admin-summary-panel">
         <div class="division-section-heading">
           <p class="section-kicker mb-1">Detalle</p>
-          <h2>Equipos por divisiÃ³n</h2>
+          <h2>Equipos por división</h2>
         </div>
         ${renderAdminSummaryList(divisions)}
       </section>
@@ -2975,7 +3157,7 @@ function renderTournamentGeneralRows() {
     const key = getTournamentDivisionKey(row.category, row.division);
     const fixture = row.config.fixture;
     const playoffSummary = fixture?.cups?.length
-      ? fixture.cups.map((cup) => `${cup.name}: ${cup.range}`).join(" Â· ")
+      ? fixture.cups.map((cup) => `${cup.name}: ${cup.range}`).join(" ? ")
       : fixture
         ? "Fixture generado sin playoff"
         : "Sin fixture generado";
@@ -3031,8 +3213,8 @@ function renderTournamentGeneralSettings() {
       <div class="settings-note tournament-note">
         <i class="bi bi-calendar-range-fill"></i>
         <div>
-          <h3>InscripciÃ³n de jugadores</h3>
-          <p>Este rango determina hasta cuÃ¡ndo los delegados pueden agregar, editar o eliminar jugadores desde su perfil.</p>
+          <h3>Inscripción de jugadores</h3>
+          <p>Este rango determina hasta cuándo los delegados pueden agregar, editar o eliminar jugadores desde su perfil.</p>
         </div>
       </div>
 
@@ -3049,15 +3231,15 @@ function renderTournamentGeneralSettings() {
 
       <div class="division-table-panel tournament-config-panel">
         <div class="division-section-heading">
-          <p class="section-kicker mb-1">ConfecciÃ³n</p>
-          <h2>CategorÃ­as y divisiones</h2>
+          <p class="section-kicker mb-1">Confección</p>
+          <h2>Categorías y divisiones</h2>
         </div>
         <div class="table-responsive">
           <table class="table frame-table tournament-config-table mb-0">
             <thead>
               <tr>
-                <th>CategorÃ­a</th>
-                <th>DivisiÃ³n</th>
+                <th>Categoría</th>
+                <th>División</th>
                 <th>Equipos</th>
                 <th>Fechas</th>
                 <th>Playoff</th>
@@ -3090,7 +3272,7 @@ function renderAdminSettingsView() {
           <button class="nav-link" data-bs-toggle="pill" data-bs-target="#settings-social" type="button" role="tab">Redes y Contacto</button>
         </li>
         <li class="nav-item" role="presentation">
-          <button class="nav-link" data-bs-toggle="pill" data-bs-target="#settings-comms" type="button" role="tab">Comunicaciones</button>
+          <button class="nav-link" data-bs-toggle="pill" data-bs-target="#settings-sponsors" type="button" role="tab">Auspiciantes</button>
         </li>
         <li class="nav-item" role="presentation">
           <button class="nav-link" data-bs-toggle="pill" data-bs-target="#settings-rules" type="button" role="tab">Reglamento</button>
@@ -3114,23 +3296,23 @@ function renderAdminSettingsView() {
                 <input class="form-control" type="url" value="${escapeHtml(publicSettings.facebookUrl)}" data-setting="facebookUrl">
               </label>
               <label class="admin-filter-field">
-                <span>TelÃ©fono WhatsApp</span>
+                <span>Teléfono WhatsApp</span>
                 <input class="form-control" type="tel" inputmode="numeric" value="${escapeHtml(publicSettings.whatsappPhone)}" data-setting="whatsappPhone">
               </label>
               <label class="admin-filter-field">
-                <span>TÃ­tulo ubicaciÃ³n</span>
+                <span>Título ubicación</span>
                 <input class="form-control" type="text" value="${escapeHtml(publicSettings.locationTitle)}" data-setting="locationTitle">
               </label>
               <label class="admin-filter-field settings-wide">
-                <span>InformaciÃ³n ubicaciÃ³n</span>
+                <span>Información ubicación</span>
                 <textarea class="form-control" rows="3" data-setting="locationText">${escapeHtml(publicSettings.locationText)}</textarea>
               </label>
               <label class="admin-filter-field">
-                <span>TÃ­tulo contacto</span>
+                <span>Título contacto</span>
                 <input class="form-control" type="text" value="${escapeHtml(publicSettings.contactTitle)}" data-setting="contactTitle">
               </label>
               <label class="admin-filter-field settings-wide">
-                <span>InformaciÃ³n contacto</span>
+                <span>Información contacto</span>
                 <textarea class="form-control" rows="3" data-setting="contactText">${escapeHtml(publicSettings.contactText)}</textarea>
               </label>
             </div>
@@ -3141,20 +3323,36 @@ function renderAdminSettingsView() {
           </form>
         </div>
 
-        <div class="tab-pane fade" id="settings-comms" role="tabpanel" tabindex="0">
-          <div class="settings-note">
-            <i class="bi bi-megaphone-fill"></i>
-            <div>
-              <h3>Comunicaciones</h3>
-              <p>Espacio preparado para mensajes generales, avisos a delegados y notificaciones del torneo.</p>
+        <div class="tab-pane fade" id="settings-sponsors" role="tabpanel" tabindex="0">
+          <form class="settings-form sponsor-settings-form">
+            <div class="settings-note">
+              <i class="bi bi-stars"></i>
+              <div>
+                <h3>Auspiciantes</h3>
+                <p>Subí hasta ${MAX_SPONSOR_IMAGES} imágenes para mostrarlas en el banner automático de la home.</p>
+              </div>
             </div>
-          </div>
+
+            <label class="admin-filter-field sponsor-upload-field">
+              <span>Imágenes de auspiciantes <strong data-sponsor-count>${publicSettings.sponsorImages.length}/${MAX_SPONSOR_IMAGES}</strong></span>
+              <input class="form-control" type="file" accept="image/*,.svg" multiple data-sponsor-upload ${publicSettings.sponsorImages.length >= MAX_SPONSOR_IMAGES ? "disabled" : ""}>
+            </label>
+
+            <div class="sponsor-admin-grid" data-sponsor-preview>
+              ${renderSponsorAdminImages()}
+            </div>
+
+            <button class="btn btn-ingreso settings-save-btn" type="button" data-save-public-settings>
+              <i class="bi bi-save-fill"></i>
+              Guardar auspiciantes
+            </button>
+          </form>
         </div>
 
         <div class="tab-pane fade" id="settings-rules" role="tabpanel" tabindex="0">
           <form class="settings-form">
             <label class="admin-filter-field">
-              <span>Texto pÃºblico del reglamento</span>
+              <span>Texto público del reglamento</span>
               <textarea class="form-control settings-regulation-text" rows="11" data-setting="regulationText">${escapeHtml(publicSettings.regulationText)}</textarea>
             </label>
             <button class="btn btn-ingreso settings-save-btn" type="button" data-save-public-settings>
@@ -3188,10 +3386,10 @@ function renderAdminCategoryRows() {
       <td>${category.name}</td>
       <td>
         <div class="table-actions">
-          <button type="button" aria-label="Editar categorÃ­a ${category.name}">
+          <button type="button" aria-label="Editar categoría ${category.name}">
             <i class="bi bi-pencil-fill"></i>
           </button>
-          <button type="button" aria-label="Eliminar categorÃ­a ${category.name}">
+          <button type="button" aria-label="Eliminar categoría ${category.name}">
             <i class="bi bi-trash-fill"></i>
           </button>
         </div>
@@ -3205,11 +3403,11 @@ function renderAdminCategoriesView() {
     <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
       <div class="division-section-heading">
         <p class="section-kicker mb-1">Torneo</p>
-        <h2>CategorÃ­as</h2>
+        <h2>Categorías</h2>
       </div>
       <button class="btn btn-ingreso delegate-add-player" type="button">
         <i class="bi bi-plus-lg"></i>
-        Crear nueva categorÃ­a
+        Crear nueva categoría
       </button>
     </div>
 
@@ -3253,7 +3451,7 @@ function renderAdminCategoryRows(categories = adminCategoriesState.items) {
   if (!categories.length) {
     return `
       <tr>
-        <td colspan="5" class="admin-empty-row">No se encontraron categorÃƒÂ­as.</td>
+        <td colspan="5" class="admin-empty-row">No se encontraron categorías.</td>
       </tr>
     `;
   }
@@ -3270,14 +3468,14 @@ function renderAdminCategoryRows(categories = adminCategoriesState.items) {
       </td>
       <td>
         <div class="table-actions">
-          <button type="button" aria-label="Editar categorÃƒÂ­a ${escapeHtml(category.nombre || "")}" data-admin-category-edit="${category.id}">
+          <button type="button" aria-label="Editar categoría ${escapeHtml(category.nombre || "")}" data-admin-category-edit="${category.id}">
             <i class="bi bi-pencil-fill"></i>
           </button>
           ${category.activa === false
-            ? `<button type="button" aria-label="Reactivar categorÃƒÂ­a ${escapeHtml(category.nombre || "")}" data-admin-category-activate="${category.id}">
+            ? `<button type="button" aria-label="Reactivar categoría ${escapeHtml(category.nombre || "")}" data-admin-category-activate="${category.id}">
                 <i class="bi bi-arrow-counterclockwise"></i>
               </button>`
-            : `<button type="button" aria-label="Dar de baja categorÃƒÂ­a ${escapeHtml(category.nombre || "")}" data-admin-category-deactivate="${category.id}">
+            : `<button type="button" aria-label="Dar de baja categoría ${escapeHtml(category.nombre || "")}" data-admin-category-deactivate="${category.id}">
                 <i class="bi bi-trash-fill"></i>
               </button>`
           }
@@ -3299,13 +3497,13 @@ function renderAdminCategoryForm(editingCategory = null) {
         <input class="form-control" type="text" name="nombre" value="${escapeHtml(nombre)}" autocomplete="off" required>
       </label>
       <label class="admin-filter-field admin-category-description">
-        <span>DescripciÃƒÂ³n</span>
+        <span>Descripción</span>
         <input class="form-control" type="text" name="descripcion" value="${escapeHtml(descripcion)}" autocomplete="off">
       </label>
       <div class="admin-category-form-actions">
         <button class="btn btn-ingreso" type="submit" data-admin-category-save ${nombre.trim() ? "" : "disabled"}>
           <i class="bi ${isEditing ? "bi-save-fill" : "bi-plus-circle-fill"}"></i>
-          ${isEditing ? "Guardar cambios" : "Crear categorÃƒÂ­a"}
+          ${isEditing ? "Guardar cambios" : "Crear categoría"}
         </button>
         ${isEditing
           ? `<button class="btn btn-outline-light admin-secondary-btn" type="button" data-admin-category-cancel>
@@ -3335,7 +3533,7 @@ async function renderAdminCategoriesView(options = {}) {
     <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
       <div class="division-section-heading">
         <p class="section-kicker mb-1">Torneo</p>
-        <h2>CategorÃƒÂ­as</h2>
+        <h2>Categorías</h2>
       </div>
       <button class="btn btn-ingreso delegate-add-player" type="button" data-admin-categories-toggle-bajas>
         <i class="bi ${adminCategoriesState.includeInactive ? "bi-eye-slash-fill" : "bi-eye-fill"}"></i>
@@ -3354,7 +3552,7 @@ async function renderAdminCategoriesView(options = {}) {
             <tr>
               <th>N&deg;</th>
               <th>Nombre</th>
-              <th>DescripciÃƒÂ³n</th>
+              <th>Descripción</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
@@ -3370,7 +3568,7 @@ function renderAdminCategoryRows(categories = adminCategoriesState.items) {
   if (!categories.length) {
     return `
       <tr>
-        <td colspan="5" class="admin-empty-row">No se encontraron categorÃ­as.</td>
+        <td colspan="5" class="admin-empty-row">No se encontraron categorías.</td>
       </tr>
     `;
   }
@@ -3387,14 +3585,14 @@ function renderAdminCategoryRows(categories = adminCategoriesState.items) {
       </td>
       <td>
         <div class="table-actions">
-          <button type="button" aria-label="Editar categorÃ­a ${escapeHtml(category.nombre || "")}" data-admin-category-edit="${category.id}">
+          <button type="button" aria-label="Editar categoría ${escapeHtml(category.nombre || "")}" data-admin-category-edit="${category.id}">
             <i class="bi bi-pencil-fill"></i>
           </button>
           ${category.activa === false
-            ? `<button type="button" aria-label="Reactivar categorÃ­a ${escapeHtml(category.nombre || "")}" data-admin-category-activate="${category.id}">
+            ? `<button type="button" aria-label="Reactivar categoría ${escapeHtml(category.nombre || "")}" data-admin-category-activate="${category.id}">
                 <i class="bi bi-arrow-counterclockwise"></i>
               </button>`
-            : `<button type="button" aria-label="Dar de baja categorÃ­a ${escapeHtml(category.nombre || "")}" data-admin-category-deactivate="${category.id}">
+            : `<button type="button" aria-label="Dar de baja categoría ${escapeHtml(category.nombre || "")}" data-admin-category-deactivate="${category.id}">
                 <i class="bi bi-trash-fill"></i>
               </button>`
           }
@@ -3416,13 +3614,13 @@ function renderAdminCategoryForm(editingCategory = null) {
         <input class="form-control" type="text" name="nombre" value="${escapeHtml(nombre)}" autocomplete="off" required>
       </label>
       <label class="admin-filter-field admin-category-description">
-        <span>DescripciÃ³n</span>
+        <span>Descripción</span>
         <input class="form-control" type="text" name="descripcion" value="${escapeHtml(descripcion)}" autocomplete="off">
       </label>
       <div class="admin-category-form-actions">
         <button class="btn btn-ingreso" type="submit" data-admin-category-save ${nombre.trim() ? "" : "disabled"}>
           <i class="bi ${isEditing ? "bi-save-fill" : "bi-plus-circle-fill"}"></i>
-          ${isEditing ? "Guardar cambios" : "Crear categorÃ­a"}
+          ${isEditing ? "Guardar cambios" : "Crear categoría"}
         </button>
         ${isEditing
           ? `<button class="btn btn-outline-light admin-secondary-btn" type="button" data-admin-category-cancel>
@@ -3452,11 +3650,11 @@ async function renderAdminCategoriesView(options = {}) {
     <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
       <div class="division-section-heading">
         <p class="section-kicker mb-1">Torneo</p>
-        <h2>CategorÃ­as</h2>
+        <h2>Categorías</h2>
       </div>
       <button class="btn btn-ingreso delegate-add-player" type="button" data-admin-category-new>
         <i class="bi bi-plus-lg"></i>
-        Cargar categorÃ­a
+        Cargar categoría
       </button>
     </div>
 
@@ -3471,7 +3669,7 @@ async function renderAdminCategoriesView(options = {}) {
             <tr>
               <th>N&deg;</th>
               <th>Nombre</th>
-              <th>DescripciÃ³n</th>
+              <th>Descripción</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
@@ -3605,10 +3803,10 @@ function renderAdminDivisionRows(selectedCategory = "", page = 1) {
       <td>${division.category}</td>
       <td>
         <div class="table-actions">
-          <button type="button" aria-label="Editar divisiÃ³n ${division.name}">
+          <button type="button" aria-label="Editar división ${division.name}">
             <i class="bi bi-pencil-fill"></i>
           </button>
-          <button type="button" aria-label="Eliminar divisiÃ³n ${division.name}">
+          <button type="button" aria-label="Eliminar división ${division.name}">
             <i class="bi bi-trash-fill"></i>
           </button>
         </div>
@@ -3629,16 +3827,16 @@ function renderAdminDivisionsView(selectedCategory = "", page = 1) {
       </div>
       <button class="btn btn-ingreso delegate-add-player" type="button">
         <i class="bi bi-plus-lg"></i>
-        Crear nueva divisiÃ³n
+        Crear nueva división
       </button>
     </div>
 
     <section class="division-table-panel admin-teams-panel">
       <div class="admin-filter-grid admin-single-filter-grid" aria-label="Filtro de divisiones">
         <label class="admin-filter-field admin-search-field">
-          <span>CategorÃ­a</span>
+          <span>Categoría</span>
           <select class="form-select" data-admin-division-category>
-            <option value="">Todas las categorÃ­as</option>
+            <option value="">Todas las categorías</option>
             ${categories.map((category) => `
               <option value="${category.name}" ${category.name === selectedCategory ? "selected" : ""}>${category.name}</option>
             `).join("")}
@@ -3652,7 +3850,7 @@ function renderAdminDivisionsView(selectedCategory = "", page = 1) {
             <tr>
               <th>N&deg;</th>
               <th>Nombre</th>
-              <th>CategorÃ­a</th>
+              <th>Categoría</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -3694,7 +3892,7 @@ function renderAdminPagination(type, pageInfo) {
 
   return `
     <div class="admin-pagination" data-admin-pagination="${type}">
-      <span>PÃ¡gina ${pageInfo.page} de ${pageInfo.totalPages}</span>
+      <span>Página ${pageInfo.page} de ${pageInfo.totalPages}</span>
       <div>
         <button type="button" data-admin-page="${type}" data-page="${pageInfo.page - 1}" ${pageInfo.page === 1 ? "disabled" : ""}>
           <i class="bi bi-chevron-left"></i>
@@ -3715,19 +3913,216 @@ function updateAdminPagination(type, pageInfo) {
 
 function getAdminTeamsForFilters(selectedCategory, selectedDivision) {
   if (!selectedCategory || !selectedDivision) return [];
-  return [...teams].sort((a, b) => a.shortName.localeCompare(b.shortName));
+  return [...adminTeamsForView].sort((a, b) => a.shortName.localeCompare(b.shortName));
 }
 
 function getAdminFilteredTeams(searchTerm = "") {
   const normalizedSearch = normalizeSearchText(searchTerm);
-  return teams.filter((team) => team.shortName.toLowerCase().includes(normalizedSearch));
+  return adminTeamsForView.filter((team) =>
+    team.shortName.toLowerCase().includes(normalizedSearch) ||
+    team.name.toLowerCase().includes(normalizedSearch)
+  );
+}
+
+function getDivisionIdFromCatalog(categoryName = "", divisionName = "") {
+  const category = tournamentCatalog.find((item) => item.name === categoryName);
+  const division = category?.divisions.find((item) => item.name === divisionName);
+  return division?.id || "";
+}
+
+async function loadAdminTeamsForFilters(selectedCategory = "", selectedDivision = "") {
+  adminTeamsForView = [];
+  const divisionId = getDivisionIdFromCatalog(selectedCategory, selectedDivision);
+  if (!divisionId || typeof supabaseClient === "undefined") return;
+
+  const { data, error } = await supabaseClient
+    .from("equipos")
+    .select("id,nombre,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+    .eq("division_id", divisionId)
+    .eq("activo", true)
+    .order("nombre", { ascending: true });
+
+  if (error) throw error;
+  adminTeamsForView = (data || []).map(normalizeSupabaseTeam);
+}
+
+async function loadAdminDelegatesForFilters(selectedCategory = "", selectedDivision = "") {
+  await loadAdminTeamsForFilters(selectedCategory, selectedDivision);
+
+  const { data, error } = await supabaseClient
+    .from("usuarios_app")
+    .select("id,nombre,apellido,contacto,usuario,rol,activo")
+    .eq("rol", "delegado")
+    .eq("activo", true);
+
+  if (error) throw error;
+
+  const delegates = data || [];
+  adminTeamsForView = adminTeamsForView.map((team) => {
+    const delegate = delegates.find((user) =>
+      normalizeSearchText(team.name).includes(normalizeSearchText(user.usuario || ""))
+    );
+
+    return {
+      ...team,
+      delegateId: delegate?.id || "",
+      delegate: delegate ? `${delegate.nombre || ""} ${delegate.apellido || ""}`.trim() || delegate.usuario : "-",
+      delegateFirstName: delegate?.nombre || "",
+      delegateLastName: delegate?.apellido || "",
+      contact: delegate?.contacto || "-",
+      delegateUsername: delegate?.usuario || "-"
+    };
+  });
+}
+
+async function createTeamInSupabase() {
+  const editingId = newTeamForm?.dataset.editingId || "";
+  const divisionId = newTeamDivision.value;
+  const payload = {
+    division_id: divisionId,
+    nombre: newTeamName.value.trim(),
+    escudo_url: "",
+    color_principal: "#64748b",
+    color_secundario: "#111827",
+    activo: true
+  };
+
+  if (editingId) {
+    return apiPut(`/equipos/${editingId}`, payload);
+  }
+
+  return apiPost("/equipos", payload);
+}
+
+async function openAdminTeamModal(teamId = "") {
+  if (!newTeamModalElement || !newTeamForm) return;
+
+  if (!tournamentCatalog.length) {
+    await cargarMenuCategorias();
+  }
+
+  const team = adminTeamsForView.find((item) => String(item.id) === String(teamId));
+  const division = tournamentCatalog
+    .flatMap((category) => category.divisions.map((item) => ({ ...item, categoryName: category.name })))
+    .find((item) => String(item.id) === String(team?.division_id));
+
+  newTeamForm.reset();
+  newTeamForm.dataset.editingId = team?.id || "";
+  newTeamName.value = team?.name || "";
+  newTeamShortName.value = team?.shortName || "";
+  populateNewTeamCategories();
+  newTeamCategory.value = division?.categoryName || "";
+  populateNewTeamDivisions(newTeamCategory.value);
+  newTeamDivision.value = team?.division_id || "";
+
+  const title = document.querySelector("#newTeamModalLabel");
+  if (title) title.textContent = team ? "Editar equipo" : "Cargar nuevo equipo";
+  if (createTeamButton) {
+    createTeamButton.innerHTML = `<i class="bi ${team ? "bi-save-fill" : "bi-plus-circle-fill"}"></i> ${team ? "Guardar cambios" : "Crear equipo"}`;
+  }
+
+  validateNewTeamForm();
+  bootstrap.Modal.getOrCreateInstance(newTeamModalElement).show();
+}
+
+async function loadAllActiveTeamsForForms() {
+  if (typeof supabaseClient === "undefined") return [];
+
+  const { data, error } = await supabaseClient
+    .from("equipos")
+    .select("id,nombre,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+    .eq("activo", true)
+    .order("nombre", { ascending: true });
+
+  if (error) throw error;
+  teams = (data || []).map(normalizeSupabaseTeam);
+  return teams;
+}
+
+async function createDelegateInSupabase() {
+  const editingId = newDelegateForm?.dataset.editingId || "";
+  const payload = {
+    nombre: newDelegateFirstName.value.trim(),
+    apellido: newDelegateLastName.value.trim(),
+    contacto: newDelegateContact.value.trim(),
+    usuario: newDelegateUsername.value.trim(),
+    password: newDelegatePassword.value,
+    rol: "delegado",
+    activo: true
+  };
+
+  if (editingId) {
+    const updatePayload = {
+      nombre: payload.nombre,
+      apellido: payload.apellido,
+      contacto: payload.contacto,
+      usuario: payload.usuario,
+      rol: "delegado",
+      activo: true
+    };
+
+    if (payload.password) {
+      updatePayload.password_hash = payload.password;
+    }
+
+    return apiPut(`/usuarios/${editingId}`, updatePayload);
+  }
+
+  return apiPost("/delegados", {
+    ...payload,
+    equipo_id: newDelegateTeam.value
+  });
+}
+
+async function openAdminDelegateModal(delegateUserId = "") {
+  if (!newDelegateModalElement || !newDelegateForm) return;
+
+  await loadAllActiveTeamsForForms();
+  const row = adminTeamsForView.find((team) => String(team.delegateId) === String(delegateUserId));
+
+  newDelegateForm.reset();
+  newDelegateForm.dataset.editingId = row?.delegateId || "";
+  newDelegateLastName.value = row?.delegateLastName || "";
+  newDelegateFirstName.value = row?.delegateFirstName || "";
+  newDelegateContact.value = row?.contact && row.contact !== "-" ? row.contact : "";
+  newDelegateUsername.value = row?.delegateUsername && row.delegateUsername !== "-" ? row.delegateUsername : "";
+  newDelegatePassword.value = row ? "" : "123456";
+  newDelegatePassword.required = !row;
+  populateNewDelegateCategories();
+  populateNewDelegateTeams("");
+  newDelegateTeam.value = row?.id || "";
+  newDelegateTeam.disabled = Boolean(row);
+
+  const title = document.querySelector("#newDelegateModalLabel");
+  if (title) title.textContent = row ? "Editar delegado" : "Cargar nuevo delegado";
+  if (createDelegateButton) {
+    createDelegateButton.innerHTML = `<i class="bi ${row ? "bi-save-fill" : "bi-plus-circle-fill"}"></i> ${row ? "Guardar cambios" : "Crear delegado"}`;
+  }
+
+  validateNewDelegateForm();
+  bootstrap.Modal.getOrCreateInstance(newDelegateModalElement).show();
+}
+
+async function createDelegatePlayerInSupabase(team) {
+  const payload = {
+    equipo_id: team.id,
+    nombre: delegatePlayerFirstName.value.trim(),
+    apellido: delegatePlayerLastName.value.trim(),
+    fecha_nacimiento: delegatePlayerBirthDate.value,
+    dni: delegatePlayerDni.value.trim(),
+    dorsal: Number(delegatePlayerNumber.value),
+    activo: true
+  };
+
+  const response = await apiPost("/jugadores", payload);
+  return getApiData(response);
 }
 
 function renderAdminTeamRows(hasCompletedFilters, searchTerm = "", page = 1) {
   if (!hasCompletedFilters) {
     return `
       <tr>
-        <td colspan="4" class="admin-empty-row">SeleccionÃ¡ categorÃ­a y divisiÃ³n para visualizar equipos.</td>
+        <td colspan="4" class="admin-empty-row">Seleccioná categoría y división para visualizar equipos.</td>
       </tr>
     `;
   }
@@ -3737,7 +4132,7 @@ function renderAdminTeamRows(hasCompletedFilters, searchTerm = "", page = 1) {
   if (!filteredTeams.length) {
     return `
       <tr>
-        <td colspan="4" class="admin-empty-row">No se encontraron equipos para la bÃºsqueda indicada.</td>
+        <td colspan="4" class="admin-empty-row">No se encontraron equipos para la búsqueda indicada.</td>
       </tr>
     `;
   }
@@ -3753,10 +4148,10 @@ function renderAdminTeamRows(hasCompletedFilters, searchTerm = "", page = 1) {
       <td>${team.delegate}</td>
       <td>
         <div class="table-actions">
-          <button type="button" aria-label="Editar ${team.shortName}">
+          <button type="button" aria-label="Editar ${team.shortName}" data-admin-team-edit="${team.id}">
             <i class="bi bi-pencil-fill"></i>
           </button>
-          <button type="button" aria-label="Eliminar ${team.shortName}">
+          <button type="button" aria-label="Dar de baja ${team.shortName}" data-admin-team-deactivate="${team.id}">
             <i class="bi bi-trash-fill"></i>
           </button>
         </div>
@@ -3765,11 +4160,25 @@ function renderAdminTeamRows(hasCompletedFilters, searchTerm = "", page = 1) {
   `).join("");
 }
 
-function renderAdminTeamsView(selectedCategory = "", selectedDivision = "", searchTerm = "", page = 1) {
+async function renderAdminTeamsView(selectedCategory = "", selectedDivision = "", searchTerm = "", page = 1) {
+  if (!tournamentCatalog.length) {
+    await cargarMenuCategorias();
+  }
+
   const divisionMap = getAdminDivisionMap();
   const categories = Object.keys(divisionMap);
   const divisions = selectedCategory ? divisionMap[selectedCategory] : [];
   const hasCompletedFilters = Boolean(selectedCategory && selectedDivision);
+  if (hasCompletedFilters) {
+    try {
+      await loadAdminTeamsForFilters(selectedCategory, selectedDivision);
+    } catch (error) {
+      console.error("Error al cargar equipos desde Supabase:", error);
+      adminTeamsForView = [];
+    }
+  } else {
+    adminTeamsForView = [];
+  }
   const teamPageInfo = paginateItems(hasCompletedFilters ? getAdminFilteredTeams(searchTerm) : [], page);
 
   return `
@@ -3787,9 +4196,9 @@ function renderAdminTeamsView(selectedCategory = "", selectedDivision = "", sear
     <section class="division-table-panel admin-teams-panel">
       <div class="admin-filter-grid" aria-label="Filtros obligatorios de equipos">
         <label class="admin-filter-field">
-          <span>CategorÃ­a</span>
+          <span>Categoría</span>
           <select class="form-select" data-admin-team-category>
-            <option value="">Seleccionar categorÃ­a</option>
+            <option value="">Seleccionar categoría</option>
             ${categories.map((category) => `
               <option value="${category}" ${category === selectedCategory ? "selected" : ""}>${category}</option>
             `).join("")}
@@ -3797,9 +4206,9 @@ function renderAdminTeamsView(selectedCategory = "", selectedDivision = "", sear
         </label>
 
         <label class="admin-filter-field">
-          <span>DivisiÃ³n</span>
+          <span>División</span>
           <select class="form-select" data-admin-team-division ${selectedCategory ? "" : "disabled"}>
-            <option value="">Seleccionar divisiÃ³n</option>
+            <option value="">Seleccionar división</option>
             ${divisions.map((division) => `
               <option value="${division}" ${division === selectedDivision ? "selected" : ""}>${division}</option>
             `).join("")}
@@ -3843,7 +4252,7 @@ function renderAdminDelegateRows(hasCompletedFilters, searchTerm = "", page = 1)
   if (!hasCompletedFilters) {
     return `
       <tr>
-        <td colspan="5" class="admin-empty-row">SeleccionÃ¡ categorÃ­a y divisiÃ³n para visualizar delegados.</td>
+        <td colspan="5" class="admin-empty-row">Seleccioná categoría y división para visualizar delegados.</td>
       </tr>
     `;
   }
@@ -3853,7 +4262,7 @@ function renderAdminDelegateRows(hasCompletedFilters, searchTerm = "", page = 1)
   if (!filteredTeams.length) {
     return `
       <tr>
-        <td colspan="5" class="admin-empty-row">No se encontraron delegados para la bÃºsqueda indicada.</td>
+        <td colspan="5" class="admin-empty-row">No se encontraron delegados para la búsqueda indicada.</td>
       </tr>
     `;
   }
@@ -3871,10 +4280,10 @@ function renderAdminDelegateRows(hasCompletedFilters, searchTerm = "", page = 1)
       <td>${team.id}</td>
       <td>
         <div class="table-actions">
-          <button type="button" aria-label="Editar delegado ${team.delegate}">
+          <button type="button" aria-label="Editar delegado ${team.delegate}" data-admin-delegate-edit="${team.delegateId}" ${team.delegateId ? "" : "disabled"}>
             <i class="bi bi-pencil-fill"></i>
           </button>
-          <button type="button" aria-label="Eliminar delegado ${team.delegate}">
+          <button type="button" aria-label="Dar de baja delegado ${team.delegate}" data-admin-delegate-deactivate="${team.delegateId}" ${team.delegateId ? "" : "disabled"}>
             <i class="bi bi-trash-fill"></i>
           </button>
         </div>
@@ -3883,11 +4292,27 @@ function renderAdminDelegateRows(hasCompletedFilters, searchTerm = "", page = 1)
   `).join("");
 }
 
-function renderAdminDelegatesView(selectedCategory = "", selectedDivision = "", searchTerm = "", page = 1) {
+async function renderAdminDelegatesView(selectedCategory = "", selectedDivision = "", searchTerm = "", page = 1) {
+  if (!tournamentCatalog.length) {
+    await cargarMenuCategorias();
+  }
+
   const divisionMap = getAdminDivisionMap();
   const categories = Object.keys(divisionMap);
   const divisions = selectedCategory ? divisionMap[selectedCategory] : [];
   const hasCompletedFilters = Boolean(selectedCategory && selectedDivision);
+
+  if (hasCompletedFilters) {
+    try {
+      await loadAdminDelegatesForFilters(selectedCategory, selectedDivision);
+    } catch (error) {
+      console.error("Error al cargar delegados desde Supabase:", error);
+      adminTeamsForView = [];
+    }
+  } else {
+    adminTeamsForView = [];
+  }
+
   const delegatePageInfo = paginateItems(hasCompletedFilters ? getAdminFilteredDelegateTeams(searchTerm) : [], page);
 
   return `
@@ -3905,9 +4330,9 @@ function renderAdminDelegatesView(selectedCategory = "", selectedDivision = "", 
     <section class="division-table-panel admin-teams-panel">
       <div class="admin-filter-grid" aria-label="Filtros obligatorios de delegados">
         <label class="admin-filter-field">
-          <span>CategorÃ­a</span>
+          <span>Categoría</span>
           <select class="form-select" data-admin-delegate-category>
-            <option value="">Seleccionar categorÃ­a</option>
+            <option value="">Seleccionar categoría</option>
             ${categories.map((category) => `
               <option value="${category}" ${category === selectedCategory ? "selected" : ""}>${category}</option>
             `).join("")}
@@ -3915,9 +4340,9 @@ function renderAdminDelegatesView(selectedCategory = "", selectedDivision = "", 
         </label>
 
         <label class="admin-filter-field">
-          <span>DivisiÃ³n</span>
+          <span>División</span>
           <select class="form-select" data-admin-delegate-division ${selectedCategory ? "" : "disabled"}>
-            <option value="">Seleccionar divisiÃ³n</option>
+            <option value="">Seleccionar división</option>
             ${divisions.map((division) => `
               <option value="${division}" ${division === selectedDivision ? "selected" : ""}>${division}</option>
             `).join("")}
@@ -3963,7 +4388,7 @@ function renderAdminObserverRows(searchTerm = "", page = 1) {
   if (!filteredObservers.length) {
     return `
       <tr>
-        <td colspan="5" class="admin-empty-row">No se encontraron veedores para la bÃºsqueda indicada.</td>
+        <td colspan="5" class="admin-empty-row">No se encontraron veedores para la búsqueda indicada.</td>
       </tr>
     `;
   }
@@ -4321,7 +4746,7 @@ function renderAdminPlayerRows(hasCompletedFilters, selectedTeamId = "", searchT
   if (!hasCompletedFilters) {
     return `
       <tr>
-        <td colspan="7" class="admin-empty-row">SeleccionÃ¡ categorÃ­a y divisiÃ³n para visualizar jugadores.</td>
+        <td colspan="7" class="admin-empty-row">Seleccioná categoría y división para visualizar jugadores.</td>
       </tr>
     `;
   }
@@ -4331,7 +4756,7 @@ function renderAdminPlayerRows(hasCompletedFilters, selectedTeamId = "", searchT
   if (!players.length) {
     return `
       <tr>
-        <td colspan="7" class="admin-empty-row">No se encontraron jugadores para la bÃºsqueda indicada.</td>
+        <td colspan="7" class="admin-empty-row">No se encontraron jugadores para la búsqueda indicada.</td>
       </tr>
     `;
   }
@@ -4388,9 +4813,9 @@ function renderAdminPlayersView(selectedCategory = "", selectedDivision = "", se
 
       <div class="admin-filter-grid admin-player-filter-grid" aria-label="Filtros obligatorios de jugadores">
         <label class="admin-filter-field">
-          <span>CategorÃ­a</span>
+          <span>Categoría</span>
           <select class="form-select" data-admin-player-category>
-            <option value="">Seleccionar categorÃ­a</option>
+            <option value="">Seleccionar categoría</option>
             ${categories.map((category) => `
               <option value="${category}" ${category === selectedCategory ? "selected" : ""}>${category}</option>
             `).join("")}
@@ -4398,9 +4823,9 @@ function renderAdminPlayersView(selectedCategory = "", selectedDivision = "", se
         </label>
 
         <label class="admin-filter-field">
-          <span>DivisiÃ³n</span>
+          <span>División</span>
           <select class="form-select" data-admin-player-division ${selectedCategory ? "" : "disabled"}>
-            <option value="">Seleccionar divisiÃ³n</option>
+            <option value="">Seleccionar división</option>
             ${divisions.map((division) => `
               <option value="${division}" ${division === selectedDivision ? "selected" : ""}>${division}</option>
             `).join("")}
@@ -4492,7 +4917,13 @@ function enterDelegateView(team) {
   document.body.classList.add("admin-view");
 }
 
-function enterAdminView() {
+async function enterAdminView() {
+  try {
+    await loadAdminMetricsFromSupabase();
+  } catch (error) {
+    console.error("Error al cargar métricas del administrador:", error);
+  }
+
   sidebarContent.innerHTML = `
     <div class="sidebar-main admin-sidebar-main">
       <div>
@@ -4502,6 +4933,10 @@ function enterAdminView() {
         </div>
         <div class="sidebar-role-label">Rol: Administrador</div>
         <div class="admin-actions">
+          <button class="division-link" type="button" data-admin-action="Dashboard">
+            <i class="bi bi-speedometer2"></i>
+            Dashboard
+          </button>
           <button class="division-link" type="button" data-admin-action="Equipos">
             <i class="bi bi-shield-fill-check"></i>
             Equipos
@@ -4526,8 +4961,8 @@ function enterAdminView() {
               <i class="bi bi-chevron-down ms-auto"></i>
             </button>
             <div class="collapse" id="adminTournamentMenu">
-              <button class="division-link admin-sub-action" type="button" data-admin-action="CategorÃ­as">
-                CategorÃ­as
+              <button class="division-link admin-sub-action" type="button" data-admin-action="Categorías">
+                Categorías
               </button>
               <button class="division-link admin-sub-action" type="button" data-admin-action="Divisiones">
                 Divisiones
@@ -4552,11 +4987,11 @@ function enterAdminView() {
     </div>
   `;
   contentShell.innerHTML = renderAdminHome();
-  cargarResumenDashboard();
   document.body.classList.add("admin-view");
 }
 
-function enterObserverView() {
+async function enterObserverView() {
+  await loadObserverDataFromSupabase();
   sidebarContent.innerHTML = `
     <div class="sidebar-main admin-sidebar-main">
       <div>
@@ -4593,7 +5028,7 @@ passwordToggle.addEventListener("click", () => {
   const isPasswordVisible = passwordInput.type === "text";
 
   passwordInput.type = isPasswordVisible ? "password" : "text";
-  passwordToggle.setAttribute("aria-label", isPasswordVisible ? "Mostrar contraseÃ±a" : "Ocultar contraseÃ±a");
+  passwordToggle.setAttribute("aria-label", isPasswordVisible ? "Mostrar contraseña" : "Ocultar contraseña");
   passwordToggle.innerHTML = `<i class="bi ${isPasswordVisible ? "bi-eye-fill" : "bi-eye-slash-fill"}"></i>`;
 });
 
@@ -4666,13 +5101,19 @@ sidebarContent.addEventListener("click", async (event) => {
   if (adminActionButton) {
     const actionName = adminActionButton.dataset.adminAction;
     showContentLoader(actionName, async () => {
+      if (actionName === "Dashboard") {
+        await loadAdminMetricsFromSupabase();
+        contentShell.innerHTML = renderAdminHome();
+        return;
+      }
+
       if (actionName === "Equipos") {
-        contentShell.innerHTML = renderAdminTeamsView();
+        contentShell.innerHTML = await renderAdminTeamsView();
         return;
       }
 
       if (actionName === "Delegados") {
-        contentShell.innerHTML = renderAdminDelegatesView();
+        contentShell.innerHTML = await renderAdminDelegatesView();
         return;
       }
 
@@ -4686,7 +5127,7 @@ sidebarContent.addEventListener("click", async (event) => {
         return;
       }
 
-      if (actionName === "CategorÃ­as") {
+      if (actionName === "Categorías") {
         contentShell.innerHTML = await renderAdminCategoriesView({ includeInactive: false, editingId: null });
         return;
       }
@@ -4733,9 +5174,14 @@ contentShell.addEventListener("click", async (event) => {
   const delegateTeamEditButton = event.target.closest("[data-delegate-team-edit]");
   const openDelegatePlayerButton = event.target.closest("[data-open-delegate-player-modal]");
   const openNewTeamButton = event.target.closest("[data-open-new-team-modal]");
+  const editAdminTeamButton = event.target.closest("[data-admin-team-edit]");
+  const deactivateAdminTeamButton = event.target.closest("[data-admin-team-deactivate]");
   const openNewDelegateButton = event.target.closest("[data-open-new-delegate-modal]");
+  const editAdminDelegateButton = event.target.closest("[data-admin-delegate-edit]");
+  const deactivateAdminDelegateButton = event.target.closest("[data-admin-delegate-deactivate]");
   const openNewObserverButton = event.target.closest("[data-open-new-observer-modal]");
   const savePublicSettingsButton = event.target.closest("[data-save-public-settings]");
+  const removeSponsorImageButton = event.target.closest("[data-remove-sponsor-image]");
   const aboutCarouselMoveButton = event.target.closest("[data-about-carousel-move]");
   const generateFixtureButton = event.target.closest("[data-generate-fixture]");
   const downloadFixtureButton = event.target.closest("[data-download-fixture]");
@@ -4776,8 +5222,17 @@ contentShell.addEventListener("click", async (event) => {
   if (deactivateDivisionButton || activateDivisionButton) {
     const id = deactivateDivisionButton?.dataset.adminDivisionDeactivate || activateDivisionButton?.dataset.adminDivisionActivate;
     const action = deactivateDivisionButton ? "desactivar" : "activar";
+    if (deactivateDivisionButton) {
+      const confirmed = await requestConfirmation({
+        title: "Dar de baja división",
+        message: "Esta división dejará de mostrarse como activa. ¿Confirmás la baja?",
+        confirmLabel: "Dar de baja"
+      });
+      if (!confirmed) return;
+    }
     try {
       await apiPatch(`/divisiones/${id}/${action}`);
+      invalidateAdminMetrics();
       contentShell.innerHTML = await renderAdminDivisionsView(adminDivisionsState.selectedCategory, 1);
       cargarMenuCategorias();
     } catch (error) {
@@ -4806,6 +5261,14 @@ contentShell.addEventListener("click", async (event) => {
   if (deactivateAdminObserverButton || activateAdminObserverButton) {
     const id = deactivateAdminObserverButton?.dataset.adminObserverDeactivate || activateAdminObserverButton?.dataset.adminObserverActivate;
     const action = deactivateAdminObserverButton ? "desactivar" : "activar";
+    if (deactivateAdminObserverButton) {
+      const confirmed = await requestConfirmation({
+        title: "Dar de baja veedor",
+        message: "El veedor quedará inactivo y no podrá operar. ¿Confirmás la baja?",
+        confirmLabel: "Dar de baja"
+      });
+      if (!confirmed) return;
+    }
     try {
       await apiPatch(`/veedores/${id}/${action}`);
       contentShell.innerHTML = await renderAdminObserversView(adminObserversState.searchTerm, 1);
@@ -4842,16 +5305,23 @@ contentShell.addEventListener("click", async (event) => {
   }
 
   if (deactivateCategoryButton) {
+    const confirmed = await requestConfirmation({
+      title: "Dar de baja categoría",
+      message: "La categoría y sus divisiones asociadas quedarán inactivas. ¿Confirmás la baja?",
+      confirmLabel: "Dar de baja"
+    });
+    if (!confirmed) return;
+
     try {
       await apiPatch(`/categorias/${deactivateCategoryButton.dataset.adminCategoryDeactivate}/desactivar`);
+      invalidateAdminMetrics();
       contentShell.innerHTML = await renderAdminCategoriesView({
         includeInactive: adminCategoriesState.includeInactive,
         editingId: null
       });
-      cargarResumenDashboard();
       cargarMenuCategorias();
     } catch (error) {
-      console.error("Error al dar de baja la categorÃƒÂ­a:", error);
+      console.error("Error al dar de baja la categoría:", error);
     }
     return;
   }
@@ -4859,14 +5329,14 @@ contentShell.addEventListener("click", async (event) => {
   if (activateCategoryButton) {
     try {
       await apiPatch(`/categorias/${activateCategoryButton.dataset.adminCategoryActivate}/activar`);
+      invalidateAdminMetrics();
       contentShell.innerHTML = await renderAdminCategoriesView({
         includeInactive: true,
         editingId: null
       });
-      cargarResumenDashboard();
       cargarMenuCategorias();
     } catch (error) {
-      console.error("Error al reactivar la categorÃƒÂ­a:", error);
+      console.error("Error al reactivar la categoría:", error);
     }
     return;
   }
@@ -4915,6 +5385,13 @@ contentShell.addEventListener("click", async (event) => {
   }
 
   if (observerSaveButton) {
+    const confirmed = await requestConfirmation({
+      title: "Guardar cambios",
+      message: "Se van a guardar los cambios de este registro. ¿Confirmás la edición?",
+      confirmLabel: "Guardar cambios"
+    });
+    if (!confirmed) return;
+
     observerSaveButton.classList.add("is-saved");
     observerSaveButton.innerHTML = `<i class="bi bi-check2-circle"></i> Guardado`;
     window.setTimeout(() => {
@@ -4925,6 +5402,13 @@ contentShell.addEventListener("click", async (event) => {
   }
 
   if (savePublicSettingsButton) {
+    const confirmed = await requestConfirmation({
+      title: "Guardar cambios",
+      message: "Se van a guardar los cambios de esta configuración. ¿Confirmás la edición?",
+      confirmLabel: "Guardar cambios"
+    });
+    if (!confirmed) return;
+
     const originalLabel = savePublicSettingsButton.dataset.originalLabel || savePublicSettingsButton.textContent.trim();
     savePublicSettingsButton.dataset.originalLabel = originalLabel;
     contentShell.querySelectorAll("[data-setting]").forEach((field) => {
@@ -4960,6 +5444,20 @@ contentShell.addEventListener("click", async (event) => {
     return;
   }
 
+  if (removeSponsorImageButton) {
+    const confirmed = await requestConfirmation({
+      title: "Eliminar auspiciante",
+      message: "La imagen se quitará del banner cuando guardes la configuración. ¿Confirmás la eliminación?",
+      confirmLabel: "Eliminar"
+    });
+    if (!confirmed) return;
+
+    const index = Number(removeSponsorImageButton.dataset.removeSponsorImage);
+    publicSettings.sponsorImages.splice(index, 1);
+    refreshSponsorAdminPreview();
+    return;
+  }
+
   if (generateFixtureButton) {
     const key = generateFixtureButton.dataset.generateFixture;
     const row = getTournamentConfigByKey(key);
@@ -4978,7 +5476,7 @@ contentShell.addEventListener("click", async (event) => {
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert("El navegador bloqueÃ³ la ventana de descarga. PermitÃ­ ventanas emergentes para generar el PDF.");
+      alert("El navegador bloqueó la ventana de descarga. Permití ventanas emergentes para generar el PDF.");
       return;
     }
 
@@ -4996,7 +5494,7 @@ contentShell.addEventListener("click", async (event) => {
       const category = contentShell.querySelector("[data-admin-team-category]")?.value || "";
       const division = contentShell.querySelector("[data-admin-team-division]")?.value || "";
       const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-team-search]")?.value || "");
-      contentShell.innerHTML = renderAdminTeamsView(category, division, searchTerm, page);
+      contentShell.innerHTML = await renderAdminTeamsView(category, division, searchTerm, page);
       return;
     }
 
@@ -5004,7 +5502,7 @@ contentShell.addEventListener("click", async (event) => {
       const category = contentShell.querySelector("[data-admin-delegate-category]")?.value || "";
       const division = contentShell.querySelector("[data-admin-delegate-division]")?.value || "";
       const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-delegate-search]")?.value || "");
-      contentShell.innerHTML = renderAdminDelegatesView(category, division, searchTerm, page);
+      contentShell.innerHTML = await renderAdminDelegatesView(category, division, searchTerm, page);
       return;
     }
 
@@ -5049,13 +5547,31 @@ contentShell.addEventListener("click", async (event) => {
       .filter((input) => input.dataset.teamColor !== "2" || !noThirdColor)
       .map((input) => input.value);
 
-    team.crest = crest;
-    team.abbreviation = abbreviation;
-    team.shortName = shortName;
-    team.description = description;
-    team.shirtColors = nextColors;
-    team.colors = nextColors.slice(0, 2);
-    contentShell.innerHTML = renderDelegateTeamView(team);
+    const confirmed = await requestConfirmation({
+      title: "Guardar cambios",
+      message: "Se van a guardar los cambios de este equipo. ¿Confirmás la edición?",
+      confirmLabel: "Guardar cambios"
+    });
+    if (!confirmed) return;
+
+    try {
+      await apiPut(`/equipos/${team.id}`, {
+        escudo_url: crest,
+        color_principal: nextColors[0],
+        color_secundario: nextColors[1]
+      });
+
+      team.crest = crest;
+      team.abbreviation = abbreviation;
+      team.shortName = shortName;
+      team.description = description;
+      team.shirtColors = nextColors;
+      team.colors = nextColors.slice(0, 2);
+      contentShell.innerHTML = renderDelegateTeamView(team);
+    } catch (error) {
+      console.error("Error al guardar el equipo del delegado:", error);
+      contentShell.innerHTML = renderDelegateTeamView(team, true);
+    }
     return;
   }
 
@@ -5067,21 +5583,63 @@ contentShell.addEventListener("click", async (event) => {
   }
 
   if (openNewTeamButton) {
-    newTeamForm.reset();
-    populateNewTeamCategories();
-    populateNewTeamDivisions("");
-    validateNewTeamForm();
-    bootstrap.Modal.getOrCreateInstance(newTeamModalElement).show();
+    await openAdminTeamModal();
+    return;
+  }
+
+  if (editAdminTeamButton) {
+    await openAdminTeamModal(editAdminTeamButton.dataset.adminTeamEdit);
+    return;
+  }
+
+  if (deactivateAdminTeamButton) {
+    const confirmed = await requestConfirmation({
+      title: "Dar de baja equipo",
+      message: "El equipo quedará inactivo y dejará de mostrarse en las vistas activas. ¿Confirmás la baja?",
+      confirmLabel: "Dar de baja"
+    });
+    if (!confirmed) return;
+
+    try {
+      await apiPatch(`/equipos/${deactivateAdminTeamButton.dataset.adminTeamDeactivate}/desactivar`);
+      invalidateAdminMetrics();
+      const category = contentShell.querySelector("[data-admin-team-category]")?.value || "";
+      const division = contentShell.querySelector("[data-admin-team-division]")?.value || "";
+      const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-team-search]")?.value || "");
+      contentShell.innerHTML = await renderAdminTeamsView(category, division, searchTerm, 1);
+    } catch (error) {
+      console.error("Error al dar de baja el equipo:", error);
+    }
     return;
   }
 
   if (openNewDelegateButton) {
-    newDelegateForm.reset();
-    newDelegatePassword.value = "123456";
-    populateNewDelegateCategories();
-    populateNewDelegateTeams("");
-    validateNewDelegateForm();
-    bootstrap.Modal.getOrCreateInstance(newDelegateModalElement).show();
+    await openAdminDelegateModal();
+    return;
+  }
+
+  if (editAdminDelegateButton) {
+    await openAdminDelegateModal(editAdminDelegateButton.dataset.adminDelegateEdit);
+    return;
+  }
+
+  if (deactivateAdminDelegateButton) {
+    const confirmed = await requestConfirmation({
+      title: "Dar de baja delegado",
+      message: "El delegado quedará inactivo y no podrá ingresar. ¿Confirmás la baja?",
+      confirmLabel: "Dar de baja"
+    });
+    if (!confirmed) return;
+
+    try {
+      await apiPatch(`/usuarios/${deactivateAdminDelegateButton.dataset.adminDelegateDeactivate}/desactivar`);
+      const category = contentShell.querySelector("[data-admin-delegate-category]")?.value || "";
+      const division = contentShell.querySelector("[data-admin-delegate-division]")?.value || "";
+      const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-delegate-search]")?.value || "");
+      contentShell.innerHTML = await renderAdminDelegatesView(category, division, searchTerm, 1);
+    } catch (error) {
+      console.error("Error al dar de baja el delegado:", error);
+    }
     return;
   }
 
@@ -5093,6 +5651,13 @@ contentShell.addEventListener("click", async (event) => {
 
   const adminSaveButton = event.target.closest(".admin-save-row-btn");
   if (adminSaveButton) {
+    const confirmed = await requestConfirmation({
+      title: "Guardar cambios",
+      message: "Se van a guardar los cambios de este registro. ¿Confirmás la edición?",
+      confirmLabel: "Guardar cambios"
+    });
+    if (!confirmed) return;
+
     adminSaveButton.classList.add("is-saved");
     adminSaveButton.innerHTML = `<i class="bi bi-check2-circle"></i> Guardado`;
     window.setTimeout(() => {
@@ -5146,6 +5711,13 @@ contentShell.addEventListener("change", async (event) => {
   const tournamentDatesInput = event.target.closest("[data-tournament-dates]");
   const tournamentPlayoffInput = event.target.closest("[data-tournament-playoff]");
   const tournamentPlayoffTeamsInput = event.target.closest("[data-tournament-playoff-teams]");
+  const sponsorUploadInput = event.target.closest("[data-sponsor-upload]");
+
+  if (sponsorUploadInput) {
+    await addSponsorImages(sponsorUploadInput.files || []);
+    sponsorUploadInput.value = "";
+    return;
+  }
 
   if (observerDateSelect) {
     contentShell.innerHTML = renderObserverMatches(observerDateSelect.value);
@@ -5200,27 +5772,27 @@ contentShell.addEventListener("change", async (event) => {
 
   if (categorySelect) {
     const category = categorySelect.value;
-    contentShell.innerHTML = renderAdminTeamsView(category, "");
+    contentShell.innerHTML = await renderAdminTeamsView(category, "");
     return;
   }
 
   if (divisionSelect) {
     const category = contentShell.querySelector("[data-admin-team-category]")?.value || "";
     const division = divisionSelect.value;
-    contentShell.innerHTML = renderAdminTeamsView(category, division);
+    contentShell.innerHTML = await renderAdminTeamsView(category, division);
     return;
   }
 
   if (delegateCategorySelect) {
     const category = delegateCategorySelect.value;
-    contentShell.innerHTML = renderAdminDelegatesView(category, "");
+    contentShell.innerHTML = await renderAdminDelegatesView(category, "");
     return;
   }
 
   if (delegateDivisionSelect) {
     const category = contentShell.querySelector("[data-admin-delegate-category]")?.value || "";
     const division = delegateDivisionSelect.value;
-    contentShell.innerHTML = renderAdminDelegatesView(category, division);
+    contentShell.innerHTML = await renderAdminDelegatesView(category, division);
     return;
   }
 
@@ -5281,6 +5853,15 @@ contentShell.addEventListener("submit", async (event) => {
 
   if (!nombre) return;
 
+  if (editingId) {
+    const confirmed = await requestConfirmation({
+      title: "Guardar cambios",
+      message: "Se van a guardar los cambios de esta categoría. ¿Confirmás la edición?",
+      confirmLabel: "Guardar cambios"
+    });
+    if (!confirmed) return;
+  }
+
   if (saveButton) {
     saveButton.disabled = true;
     saveButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
@@ -5297,10 +5878,10 @@ contentShell.addEventListener("submit", async (event) => {
       includeInactive: adminCategoriesState.includeInactive,
       editingId: null
     });
-    cargarResumenDashboard();
+    invalidateAdminMetrics();
     cargarMenuCategorias();
   } catch (error) {
-    console.error("Error al guardar la categorÃƒÂ­a:", error);
+    console.error("Error al guardar la categoría:", error);
     if (saveButton) {
       saveButton.disabled = false;
       saveButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
@@ -5339,6 +5920,7 @@ contentShell.addEventListener("input", (event) => {
       const division = contentShell.querySelector("[data-admin-team-division]")?.value || "";
       const searchTerm = getEffectiveSearchTerm(teamSearch.value);
       const rows = contentShell.querySelector("[data-admin-team-rows]");
+      await loadAdminTeamsForFilters(category, division);
       const pageInfo = paginateItems(getAdminFilteredTeams(searchTerm), 1);
 
       rows.innerHTML = renderAdminTeamRows(Boolean(category && division), searchTerm, 1);
@@ -5382,18 +5964,32 @@ contentShell.addEventListener("input", (event) => {
   }, 220);
 });
 
-observationModalBody?.addEventListener("click", (event) => {
+observationModalBody?.addEventListener("click", async (event) => {
   const saveObservation = event.target.closest("#saveObservation");
   const saveResolution = event.target.closest("[data-save-observation-resolution]");
   const historyObservationView = event.target.closest("[data-history-observation-view]");
   const historyResolutionEdit = event.target.closest("[data-history-resolution-edit]");
 
   if (saveObservation) {
+    const confirmed = await requestConfirmation({
+      title: "Guardar observación",
+      message: "Se va a guardar esta observación disciplinaria. ¿Confirmás la carga?",
+      confirmLabel: "Guardar observación"
+    });
+    if (!confirmed) return;
+
     saveActiveObservationText();
     return;
   }
 
   if (saveResolution) {
+    const confirmed = await requestConfirmation({
+      title: "Guardar resolución",
+      message: "Se va a guardar la resolución administrativa de esta observación. ¿Confirmás los cambios?",
+      confirmLabel: "Guardar resolución"
+    });
+    if (!confirmed) return;
+
     saveObservationResolution();
     return;
   }
@@ -5490,9 +6086,9 @@ function validateAdminObserverForm() {
     } else if (username && !isUsernameUnique) {
       adminObserverFeedback.textContent = "El usuario ya existe.";
     } else if (password && !isPasswordValid) {
-      adminObserverFeedback.textContent = "La contraseÃ±a debe tener al menos 6 caracteres.";
+      adminObserverFeedback.textContent = "La contraseña debe tener al menos 6 caracteres.";
     } else if (adminObserverContact?.value && !isContactValid) {
-      adminObserverFeedback.textContent = "El contacto debe contener solo nÃºmeros.";
+      adminObserverFeedback.textContent = "El contacto debe contener solo números.";
     } else {
       adminObserverFeedback.textContent = "";
     }
@@ -5535,7 +6131,7 @@ async function openAdminObserverModal(observerId = "") {
   adminObserverContact.value = user.contacto || "";
   adminObserverUsername.value = user.usuario || "";
   adminObserverPassword.value = "";
-  adminObserverPassword.placeholder = observer ? "Dejar vacÃ­a para no cambiar" : "";
+  adminObserverPassword.placeholder = observer ? "Dejar vacía para no cambiar" : "";
   adminObserverPassword.required = !observer;
   adminObserverPassword.type = "password";
   if (adminObserverFeedback) {
@@ -5556,15 +6152,31 @@ newCategoryForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!newCategoryForm || !newCategoryName || !createCategoryButton || createCategoryButton.disabled) return;
 
-  createCategoryButton.disabled = true;
-  createCategoryButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
-
   try {
     const categoryId = newCategoryId?.value || "";
     const payload = {
       nombre: newCategoryName.value.trim(),
       descripcion: newCategoryDescription?.value.trim() || ""
     };
+
+    if (categoryId) {
+      const confirmed = await requestConfirmation({
+        title: "Guardar cambios",
+        message: "Se van a guardar los cambios de esta categoría. ¿Confirmás la edición?",
+        confirmLabel: "Guardar cambios"
+      });
+      if (!confirmed) return;
+    } else {
+      const confirmed = await requestConfirmation({
+        title: "Crear categoría",
+        message: "Se va a crear una nueva categoría. ¿Confirmás el alta?",
+        confirmLabel: "Crear categoría"
+      });
+      if (!confirmed) return;
+    }
+
+    createCategoryButton.disabled = true;
+    createCategoryButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
 
     if (categoryId) {
       await apiPut(`/categorias/${categoryId}`, payload);
@@ -5585,7 +6197,7 @@ newCategoryForm?.addEventListener("submit", async (event) => {
         includeInactive: adminCategoriesState.includeInactive,
         editingId: null
       });
-      cargarResumenDashboard();
+      invalidateAdminMetrics();
       cargarMenuCategorias();
     }, 650);
   } catch (error) {
@@ -5609,6 +6221,22 @@ adminDivisionForm?.addEventListener("submit", async (event) => {
     descripcion: adminDivisionDescription?.value.trim() || ""
   };
 
+  if (id) {
+    const confirmed = await requestConfirmation({
+      title: "Guardar cambios",
+      message: "Se van a guardar los cambios de esta división. ¿Confirmás la edición?",
+      confirmLabel: "Guardar cambios"
+    });
+    if (!confirmed) return;
+  } else {
+    const confirmed = await requestConfirmation({
+      title: "Crear división",
+      message: "Se va a crear una nueva división. ¿Confirmás el alta?",
+      confirmLabel: "Crear división"
+    });
+    if (!confirmed) return;
+  }
+
   saveDivisionButton.disabled = true;
   saveDivisionButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
 
@@ -5619,6 +6247,7 @@ adminDivisionForm?.addEventListener("submit", async (event) => {
       await apiPost("/divisiones", payload);
     }
 
+    invalidateAdminMetrics();
     saveDivisionButton.innerHTML = `<i class="bi bi-check2-circle"></i> Divisi&oacute;n guardada`;
     window.setTimeout(async () => {
       bootstrap.Modal.getInstance(adminDivisionModalElement)?.hide();
@@ -5641,7 +6270,7 @@ adminObserverPasswordToggle?.addEventListener("click", () => {
   const isPasswordVisible = adminObserverPassword.type === "text";
 
   adminObserverPassword.type = isPasswordVisible ? "password" : "text";
-  adminObserverPasswordToggle.setAttribute("aria-label", isPasswordVisible ? "Mostrar contraseÃ±a" : "Ocultar contraseÃ±a");
+  adminObserverPasswordToggle.setAttribute("aria-label", isPasswordVisible ? "Mostrar contraseña" : "Ocultar contraseña");
   adminObserverPasswordToggle.innerHTML = `<i class="bi ${isPasswordVisible ? "bi-eye-fill" : "bi-eye-slash-fill"}"></i>`;
 });
 
@@ -5668,6 +6297,22 @@ adminObserverForm?.addEventListener("submit", async (event) => {
 
   if (id && !payload.password) {
     delete payload.password;
+  }
+
+  if (id) {
+    const confirmed = await requestConfirmation({
+      title: "Guardar cambios",
+      message: "Se van a guardar los cambios de este veedor. ¿Confirmás la edición?",
+      confirmLabel: "Guardar cambios"
+    });
+    if (!confirmed) return;
+  } else {
+    const confirmed = await requestConfirmation({
+      title: "Crear veedor",
+      message: "Se va a crear un nuevo veedor. ¿Confirmás el alta?",
+      confirmLabel: "Crear veedor"
+    });
+    if (!confirmed) return;
   }
 
   saveObserverButton.disabled = true;
@@ -5699,21 +6344,49 @@ adminObserverForm?.addEventListener("submit", async (event) => {
 newTeamForm.addEventListener("input", validateNewTeamForm);
 newTeamForm.addEventListener("change", validateNewTeamForm);
 
-newTeamForm.addEventListener("submit", (event) => {
+newTeamForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (createTeamButton.disabled) return;
 
-  createTeamButton.classList.add("is-saved");
-  createTeamButton.innerHTML = `<i class="bi bi-check2-circle"></i> Equipo creado`;
+  const editingTeamId = newTeamForm?.dataset.editingId || "";
+  if (editingTeamId) {
+    const confirmed = await requestConfirmation({
+      title: "Guardar cambios",
+      message: "Se van a guardar los cambios de este equipo. ¿Confirmás la edición?",
+      confirmLabel: "Guardar cambios"
+    });
+    if (!confirmed) return;
+  } else {
+    const confirmed = await requestConfirmation({
+      title: "Crear equipo",
+      message: "Se va a crear un nuevo equipo. ¿Confirmás el alta?",
+      confirmLabel: "Crear equipo"
+    });
+    if (!confirmed) return;
+  }
 
-  window.setTimeout(() => {
+  createTeamButton.disabled = true;
+  createTeamButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
+
+  try {
+    await createTeamInSupabase();
     createTeamButton.classList.remove("is-saved");
-    createTeamButton.innerHTML = `<i class="bi bi-plus-circle-fill"></i> Crear equipo`;
+    createTeamButton.classList.add("is-saved");
+    createTeamButton.innerHTML = `<i class="bi bi-check2-circle"></i> Equipo creado`;
     bootstrap.Modal.getInstance(newTeamModalElement)?.hide();
+    newTeamForm.dataset.editingId = "";
     newTeamForm.reset();
     populateNewTeamDivisions("");
     validateNewTeamForm();
-  }, 900);
+    const category = contentShell.querySelector("[data-admin-team-category]")?.value || "";
+    const division = contentShell.querySelector("[data-admin-team-division]")?.value || "";
+    contentShell.innerHTML = await renderAdminTeamsView(category, division);
+    invalidateAdminMetrics();
+  } catch (error) {
+    console.error("Error al crear el equipo:", error);
+    createTeamButton.disabled = false;
+    createTeamButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
+  }
 });
 
 newDelegateCategory.addEventListener("change", () => {
@@ -5737,27 +6410,56 @@ delegatePasswordToggle.addEventListener("click", () => {
   const isPasswordVisible = newDelegatePassword.type === "text";
 
   newDelegatePassword.type = isPasswordVisible ? "password" : "text";
-  delegatePasswordToggle.setAttribute("aria-label", isPasswordVisible ? "Mostrar contraseÃ±a" : "Ocultar contraseÃ±a");
+  delegatePasswordToggle.setAttribute("aria-label", isPasswordVisible ? "Mostrar contraseña" : "Ocultar contraseña");
   delegatePasswordToggle.innerHTML = `<i class="bi ${isPasswordVisible ? "bi-eye-fill" : "bi-eye-slash-fill"}"></i>`;
 });
 
 newDelegateForm.addEventListener("input", validateNewDelegateForm);
 newDelegateForm.addEventListener("change", validateNewDelegateForm);
 
-newDelegateForm.addEventListener("submit", (event) => {
+newDelegateForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (createDelegateButton.disabled) return;
 
-  createDelegateButton.classList.add("is-saved");
-  createDelegateButton.innerHTML = `<i class="bi bi-check2-circle"></i> Delegado creado`;
+  const editingDelegateId = newDelegateForm?.dataset.editingId || "";
+  if (editingDelegateId) {
+    const confirmed = await requestConfirmation({
+      title: "Guardar cambios",
+      message: "Se van a guardar los cambios de este delegado. ¿Confirmás la edición?",
+      confirmLabel: "Guardar cambios"
+    });
+    if (!confirmed) return;
+  } else {
+    const confirmed = await requestConfirmation({
+      title: "Crear delegado",
+      message: "Se va a crear un nuevo delegado. ¿Confirmás el alta?",
+      confirmLabel: "Crear delegado"
+    });
+    if (!confirmed) return;
+  }
 
-  window.setTimeout(() => {
+  createDelegateButton.disabled = true;
+  createDelegateButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
+
+  try {
+    await createDelegateInSupabase();
     createDelegateButton.classList.remove("is-saved");
-    createDelegateButton.innerHTML = `<i class="bi bi-plus-circle-fill"></i> Crear delegado`;
+    createDelegateButton.classList.add("is-saved");
+    createDelegateButton.innerHTML = `<i class="bi bi-check2-circle"></i> Delegado creado`;
     bootstrap.Modal.getInstance(newDelegateModalElement)?.hide();
+    newDelegateForm.dataset.editingId = "";
+    newDelegateTeam.disabled = false;
+    newDelegatePassword.required = true;
     newDelegateForm.reset();
     validateNewDelegateForm();
-  }, 900);
+    const category = contentShell.querySelector("[data-admin-delegate-category]")?.value || "";
+    const division = contentShell.querySelector("[data-admin-delegate-division]")?.value || "";
+    contentShell.innerHTML = await renderAdminDelegatesView(category, division);
+  } catch (error) {
+    console.error("Error al crear el delegado:", error);
+    createDelegateButton.disabled = false;
+    createDelegateButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
+  }
 });
 
 delegatePlayerForm?.addEventListener("input", validateDelegatePlayerForm);
@@ -5768,28 +6470,39 @@ delegatePlayerDni?.addEventListener("input", () => {
   validateDelegatePlayerForm();
 });
 
-delegatePlayerForm?.addEventListener("submit", (event) => {
+delegatePlayerForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!saveDelegatePlayerButton || saveDelegatePlayerButton.disabled) return;
 
   const team = getTeam(sidebarContent.dataset.delegateTeam);
   if (!team) return;
 
-  team.players.push({
-    number: Number(delegatePlayerNumber.value),
-    name: `${delegatePlayerLastName.value.trim()} ${delegatePlayerFirstName.value.trim()}`,
-    birthDate: formatDateInputToDisplay(delegatePlayerBirthDate.value),
-    dni: delegatePlayerDni.value.trim(),
-    age: 0,
-    goals: 0,
-    yellow: 0,
-    red: 0
+  const confirmed = await requestConfirmation({
+    title: "Cargar jugador",
+    message: "Se va a cargar un nuevo jugador en el plantel. ¿Confirmás el alta?",
+    confirmLabel: "Cargar jugador"
   });
+  if (!confirmed) return;
 
-  bootstrap.Modal.getInstance(delegatePlayerModalElement)?.hide();
-  delegatePlayerForm.reset();
-  validateDelegatePlayerForm();
-  contentShell.innerHTML = renderDelegatePlayers(team);
+  saveDelegatePlayerButton.disabled = true;
+  saveDelegatePlayerButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
+
+  try {
+    await createDelegatePlayerInSupabase(team);
+    invalidateAdminMetrics();
+    if (activeDivisionId) {
+      await loadDivisionDataFromSupabase(activeDivisionId);
+    }
+    const updatedTeam = getTeam(team.id);
+    bootstrap.Modal.getInstance(delegatePlayerModalElement)?.hide();
+    delegatePlayerForm.reset();
+    validateDelegatePlayerForm();
+    contentShell.innerHTML = renderDelegatePlayers(updatedTeam || team);
+  } catch (error) {
+    console.error("Error al guardar el jugador:", error);
+    saveDelegatePlayerButton.disabled = false;
+    saveDelegatePlayerButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
+  }
 });
 
 newObserverContact.addEventListener("input", () => {
@@ -5801,35 +6514,45 @@ observerPasswordToggle.addEventListener("click", () => {
   const isPasswordVisible = newObserverPassword.type === "text";
 
   newObserverPassword.type = isPasswordVisible ? "password" : "text";
-  observerPasswordToggle.setAttribute("aria-label", isPasswordVisible ? "Mostrar contraseÃ±a" : "Ocultar contraseÃ±a");
+  observerPasswordToggle.setAttribute("aria-label", isPasswordVisible ? "Mostrar contraseña" : "Ocultar contraseña");
   observerPasswordToggle.innerHTML = `<i class="bi ${isPasswordVisible ? "bi-eye-fill" : "bi-eye-slash-fill"}"></i>`;
 });
 
 newObserverForm.addEventListener("input", validateNewObserverForm);
 newObserverForm.addEventListener("change", validateNewObserverForm);
 
-newObserverForm.addEventListener("submit", (event) => {
+newObserverForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (createObserverButton.disabled) return;
 
-  const nextObserverId = getNextObserverId();
-  observers.push({
-    id: nextObserverId,
-    name: `${newObserverLastName.value.trim()} ${newObserverFirstName.value.trim()}`,
-    contact: newObserverContact.value.trim(),
-    username: newObserverUsername.value.trim(),
-    password: newObserverPassword.value
+  const confirmed = await requestConfirmation({
+    title: "Crear veedor",
+    message: "Se va a crear un nuevo veedor. ¿Confirmás el alta?",
+    confirmLabel: "Crear veedor"
   });
+  if (!confirmed) return;
 
-  createObserverButton.classList.add("is-saved");
-  createObserverButton.innerHTML = `<i class="bi bi-check2-circle"></i> Veedor creado`;
+  createObserverButton.disabled = true;
+  createObserverButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
 
-  window.setTimeout(async () => {
+  try {
+    await apiPost("/veedores", {
+      nombre: newObserverFirstName.value.trim(),
+      apellido: newObserverLastName.value.trim(),
+      contacto: newObserverContact.value.trim(),
+      usuario: newObserverUsername.value.trim(),
+      password: newObserverPassword.value
+    });
     createObserverButton.classList.remove("is-saved");
-    createObserverButton.innerHTML = `<i class="bi bi-plus-circle-fill"></i> Crear veedor`;
+    createObserverButton.classList.add("is-saved");
+    createObserverButton.innerHTML = `<i class="bi bi-check2-circle"></i> Veedor creado`;
     bootstrap.Modal.getInstance(newObserverModalElement)?.hide();
     contentShell.innerHTML = await renderAdminObserversView();
-  }, 900);
+  } catch (error) {
+    console.error("Error al crear el veedor:", error);
+    createObserverButton.disabled = false;
+    createObserverButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
+  }
 });
 
 document.querySelectorAll("[data-scroll-team]").forEach((button) => {
@@ -5904,6 +6627,8 @@ if (loginRetryButton && loginErrorModalElement && loginModalElement) {
 
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  adminSettingsSession = null;
+  currentAppUser = null;
 
   const username = document.querySelector("#username").value.trim();
   const password = document.querySelector("#password").value;
@@ -5914,9 +6639,15 @@ loginForm.addEventListener("submit", async (event) => {
     if (!usuarioApp) return;
 
     if (!["admin", "superadmin"].includes(usuarioApp.rol)) {
-      showLoginError(`El rol "${usuarioApp.rol}" no esta autorizado para este ingreso.`);
+      showLoginError(`El rol "${usuarioApp.rol}" no está autorizado para este ingreso.`);
       return;
     }
+
+    adminSettingsSession = {
+      usuario: usuarioApp.usuario || username.trim(),
+      password: password.trim()
+    };
+    currentAppUser = usuarioApp;
 
     const modalElement = document.querySelector("#loginModal");
     const modalInstance = bootstrap.Modal.getInstance(modalElement);
@@ -5930,54 +6661,47 @@ loginForm.addEventListener("submit", async (event) => {
     return;
   }
   if (role === "Veedor") {
-    try {
-      await apiPost("/veedores/login", {
-        usuario: username,
-        password
-      });
+    const usuarioApp = await loginUsuariosApp(username, password);
+    if (!usuarioApp) return;
 
-      const modalElement = document.querySelector("#loginModal");
-      const modalInstance = bootstrap.Modal.getInstance(modalElement);
-
-      if (modalInstance) {
-        modalInstance.hide();
-      }
-
-      showProfileLoader("Veedor", enterObserverView);
-      loginForm.reset();
+    if (usuarioApp.rol !== "veedor") {
+      showLoginError(`El rol "${usuarioApp.rol}" no está autorizado para este ingreso.`);
       return;
-    } catch (error) {
-      const observer = observers.find((item) =>
-        item.username.toLowerCase() === username.toLowerCase() &&
-        item.password === password
-      );
-
-      if (observer) {
-        const modalElement = document.querySelector("#loginModal");
-        const modalInstance = bootstrap.Modal.getInstance(modalElement);
-
-        if (modalInstance) {
-          modalInstance.hide();
-        }
-
-        showProfileLoader("Veedor", enterObserverView);
-        loginForm.reset();
-        return;
-      }
     }
+
+    const modalElement = document.querySelector("#loginModal");
+    const modalInstance = bootstrap.Modal.getInstance(modalElement);
+
+    if (modalInstance) {
+      modalInstance.hide();
+    }
+
+    currentAppUser = usuarioApp;
+    showProfileLoader("Veedor", enterObserverView);
+    loginForm.reset();
+    return;
   }
 
   if (role === "Delegado") {
-    const team = getTeamFromUsername(username);
     const usuarioApp = await loginUsuariosApp(username, password);
     if (!usuarioApp) return;
 
     if (usuarioApp.rol !== "delegado") {
-      showLoginError(`El rol "${usuarioApp.rol}" no esta autorizado para este ingreso.`);
+      showLoginError(`El rol "${usuarioApp.rol}" no está autorizado para este ingreso.`);
+      return;
+    }
+
+    let team = null;
+    try {
+      team = await getDelegateTeamFromSupabase(usuarioApp);
+    } catch (error) {
+      console.error("Error al resolver el equipo del delegado:", error);
+      showLoginError("No se pudo cargar el equipo asociado al delegado desde Supabase.");
       return;
     }
 
     if (team) {
+      currentAppUser = usuarioApp;
       const modalElement = document.querySelector("#loginModal");
       const modalInstance = bootstrap.Modal.getInstance(modalElement);
 
@@ -5989,11 +6713,14 @@ loginForm.addEventListener("submit", async (event) => {
       loginForm.reset();
       return;
     }
+
+    showLoginError(`El delegado "${usuarioApp.usuario}" no tiene un equipo activo asociado.`);
+    return;
   }
-  showLoginError("Usuario o contraseÃ±a incorrectos.");
+  showLoginError("Usuario o contraseña incorrectos.");
 });
 // ============================================================
-// FRAME0 - PRUEBA DE CONEXIÃ“N CON SUPABASE
+// FRAME0 - PRUEBA DE CONEXIÓN CON SUPABASE
 // Consulta la tabla "categorias" y muestra los datos en consola.
 // ============================================================
 
@@ -6004,11 +6731,11 @@ async function cargarCategorias() {
     .order('nombre', { ascending: true });
 
   if (error) {
-    console.error('Error al cargar categorÃ­as:', error);
+    console.error('Error al cargar categorías:', error);
     return;
   }
 
-  console.log('CategorÃ­as cargadas desde Supabase:', data);
+  console.log('Categorías cargadas desde Supabase:', data);
 }
 
 // cargarCategorias();

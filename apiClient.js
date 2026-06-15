@@ -28,12 +28,30 @@ const FRAME0_TABLES = {
     select: "id,usuario_id,activo,created_at,usuario:usuarios_app(id,nombre,apellido,contacto,usuario,rol,activo)",
     activeColumn: "activo",
     orderBy: "created_at"
+  },
+  equipos: {
+    table: "equipos",
+    select: "id,division_id,nombre,escudo_url,color_principal,color_secundario,activo,created_at",
+    activeColumn: "activo",
+    orderBy: "nombre"
+  },
+  jugadores: {
+    table: "jugadores",
+    select: "id,equipo_id,nombre,apellido,dni,fecha_nacimiento,posicion,dorsal,foto_url,activo,created_at",
+    activeColumn: "activo",
+    orderBy: "apellido"
+  },
+  delegados: {
+    table: "delegados",
+    select: "id,usuario_id,equipo_id,activo,created_at,usuario:usuarios_app(id,nombre,apellido,contacto,usuario,rol,activo),equipo:equipos(id,nombre,division_id,activo)",
+    activeColumn: "activo",
+    orderBy: "created_at"
   }
 };
 
 function getSupabaseClient() {
   if (typeof supabaseClient === "undefined") {
-    throw new Error("Supabase no esta disponible. Revisá la carga de supabaseClient.js.");
+    throw new Error("Supabase no está disponible. Revisá la carga de supabaseClient.js.");
   }
 
   return supabaseClient;
@@ -98,7 +116,7 @@ async function requireAuthenticatedSession() {
   const session = await getCurrentSession();
 
   if (!session?.user?.id) {
-    throw new Error("Necesitas iniciar sesion con Supabase para guardar cambios.");
+    throw new Error("Necesit?s iniciar sesi?n con Supabase para guardar cambios.");
   }
 
   return session;
@@ -163,7 +181,7 @@ async function apiSignInWithRole(role, username, password) {
   });
 
   if (error) {
-    throw new Error(`Error de autenticacion en Supabase Auth: ${error.message}`);
+    throw new Error(`Error de autenticaci?n en Supabase Auth: ${error.message}`);
   }
 
   const { data: profile, error: profileError } = await getSupabaseClient()
@@ -175,7 +193,7 @@ async function apiSignInWithRole(role, username, password) {
 
   if (profileError) {
     await getSupabaseClient().auth.signOut();
-    throw new Error("La autenticacion fue correcta, pero no se pudo validar el perfil en usuarios_app.");
+    throw new Error("La autenticaci?n fue correcta, pero no se pudo validar el perfil en usuarios_app.");
   }
 
   if (!profile.activo) {
@@ -215,7 +233,7 @@ async function apiSignInWithPasswordHash(role, username, password) {
   }
 
   if (data.password_hash !== String(password || "").trim()) {
-    throw new Error("Contrase�a incorrecta.");
+    throw new Error("Contraseña incorrecta.");
   }
 
   if (!allowedRoles.includes(data.rol)) {
@@ -270,7 +288,6 @@ async function apiGet(endpoint) {
 }
 
 async function createObserver(body = {}) {
-  await requireAuthenticatedSession();
 
   const nombre = String(body.nombre || "").trim();
   const apellido = String(body.apellido || "").trim();
@@ -294,7 +311,7 @@ async function createObserver(body = {}) {
 
   const userId = authData?.user?.id;
   if (!userId) {
-    throw new Error("Supabase Auth no devolvio un usuario para asociar al veedor.");
+    throw new Error("Supabase Auth no devolvi? un usuario para asociar al veedor.");
   }
 
   const { error: profileError } = await getSupabaseClient()
@@ -306,6 +323,7 @@ async function createObserver(body = {}) {
       contacto,
       usuario,
       rol: "veedor",
+      password_hash: password,
       activo: true
     });
 
@@ -321,9 +339,77 @@ async function createObserver(body = {}) {
   return data;
 }
 
-async function updateObserver(id, body = {}) {
-  await requireAuthenticatedSession();
+async function createDelegate(body = {}) {
+  const nombre = String(body.nombre || "").trim();
+  const apellido = String(body.apellido || "").trim();
+  const contacto = String(body.contacto || "").trim();
+  const usuario = normalizeUsername(body.usuario);
+  const password = String(body.password || "");
+  const equipoId = String(body.equipo_id || "").trim();
 
+  if (!nombre || !apellido || !contacto || !usuario || !password || !equipoId) {
+    throw new Error("Campos requeridos: nombre, apellido, contacto, usuario, password y equipo_id");
+  }
+
+  await ensureUniqueUsername(usuario);
+
+  const { data: profile, error: profileError } = await getSupabaseClient()
+    .from("usuarios_app")
+    .insert({ nombre, apellido, contacto, usuario, rol: "delegado", password_hash: password, activo: true })
+    .select("id,nombre,apellido,contacto,usuario,rol,activo")
+    .single();
+
+  if (profileError) throw profileError;
+
+  const { data, error } = await getSupabaseClient()
+    .from("delegados")
+    .insert({ usuario_id: profile.id, equipo_id: equipoId, activo: true })
+    .select(FRAME0_TABLES.delegados.select)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function updateDelegate(id, body = {}) {
+  const { data: delegate, error: delegateError } = await getSupabaseClient()
+    .from("delegados")
+    .select("id,usuario_id")
+    .eq("id", id)
+    .single();
+
+  if (delegateError) throw delegateError;
+
+  const usuario = body.usuario ? normalizeUsername(body.usuario) : undefined;
+  if (usuario) await ensureUniqueUsername(usuario, delegate.usuario_id);
+
+  const payload = cleanPayload({
+    nombre: body.nombre === undefined ? undefined : String(body.nombre).trim(),
+    apellido: body.apellido === undefined ? undefined : String(body.apellido).trim(),
+    contacto: body.contacto === undefined ? undefined : String(body.contacto).trim(),
+    usuario,
+    password_hash: body.password ? String(body.password) : undefined,
+    rol: "delegado"
+  });
+
+  const { error: updateError } = await getSupabaseClient()
+    .from("usuarios_app")
+    .update(payload)
+    .eq("id", delegate.usuario_id);
+
+  if (updateError) throw updateError;
+
+  const { data, error } = await getSupabaseClient()
+    .from("delegados")
+    .select(FRAME0_TABLES.delegados.select)
+    .eq("id", id)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function updateObserver(id, body = {}) {
   const { data: observer, error: observerError } = await getSupabaseClient()
     .from("veedores")
     .select("id,usuario_id")
@@ -331,10 +417,6 @@ async function updateObserver(id, body = {}) {
     .single();
 
   if (observerError) throw observerError;
-
-  if (body.password) {
-    throw new Error("El cambio de contraseña de otros usuarios debe hacerse desde Supabase Auth o una Edge Function segura.");
-  }
 
   const usuario = body.usuario ? normalizeUsername(body.usuario) : undefined;
   if (usuario) {
@@ -346,6 +428,7 @@ async function updateObserver(id, body = {}) {
     apellido: body.apellido === undefined ? undefined : String(body.apellido).trim(),
     contacto: body.contacto === undefined ? undefined : String(body.contacto).trim(),
     usuario,
+    password_hash: body.password ? String(body.password) : undefined,
     rol: "veedor"
   });
 
@@ -389,7 +472,7 @@ async function loginObserver(body = {}) {
   });
 
   if (authError) {
-    throw new Error(`Error de autenticacion en Supabase Auth: ${authError.message}`);
+    throw new Error(`Error de autenticaci?n en Supabase Auth: ${authError.message}`);
   }
 
   const { data: profile, error: profileError } = await getSupabaseClient()
@@ -421,11 +504,13 @@ async function apiPost(endpoint, body) {
     return loginObserver(body);
   }
 
+  if (resource === "delegados") {
+    return createDelegate(body);
+  }
+
   if (resource === "veedores") {
     return createObserver(body);
   }
-
-  await requireAuthenticatedSession();
 
   const config = getResourceConfig(resource);
   const { data, error } = await getSupabaseClient()
@@ -449,7 +534,9 @@ async function apiPut(endpoint, body) {
     return updateObserver(id, body);
   }
 
-  await requireAuthenticatedSession();
+  if (resource === "delegados") {
+    return updateDelegate(id, body);
+  }
 
   const config = getResourceConfig(resource);
   const { data, error } = await getSupabaseClient()
@@ -467,10 +554,8 @@ async function apiPatch(endpoint) {
   const { resource, id, action } = parseDataEndpoint(endpoint);
   const config = getResourceConfig(resource);
 
-  await requireAuthenticatedSession();
-
   if (!id || !["activar", "desactivar"].includes(action)) {
-    throw new Error(`Accion no soportada: ${endpoint}`);
+    throw new Error(`Acción no soportada: ${endpoint}`);
   }
 
   const { data, error } = await getSupabaseClient()
@@ -481,14 +566,22 @@ async function apiPatch(endpoint) {
     .single();
 
   if (error) throw error;
+
+  if (resource === "categorias" && action === "desactivar") {
+    const { error: divisionsError } = await getSupabaseClient()
+      .from("divisiones")
+      .update({ activa: false })
+      .eq("categoria_id", id);
+
+    if (divisionsError) throw divisionsError;
+  }
+
   return data;
 }
 
 async function apiDelete(endpoint) {
   const { resource, id } = parseDataEndpoint(endpoint);
   const config = getResourceConfig(resource);
-
-  await requireAuthenticatedSession();
 
   if (!id) {
     throw new Error("Falta el id del registro a eliminar.");
