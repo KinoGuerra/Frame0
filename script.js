@@ -9,6 +9,7 @@ const divisionTitle = document.querySelector("#divisionTitle");
 const teamCarousel = document.querySelector("#teamCarousel");
 const sponsorBanner = document.querySelector("#sponsorBanner");
 const sponsorCarousel = document.querySelector("[data-sponsor-carousel]");
+const tournamentCarousel = document.querySelector("#tournamentCarousel");
 const teamDetailView = document.querySelector("#teamDetailView");
 const divisionTables = document.querySelector("#divisionTables");
 const standingsBody = document.querySelector("#standingsBody");
@@ -23,6 +24,7 @@ const openLoginButton = document.querySelector("[data-bs-target='#loginModal']")
 const sidebarContent = document.querySelector("#sidebarContent");
 const contentShell = document.querySelector("#contentShell");
 const initialSidebarContent = sidebarContent.innerHTML;
+const initialTournamentCarouselContent = tournamentCarousel?.innerHTML || "";
 const initialContentShell = contentShell.innerHTML;
 const passwordInput = document.querySelector("#password");
 const passwordToggle = document.querySelector("[data-password-toggle]");
@@ -100,6 +102,10 @@ let teamCarouselActiveIndex = 0;
 let sponsorCarouselActiveIndex = 0;
 let sponsorCarouselTimer = null;
 const MAX_SPONSOR_IMAGES = 15;
+const MAX_HOME_CAROUSEL_IMAGES = 3;
+const HOME_CAROUSEL_RECOMMENDED_SIZE = "1920 x 720 px";
+const HOME_CAROUSEL_MAX_WIDTH = 1920;
+const HOME_CAROUSEL_MAX_HEIGHT = 720;
 const adminCategoriesState = {
   includeInactive: false,
   items: [],
@@ -137,6 +143,7 @@ const publicSettings = {
   contactTitle: "351 XXX XXXX",
   contactText: "Consultas por cupos, inscripción, documentación y calendario inicial. La atención se centraliza para mantener una comunicación clara con cada equipo.",
   sponsorImages: [],
+  homeCarouselImages: [],
   regulationText: `La competencia se disputa bajo principios de juego limpio, respeto entre participantes y cumplimiento de la programación oficial informada por la organización. Cada equipo deberá presentar su lista de buena fe, contar con jugadores habilitados y respetar los horarios asignados para cada fecha.
 
 Los partidos tendrán una duración definida por la organización según categoría y división. La tabla de posiciones se ordenará por puntos obtenidos, diferencia de gol, goles a favor y resultado entre equipos cuando corresponda. Las sanciones disciplinarias podrán incluir suspensión por acumulación de tarjetas, expulsiones directas o informes del veedor.
@@ -238,6 +245,7 @@ function applyPublicSettings() {
   setLinkIfExists("#homeWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
   setLinkIfExists("#loginWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
   renderSponsorCarousel();
+  renderHomeCarouselImages();
 }
 
 function getPublicSettingsPayload() {
@@ -250,6 +258,7 @@ function getPublicSettingsPayload() {
     contactTitle: publicSettings.contactTitle,
     contactText: publicSettings.contactText,
     sponsorImages: publicSettings.sponsorImages,
+    homeCarouselImages: publicSettings.homeCarouselImages,
     regulationText: publicSettings.regulationText
   };
 }
@@ -257,9 +266,12 @@ function getPublicSettingsPayload() {
 function mergePublicSettings(settings = {}) {
   Object.keys(publicSettings).forEach((key) => {
     if (settings[key] !== undefined && settings[key] !== null) {
-      publicSettings[key] = Array.isArray(publicSettings[key])
-        ? (Array.isArray(settings[key]) ? settings[key] : []).filter(Boolean).slice(0, MAX_SPONSOR_IMAGES)
-        : String(settings[key]);
+      if (Array.isArray(publicSettings[key])) {
+        const maxItems = key === "homeCarouselImages" ? MAX_HOME_CAROUSEL_IMAGES : MAX_SPONSOR_IMAGES;
+        publicSettings[key] = (Array.isArray(settings[key]) ? settings[key] : []).filter(Boolean).slice(0, maxItems);
+      } else {
+        publicSettings[key] = String(settings[key]);
+      }
     }
   });
 }
@@ -314,6 +326,41 @@ function renderSponsorCarousel() {
   }
 }
 
+function renderHomeCarouselImages() {
+  if (!tournamentCarousel) return;
+
+  const images = publicSettings.homeCarouselImages || [];
+  if (!images.length) {
+    tournamentCarousel.innerHTML = initialTournamentCarouselContent;
+    return;
+  }
+
+  tournamentCarousel.innerHTML = `
+    <div class="carousel-indicators">
+      ${images.map((image, index) => `
+        <button type="button" data-bs-target="#tournamentCarousel" data-bs-slide-to="${index}" class="${index === 0 ? "active" : ""}" ${index === 0 ? 'aria-current="true"' : ""} aria-label="Imagen ${index + 1}"></button>
+      `).join("")}
+    </div>
+    <div class="carousel-inner">
+      ${images.map((image, index) => `
+        <div class="carousel-item ${index === 0 ? "active" : ""}">
+          <div class="carousel-scene home-carousel-image-scene">
+            <img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.name || `Imagen del torneo ${index + 1}`)}" class="home-carousel-image">
+          </div>
+        </div>
+      `).join("")}
+    </div>
+    <button class="carousel-control-prev" type="button" data-bs-target="#tournamentCarousel" data-bs-slide="prev">
+      <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+      <span class="visually-hidden">Anterior</span>
+    </button>
+    <button class="carousel-control-next" type="button" data-bs-target="#tournamentCarousel" data-bs-slide="next">
+      <span class="carousel-control-next-icon" aria-hidden="true"></span>
+      <span class="visually-hidden">Siguiente</span>
+    </button>
+  `;
+}
+
 function renderSponsorAdminImages() {
   const images = publicSettings.sponsorImages || [];
 
@@ -335,15 +382,43 @@ function renderSponsorAdminImages() {
   `).join("");
 }
 
+function renderHomeCarouselAdminImages() {
+  const images = publicSettings.homeCarouselImages || [];
+
+  if (!images.length) {
+    return `<div class="admin-empty-row sponsor-empty">Sin imágenes cargadas para el carrusel.</div>`;
+  }
+
+  return images.map((image, index) => `
+    <div class="sponsor-admin-card">
+      <img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.name || `Imagen carrusel ${index + 1}`)}">
+      <div>
+        <strong>${escapeHtml(image.name || `Imagen carrusel ${index + 1}`)}</strong>
+        <small>${index + 1} de ${MAX_HOME_CAROUSEL_IMAGES}</small>
+      </div>
+      <button type="button" aria-label="Eliminar imagen de carrusel ${index + 1}" data-remove-home-carousel-image="${index}">
+        <i class="bi bi-trash-fill"></i>
+      </button>
+    </div>
+  `).join("");
+}
+
 function refreshSponsorAdminPreview() {
   const preview = contentShell.querySelector("[data-sponsor-preview]");
   const counter = contentShell.querySelector("[data-sponsor-count]");
   const input = contentShell.querySelector("[data-sponsor-upload]");
+  const homeCarouselPreview = contentShell.querySelector("[data-home-carousel-preview]");
+  const homeCarouselCounter = contentShell.querySelector("[data-home-carousel-count]");
+  const homeCarouselInput = contentShell.querySelector("[data-home-carousel-upload]");
 
   if (preview) preview.innerHTML = renderSponsorAdminImages();
   if (counter) counter.textContent = `${publicSettings.sponsorImages.length}/${MAX_SPONSOR_IMAGES}`;
   if (input) input.disabled = publicSettings.sponsorImages.length >= MAX_SPONSOR_IMAGES;
+  if (homeCarouselPreview) homeCarouselPreview.innerHTML = renderHomeCarouselAdminImages();
+  if (homeCarouselCounter) homeCarouselCounter.textContent = `${publicSettings.homeCarouselImages.length}/${MAX_HOME_CAROUSEL_IMAGES}`;
+  if (homeCarouselInput) homeCarouselInput.disabled = publicSettings.homeCarouselImages.length >= MAX_HOME_CAROUSEL_IMAGES;
   renderSponsorCarousel();
+  renderHomeCarouselImages();
 }
 
 function readSponsorFile(file) {
@@ -359,6 +434,51 @@ function readSponsorFile(file) {
   });
 }
 
+function readHomeCarouselFile(file) {
+  const isSvg = file.name.toLowerCase().endsWith(".svg") || file.type === "image/svg+xml";
+  if (isSvg) return readSponsorFile(file);
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const scale = Math.min(
+          HOME_CAROUSEL_MAX_WIDTH / image.naturalWidth,
+          HOME_CAROUSEL_MAX_HEIGHT / image.naturalHeight,
+          1
+        );
+        const width = Math.max(Math.round(image.naturalWidth * scale), 1);
+        const height = Math.max(Math.round(image.naturalHeight * scale), 1);
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+          resolve({
+            name: file.name,
+            type: file.type || "image/*",
+            src: String(reader.result || "")
+          });
+          return;
+        }
+
+        context.drawImage(image, 0, 0, width, height);
+        resolve({
+          name: file.name,
+          type: "image/jpeg",
+          src: canvas.toDataURL("image/jpeg", 0.88)
+        });
+      };
+      image.onerror = () => reject(new Error("No se pudo procesar la imagen del carrusel."));
+      image.src = String(reader.result || "");
+    };
+    reader.onerror = () => reject(reader.error || new Error("No se pudo leer la imagen."));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function addSponsorImages(files = []) {
   const availableSlots = MAX_SPONSOR_IMAGES - publicSettings.sponsorImages.length;
   const validFiles = [...files]
@@ -369,6 +489,19 @@ async function addSponsorImages(files = []) {
 
   const images = await Promise.all(validFiles.map(readSponsorFile));
   publicSettings.sponsorImages = [...publicSettings.sponsorImages, ...images].slice(0, MAX_SPONSOR_IMAGES);
+  refreshSponsorAdminPreview();
+}
+
+async function addHomeCarouselImages(files = []) {
+  const availableSlots = MAX_HOME_CAROUSEL_IMAGES - publicSettings.homeCarouselImages.length;
+  const validFiles = [...files]
+    .filter((file) => file.type.startsWith("image/") || file.name.toLowerCase().endsWith(".svg"))
+    .slice(0, availableSlots);
+
+  if (!validFiles.length) return;
+
+  const images = await Promise.all(validFiles.map(readHomeCarouselFile));
+  publicSettings.homeCarouselImages = [...publicSettings.homeCarouselImages, ...images].slice(0, MAX_HOME_CAROUSEL_IMAGES);
   refreshSponsorAdminPreview();
 }
 
@@ -511,6 +644,65 @@ function renderMenuCategorias(categorias, divisiones) {
   }).join("");
 }
 
+function renderHomeTournamentChecklist() {
+  const checklist = document.querySelector("#homeTournamentChecklist");
+  if (!checklist) return;
+
+  const categoryItems = tournamentCatalog.length
+    ? tournamentCatalog.map((category) => {
+      const divisions = category.divisions.length
+        ? category.divisions.map((division) => `
+          <div class="home-check-item home-check-division">
+            <span>${escapeHtml(division.name)}</span>
+            <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+          </div>
+        `).join("")
+        : `
+          <div class="home-check-item home-check-division">
+            <span>Sin divisiones activas</span>
+            <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+          </div>
+        `;
+
+      return `
+        <div class="home-check-category">
+          <div class="home-check-item home-check-category-title">
+            <strong>${escapeHtml(category.name)}</strong>
+            <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+          </div>
+          ${divisions}
+        </div>
+      `;
+    }).join("")
+    : `
+      <div class="home-check-item">
+        <span>Categorías y divisiones en carga</span>
+        <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+      </div>
+    `;
+
+  checklist.innerHTML = `
+    <div class="home-check-section-label">Categorías:</div>
+    ${categoryItems}
+    <div class="home-check-item">
+      <span>Resultados en el día</span>
+      <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+    </div>
+    <div class="home-check-item">
+      <span>Estadísticas actualizadas</span>
+      <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+    </div>
+    <div class="home-check-item">
+      <span>Gestión web de tu equipo</span>
+      <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+    </div>
+    <div class="home-check-item">
+      <span>Fotos profesionales</span>
+      <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+    </div>
+  `;
+}
+
 async function cargarMenuCategorias() {
   if (!menuCategorias) return;
 
@@ -553,9 +745,11 @@ async function cargarMenuCategorias() {
     console.log("Menú divisiones:", divisionesActivas);
 
     renderMenuCategorias(categoriasActivas, divisionesActivas);
+    renderHomeTournamentChecklist();
   } catch (error) {
     console.error("Error al cargar el menú de categorías:", error);
     menuCategorias.innerHTML = `<div class="menu-empty">No se pudo cargar el menú.</div>`;
+    renderHomeTournamentChecklist();
   }
 }
 
@@ -577,7 +771,8 @@ let observerMatches = [];
 let observers = [];
 
 function getTeam(teamId) {
-  return teams.find((team) => team.id === teamId);
+  return teams.find((team) => String(team.id) === String(teamId))
+    || adminTeamsForView.find((team) => String(team.id) === String(teamId));
 }
 
 function getPlayerObservationKey(matchId, teamId, player) {
@@ -704,7 +899,9 @@ function renderPlayerObservationSummary(observations) {
 }
 
 function getObservedPlayersCount(selectedTeamId = "") {
-  return teams
+  const adminPlayerTeams = adminTeamsForView.length ? adminTeamsForView : teams;
+
+  return adminPlayerTeams
     .filter((team) => !selectedTeamId || team.id === selectedTeamId)
     .flatMap((team) => team.players.map((player) => ({ ...player, team })))
     .filter((player) => getPendingPlayerObservationsForAdmin(player).length > 0)
@@ -3325,12 +3522,9 @@ function renderAdminSettingsView() {
 
         <div class="tab-pane fade" id="settings-sponsors" role="tabpanel" tabindex="0">
           <form class="settings-form sponsor-settings-form">
-            <div class="settings-note">
-              <i class="bi bi-stars"></i>
-              <div>
-                <h3>Auspiciantes</h3>
-                <p>Subí hasta ${MAX_SPONSOR_IMAGES} imágenes para mostrarlas en el banner automático de la home.</p>
-              </div>
+            <div class="division-section-heading sponsor-section-heading">
+              <p class="section-kicker mb-1">Banner automático</p>
+              <h2>Auspiciantes</h2>
             </div>
 
             <label class="admin-filter-field sponsor-upload-field">
@@ -3340,6 +3534,23 @@ function renderAdminSettingsView() {
 
             <div class="sponsor-admin-grid" data-sponsor-preview>
               ${renderSponsorAdminImages()}
+            </div>
+
+            <div class="sponsor-section-divider" aria-hidden="true"></div>
+
+            <div class="division-section-heading sponsor-section-heading">
+              <p class="section-kicker mb-1">Imágenes destacadas</p>
+              <h2>Carrusel principal de la home</h2>
+            </div>
+
+            <label class="admin-filter-field sponsor-upload-field">
+              <span>Imágenes del carrusel <strong data-home-carousel-count>${publicSettings.homeCarouselImages.length}/${MAX_HOME_CAROUSEL_IMAGES}</strong></span>
+              <input class="form-control" type="file" accept="image/*,.svg" multiple data-home-carousel-upload ${publicSettings.homeCarouselImages.length >= MAX_HOME_CAROUSEL_IMAGES ? "disabled" : ""}>
+              <small class="form-helper-text">Para una correcta visualización, usá imágenes horizontales de ${HOME_CAROUSEL_RECOMMENDED_SIZE}. Si la imagen es más grande, se ajustará automáticamente; si tiene otra proporción, puede recortarse para no deformar el carrusel.</small>
+            </label>
+
+            <div class="sponsor-admin-grid" data-home-carousel-preview>
+              ${renderHomeCarouselAdminImages()}
             </div>
 
             <button class="btn btn-ingreso settings-save-btn" type="button" data-save-public-settings>
@@ -4731,7 +4942,7 @@ function getAdminPlayers(hasCompletedFilters, selectedTeamId = "", searchTerm = 
   if (!hasCompletedFilters) return [];
 
   const normalizedSearch = normalizeSearchText(searchTerm);
-  return teams
+  return adminTeamsForView
     .filter((team) => !selectedTeamId || team.id === selectedTeamId)
     .flatMap((team) => team.players.map((player) => ({ ...player, team })))
     .filter((player) => player.name.toLowerCase().includes(normalizedSearch))
@@ -5182,6 +5393,7 @@ contentShell.addEventListener("click", async (event) => {
   const openNewObserverButton = event.target.closest("[data-open-new-observer-modal]");
   const savePublicSettingsButton = event.target.closest("[data-save-public-settings]");
   const removeSponsorImageButton = event.target.closest("[data-remove-sponsor-image]");
+  const removeHomeCarouselImageButton = event.target.closest("[data-remove-home-carousel-image]");
   const aboutCarouselMoveButton = event.target.closest("[data-about-carousel-move]");
   const generateFixtureButton = event.target.closest("[data-generate-fixture]");
   const downloadFixtureButton = event.target.closest("[data-download-fixture]");
@@ -5222,14 +5434,15 @@ contentShell.addEventListener("click", async (event) => {
   if (deactivateDivisionButton || activateDivisionButton) {
     const id = deactivateDivisionButton?.dataset.adminDivisionDeactivate || activateDivisionButton?.dataset.adminDivisionActivate;
     const action = deactivateDivisionButton ? "desactivar" : "activar";
-    if (deactivateDivisionButton) {
-      const confirmed = await requestConfirmation({
-        title: "Dar de baja división",
-        message: "Esta división dejará de mostrarse como activa. ¿Confirmás la baja?",
-        confirmLabel: "Dar de baja"
-      });
-      if (!confirmed) return;
-    }
+    const confirmed = await requestConfirmation({
+      title: deactivateDivisionButton ? "Dar de baja división" : "Reactivar división",
+      message: deactivateDivisionButton
+        ? "Esta división dejará de mostrarse como activa. ¿Confirmás la baja?"
+        : "Esta división volverá a mostrarse como activa. ¿Confirmás la reactivación?",
+      confirmLabel: deactivateDivisionButton ? "Dar de baja" : "Reactivar"
+    });
+    if (!confirmed) return;
+
     try {
       await apiPatch(`/divisiones/${id}/${action}`);
       invalidateAdminMetrics();
@@ -5261,14 +5474,15 @@ contentShell.addEventListener("click", async (event) => {
   if (deactivateAdminObserverButton || activateAdminObserverButton) {
     const id = deactivateAdminObserverButton?.dataset.adminObserverDeactivate || activateAdminObserverButton?.dataset.adminObserverActivate;
     const action = deactivateAdminObserverButton ? "desactivar" : "activar";
-    if (deactivateAdminObserverButton) {
-      const confirmed = await requestConfirmation({
-        title: "Dar de baja veedor",
-        message: "El veedor quedará inactivo y no podrá operar. ¿Confirmás la baja?",
-        confirmLabel: "Dar de baja"
-      });
-      if (!confirmed) return;
-    }
+    const confirmed = await requestConfirmation({
+      title: deactivateAdminObserverButton ? "Dar de baja veedor" : "Reactivar veedor",
+      message: deactivateAdminObserverButton
+        ? "El veedor quedará inactivo y no podrá operar. ¿Confirmás la baja?"
+        : "El veedor volverá a estar activo y podrá operar. ¿Confirmás la reactivación?",
+      confirmLabel: deactivateAdminObserverButton ? "Dar de baja" : "Reactivar"
+    });
+    if (!confirmed) return;
+
     try {
       await apiPatch(`/veedores/${id}/${action}`);
       contentShell.innerHTML = await renderAdminObserversView(adminObserversState.searchTerm, 1);
@@ -5327,6 +5541,13 @@ contentShell.addEventListener("click", async (event) => {
   }
 
   if (activateCategoryButton) {
+    const confirmed = await requestConfirmation({
+      title: "Reactivar categoría",
+      message: "La categoría volverá a mostrarse como activa. ¿Confirmás la reactivación?",
+      confirmLabel: "Reactivar"
+    });
+    if (!confirmed) return;
+
     try {
       await apiPatch(`/categorias/${activateCategoryButton.dataset.adminCategoryActivate}/activar`);
       invalidateAdminMetrics();
@@ -5454,6 +5675,20 @@ contentShell.addEventListener("click", async (event) => {
 
     const index = Number(removeSponsorImageButton.dataset.removeSponsorImage);
     publicSettings.sponsorImages.splice(index, 1);
+    refreshSponsorAdminPreview();
+    return;
+  }
+
+  if (removeHomeCarouselImageButton) {
+    const confirmed = await requestConfirmation({
+      title: "Eliminar imagen del carrusel",
+      message: "La imagen se quitará del carrusel principal cuando guardes la configuración. ¿Confirmás la eliminación?",
+      confirmLabel: "Eliminar"
+    });
+    if (!confirmed) return;
+
+    const index = Number(removeHomeCarouselImageButton.dataset.removeHomeCarouselImage);
+    publicSettings.homeCarouselImages.splice(index, 1);
     refreshSponsorAdminPreview();
     return;
   }
@@ -5712,10 +5947,17 @@ contentShell.addEventListener("change", async (event) => {
   const tournamentPlayoffInput = event.target.closest("[data-tournament-playoff]");
   const tournamentPlayoffTeamsInput = event.target.closest("[data-tournament-playoff-teams]");
   const sponsorUploadInput = event.target.closest("[data-sponsor-upload]");
+  const homeCarouselUploadInput = event.target.closest("[data-home-carousel-upload]");
 
   if (sponsorUploadInput) {
     await addSponsorImages(sponsorUploadInput.files || []);
     sponsorUploadInput.value = "";
+    return;
+  }
+
+  if (homeCarouselUploadInput) {
+    await addHomeCarouselImages(homeCarouselUploadInput.files || []);
+    homeCarouselUploadInput.value = "";
     return;
   }
 
@@ -5798,6 +6040,7 @@ contentShell.addEventListener("change", async (event) => {
 
   if (playerCategorySelect) {
     const category = playerCategorySelect.value;
+    adminTeamsForView = [];
     contentShell.innerHTML = renderAdminPlayersView(category, "");
     return;
   }
@@ -5805,6 +6048,7 @@ contentShell.addEventListener("change", async (event) => {
   if (playerDivisionSelect) {
     const category = contentShell.querySelector("[data-admin-player-category]")?.value || "";
     const division = playerDivisionSelect.value;
+    await loadAdminTeamsForFilters(category, division);
     contentShell.innerHTML = renderAdminPlayersView(category, division);
     return;
   }

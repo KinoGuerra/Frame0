@@ -104,49 +104,6 @@
                 <div class="sponsor-banner-stage" data-sponsor-carousel></div>
               </section>
 
-              <section class="quick-stats" aria-label="Resumen del torneo">
-                <div class="quick-stat">
-                  <i class="bi bi-grid-1x2-fill"></i>
-                  <div class="quick-stat-content">
-                    <strong data-dashboard-count="categorias">0</strong>
-                    <div class="quick-stat-copy">
-                      <span>Categorías</span>
-                      <small>Configuradas en Supabase</small>
-                    </div>
-                  </div>
-                </div>
-                <div class="quick-stat">
-                  <i class="bi bi-diagram-3-fill"></i>
-                  <div class="quick-stat-content">
-                    <strong data-dashboard-count="divisiones">0</strong>
-                    <div class="quick-stat-copy">
-                      <span>Divisiones</span>
-                      <small>Activas en Supabase</small>
-                    </div>
-                  </div>
-                </div>
-                <div class="quick-stat">
-                  <i class="bi bi-shield-fill-check"></i>
-                  <div class="quick-stat-content">
-                    <strong data-dashboard-count="equipos">0</strong>
-                    <div class="quick-stat-copy">
-                      <span>Equipos</span>
-                      <small>Cargados en Supabase</small>
-                    </div>
-                  </div>
-                </div>
-                <div class="quick-stat">
-                  <i class="bi bi-camera-fill"></i>
-                  <div class="quick-stat-content">
-                    <strong>Fotos</strong>
-                    <div class="quick-stat-copy">
-                      <span>Profesionales</span>
-                      <small>Cobertura visual del torneo</small>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
               <div id="tournamentCarousel" class="carousel slide tournament-carousel" data-bs-ride="carousel">
                 <div class="carousel-indicators">
                   <button type="button" data-bs-target="#tournamentCarousel" data-bs-slide-to="0" class="active" aria-current="true" aria-label="Imagen 1"></button>
@@ -192,51 +149,50 @@
                 </button>
               </div>
 
-              <div class="tournament-story">
-                <section class="story-section intro-section">
+              <section class="tournament-story home-tournament-info">
+                <div class="story-section home-info-heading">
                   <p class="section-kicker mb-2">Información del torneo</p>
                   <h3>Un torneo pensado para equipos amateur que quieren competir con organización profesional.</h3>
                   <p>
                     La competencia tiene seguimiento de calendario, posiciones, estadísticas y novedades para
                     que cada equipo pueda consultar la información de forma simple.
                   </p>
-                  <div class="story-facts">
-                    <span><i class="bi bi-calendar-check-fill"></i> Calendario administrado desde Supabase</span>
-                    <span><i class="bi bi-hourglass-split"></i> Configuración actualizada por administradores</span>
-                    <span><i class="bi bi-award-fill"></i> Premios para campeón, subcampeón, goleador y valla menos vencida</span>
-                  </div>
-                </section>
+                </div>
 
-                <section class="story-section split-section">
-                  <div>
-                    <p class="section-kicker mb-2">Ubicación</p>
-                    <h3 id="homeLocationTitle">Córdoba Capital</h3>
-                    <p id="homeLocationText">
-                      La sede principal del torneo estará ubicada en Córdoba Capital, con programación semanal
-                      y comunicación oficial para delegados antes de cada fecha.
-                    </p>
-                  </div>
-                  <div>
-                    <p class="section-kicker mb-2">Contacto</p>
-                    <h3 id="homeContactTitle">351 XXX XXXX</h3>
-                    <p id="homeContactText">
-                      Consultas por cupos, inscripción, documentación y calendario inicial. La atención se
-                      centraliza para mantener una comunicación clara con cada equipo.
-                    </p>
-                  </div>
-                </section>
+                <div class="home-info-layout">
+                  <div class="story-section home-contact-card">
+                    <div class="home-contact-block">
+                      <p class="section-kicker mb-2">Ubicación</p>
+                      <h3 id="homeLocationTitle">Córdoba Capital</h3>
+                      <p id="homeLocationText">
+                        La sede principal del torneo estará ubicada en Córdoba Capital, con programación semanal
+                        y comunicación oficial para delegados antes de cada fecha.
+                      </p>
+                    </div>
 
-                <section class="story-section final-section socials-only">
-                  <div class="social-area">
-                    <p class="section-kicker mb-2">Redes sociales</p>
-                    <div class="social-links">
-                      <a id="homeInstagramLink" href="#" aria-label="Instagram de Frame0"><i class="bi bi-instagram"></i> Instagram</a>
-                      <a id="homeWhatsappLink" href="#" aria-label="WhatsApp de Frame0"><i class="bi bi-whatsapp"></i> WhatsApp</a>
-                      <a id="homeFacebookLink" href="#" aria-label="Facebook de Frame0"><i class="bi bi-facebook"></i> Facebook</a>
+                    <div class="home-contact-divider" aria-hidden="true"></div>
+
+                    <div class="home-contact-block">
+                      <p class="section-kicker mb-2">Contacto</p>
+                      <h3 id="homeContactTitle">351 XXX XXXX</h3>
+                      <p id="homeContactText">
+                        Consultas por cupos, inscripción, documentación y calendario inicial. La atención se
+                        centraliza para mantener una comunicación clara con cada equipo.
+                      </p>
+                      <div class="social-links home-contact-links">
+                        <a id="homeInstagramLink" href="#" aria-label="Instagram de Frame0"><i class="bi bi-instagram"></i> Instagram</a>
+                        <a id="homeWhatsappLink" href="#" aria-label="WhatsApp de Frame0"><i class="bi bi-whatsapp"></i> WhatsApp</a>
+                        <a id="homeFacebookLink" href="#" aria-label="Facebook de Frame0"><i class="bi bi-facebook"></i> Facebook</a>
+                      </div>
                     </div>
                   </div>
-                </section>
-              </div>
+
+                  <aside class="story-section home-checklist-card" aria-label="Servicios incluidos">
+                    <h3>Contamos con:</h3>
+                    <div class="home-checklist" id="homeTournamentChecklist"></div>
+                  </aside>
+                </div>
+              </section>
             </div>
 
             <div id="publicInfoContent" class="d-none"></div>
