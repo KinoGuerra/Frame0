@@ -153,7 +153,7 @@
                 <div class="story-section home-info-heading">
                   <p class="section-kicker mb-2">Información del torneo</p>
                   <h3>Un torneo pensado para equipos amateur que quieren competir con organización profesional.</h3>
-                  <p>
+                  <p id="homeTournamentInfoText">
                     La competencia tiene seguimiento de calendario, posiciones, estadísticas y novedades para
                     que cada equipo pueda consultar la información de forma simple.
                   </p>
@@ -759,6 +759,7 @@
               </div>
               <label class="form-label" for="delegatePlayerNumber">Nro de camiseta</label>
               <input class="form-control" id="delegatePlayerNumber" type="number" min="1" max="999" required>
+              <p class="form-helper-text" id="delegatePlayerFeedback" aria-live="polite"></p>
               <button class="btn btn-login-submit w-100 mt-3" type="submit" id="saveDelegatePlayerButton" disabled>
                 <i class="bi bi-plus-circle-fill"></i>
                 Cargar jugador

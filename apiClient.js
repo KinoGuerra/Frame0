@@ -31,7 +31,7 @@ const FRAME0_TABLES = {
   },
   equipos: {
     table: "equipos",
-    select: "id,division_id,nombre,escudo_url,color_principal,color_secundario,activo,created_at",
+    select: "id,division_id,nombre,abreviatura,nombre_corto,descripcion,escudo_url,color_principal,color_secundario,color_terciario,activo,created_at",
     activeColumn: "activo",
     orderBy: "nombre"
   },

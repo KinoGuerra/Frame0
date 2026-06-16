@@ -90,6 +90,7 @@ const delegatePlayerFirstName = document.querySelector("#delegatePlayerFirstName
 const delegatePlayerBirthDate = document.querySelector("#delegatePlayerBirthDate");
 const delegatePlayerDni = document.querySelector("#delegatePlayerDni");
 const delegatePlayerNumber = document.querySelector("#delegatePlayerNumber");
+const delegatePlayerFeedback = document.querySelector("#delegatePlayerFeedback");
 const saveDelegatePlayerButton = document.querySelector("#saveDelegatePlayerButton");
 
 let divisionLoadTimer;
@@ -125,9 +126,15 @@ const adminObserversState = {
   editingId: null,
   searchTerm: ""
 };
+const adminDelegatesState = {
+  includeInactive: false,
+  selectedCategory: "",
+  selectedDivision: "",
+  searchTerm: ""
+};
 
 const ADMIN_PAGE_SIZE = 20;
-const DRIVE_FOLDER_ID = "1Rc5iI61AXuY-DjYL11cVGb7Wg3JTPLEj";
+const DEFAULT_DRIVE_PHOTOS_LINK = "https://drive.google.com/drive/folders/1Rc5iI61AXuY-DjYL11cVGb7Wg3JTPLEj";
 const THEME_STORAGE_KEY = "frame0-dark-mode";
 const HELP_URLS = {
   admin: "https://sites.google.com/view/frame0-principal/inicio",
@@ -138,6 +145,8 @@ const publicSettings = {
   instagramUrl: "#",
   facebookUrl: "#",
   whatsappPhone: "3510000000",
+  drivePhotosLink: DEFAULT_DRIVE_PHOTOS_LINK,
+  tournamentInfoText: "La competencia tiene seguimiento de calendario, posiciones, estadísticas y novedades para que cada equipo pueda consultar la información de forma simple.",
   locationTitle: "Córdoba Capital",
   locationText: "La sede principal del torneo estará ubicada en Córdoba Capital, con programación semanal y comunicación oficial para delegados antes de cada fecha.",
   contactTitle: "351 XXX XXXX",
@@ -151,6 +160,7 @@ Los partidos tendrán una duración definida por la organización según categor
 La organización podrá reprogramar encuentros por razones climáticas, disponibilidad de cancha o fuerza mayor. Todo reclamo deberá ser presentado por el delegado dentro de los plazos establecidos y será evaluado por la mesa organizadora.`
 };
 const PUBLIC_SETTINGS_CONFIG_KEY = "public_settings";
+const TOURNAMENT_SETTINGS_CONFIG_KEY = "tournament_settings";
 let adminSettingsSession = null;
 let currentAppUser = null;
 let tournamentCatalog = [];
@@ -228,11 +238,13 @@ function setLinkIfExists(selector, href) {
 }
 
 function applyPublicSettings() {
+  const tournamentInfoText = document.querySelector("#homeTournamentInfoText");
   const locationTitle = document.querySelector("#homeLocationTitle");
   const locationText = document.querySelector("#homeLocationText");
   const contactTitle = document.querySelector("#homeContactTitle");
   const contactText = document.querySelector("#homeContactText");
 
+  if (tournamentInfoText) tournamentInfoText.textContent = publicSettings.tournamentInfoText;
   if (locationTitle) locationTitle.textContent = publicSettings.locationTitle;
   if (locationText) locationText.textContent = publicSettings.locationText;
   if (contactTitle) contactTitle.textContent = publicSettings.contactTitle;
@@ -253,6 +265,8 @@ function getPublicSettingsPayload() {
     instagramUrl: publicSettings.instagramUrl,
     facebookUrl: publicSettings.facebookUrl,
     whatsappPhone: publicSettings.whatsappPhone,
+    drivePhotosLink: publicSettings.drivePhotosLink,
+    tournamentInfoText: publicSettings.tournamentInfoText,
     locationTitle: publicSettings.locationTitle,
     locationText: publicSettings.locationText,
     contactTitle: publicSettings.contactTitle,
@@ -544,6 +558,64 @@ async function savePublicSettingsToSupabase() {
   if (error) throw error;
 }
 
+function getTournamentSettingsPayload() {
+  return {
+    playerRegistrationFrom: tournamentSettings.playerRegistrationFrom,
+    playerRegistrationTo: tournamentSettings.playerRegistrationTo,
+    divisions: tournamentSettings.divisions
+  };
+}
+
+function mergeTournamentSettings(settings = {}) {
+  if (settings.playerRegistrationFrom) {
+    tournamentSettings.playerRegistrationFrom = String(settings.playerRegistrationFrom);
+  }
+  if (settings.playerRegistrationTo) {
+    tournamentSettings.playerRegistrationTo = String(settings.playerRegistrationTo);
+  }
+  if (settings.divisions && typeof settings.divisions === "object" && !Array.isArray(settings.divisions)) {
+    tournamentSettings.divisions = settings.divisions;
+  }
+}
+
+async function loadTournamentSettingsFromSupabase() {
+  if (typeof supabaseClient === "undefined") return;
+
+  const { data, error } = await supabaseClient
+    .from("configuraciones")
+    .select("valor")
+    .eq("clave", TOURNAMENT_SETTINGS_CONFIG_KEY)
+    .eq("activa", true)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Error al cargar configuración general del torneo desde Supabase:", error);
+    return;
+  }
+
+  if (data?.valor && typeof data.valor === "object") {
+    mergeTournamentSettings(data.valor);
+  }
+}
+
+async function saveTournamentSettingsToSupabase() {
+  if (typeof supabaseClient === "undefined") {
+    throw new Error("Supabase no está disponible.");
+  }
+
+  if (!adminSettingsSession?.usuario || !adminSettingsSession?.password) {
+    throw new Error("La sesión de administrador no está disponible. Cerrá sesión e ingresá nuevamente.");
+  }
+
+  const { error } = await supabaseClient.rpc("guardar_configuracion_torneo", {
+    p_usuario: adminSettingsSession.usuario,
+    p_password: adminSettingsSession.password,
+    p_valor: getTournamentSettingsPayload()
+  });
+
+  if (error) throw error;
+}
+
 // Cuenta registros de una tabla de Supabase sin traer filas al navegador.
 async function contarRegistrosSupabase(nombreTabla) {
   if (typeof supabaseClient === "undefined") {
@@ -775,6 +847,10 @@ function getTeam(teamId) {
     || adminTeamsForView.find((team) => String(team.id) === String(teamId));
 }
 
+function getActivePlayers(team = {}) {
+  return (team.players || []).filter((player) => player.active !== false);
+}
+
 function getPlayerObservationKey(matchId, teamId, player) {
   return `${matchId || "sin-partido"}::${teamId}::${player.number}::${player.name}`;
 }
@@ -903,7 +979,7 @@ function getObservedPlayersCount(selectedTeamId = "") {
 
   return adminPlayerTeams
     .filter((team) => !selectedTeamId || team.id === selectedTeamId)
-    .flatMap((team) => team.players.map((player) => ({ ...player, team })))
+    .flatMap((team) => getActivePlayers(team).map((player) => ({ ...player, team })))
     .filter((player) => getPendingPlayerObservationsForAdmin(player).length > 0)
     .length;
 }
@@ -1153,8 +1229,8 @@ function refreshCurrentPlayersTables() {
     return;
   }
 
-  if (sidebarContent.dataset.delegateTeam && contentShell.querySelector(".delegate-players-table")) {
-    const team = getTeam(sidebarContent.dataset.delegateTeam);
+  if (sidebarContent.dataset.currentDelegateTeam && contentShell.querySelector(".delegate-players-table")) {
+    const team = getTeam(sidebarContent.dataset.currentDelegateTeam);
     if (team) contentShell.innerHTML = renderDelegatePlayers(team);
   }
 }
@@ -1231,12 +1307,15 @@ function normalizeSupabasePlayer(player = {}) {
 
   return {
     id: player.id,
+    firstName: player.nombre || "",
+    lastName: player.apellido || "",
     number: player.dorsal || "-",
     name: fullName,
     age: calculateAgeFromDate(player.fecha_nacimiento),
     goals: 0,
     yellow: 0,
     red: 0,
+    active: player.activo !== false,
     birthDate: player.fecha_nacimiento || "",
     dni: player.dni || ""
   };
@@ -1247,18 +1326,20 @@ function normalizeSupabaseTeam(team = {}) {
     team.color_principal || "#64748b",
     team.color_secundario || "#111827"
   ];
+  const abbreviation = team.abreviatura || getInitialsFromName(team.nombre);
+  const shortName = team.nombre_corto || getShortTeamName(team.nombre);
 
   return {
     id: team.id,
     division_id: team.division_id || "",
     name: team.nombre || "Equipo",
     legalName: team.nombre || "Equipo",
-    abbreviation: getInitialsFromName(team.nombre),
-    shortName: getShortTeamName(team.nombre),
-    initials: getInitialsFromName(team.nombre),
+    abbreviation,
+    shortName,
+    initials: abbreviation,
     crest: team.escudo_url || "",
     colors,
-    shirtColors: [...colors, "#ffffff"],
+    shirtColors: [...colors, team.color_terciario || "#ffffff"],
     city: "-",
     captain: "-",
     delegate: "-",
@@ -1266,11 +1347,10 @@ function normalizeSupabaseTeam(team = {}) {
     topScorer: "-",
     mostSanctioned: "-",
     players: (team.jugadores || [])
-      .filter((player) => player.activo !== false)
       .sort((a, b) => (a.dorsal || 999) - (b.dorsal || 999))
       .map(normalizeSupabasePlayer),
     founded: "Supabase",
-    description: "Datos cargados desde Supabase."
+    description: team.descripcion || "Datos cargados desde Supabase."
   };
 }
 
@@ -1359,19 +1439,37 @@ async function loadDivisionDataFromSupabase(divisionId) {
     return;
   }
 
-  const [{ data: equipos, error: equiposError }, { data: partidos, error: partidosError }] = await Promise.all([
-    supabaseClient
+  let equiposQuery = supabaseClient
       .from("equipos")
-      .select("id,nombre,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .select("id,nombre,abreviatura,nombre_corto,descripcion,escudo_url,color_principal,color_secundario,color_terciario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
       .eq("division_id", divisionId)
       .eq("activo", true)
-      .order("nombre", { ascending: true }),
+      .order("dorsal", { referencedTable: "jugadores", ascending: true })
+      .order("nombre", { ascending: true });
+
+  const [{ data: equiposBase, error: equiposBaseError }, { data: partidos, error: partidosError }] = await Promise.all([
+    equiposQuery,
     supabaseClient
       .from("partidos")
       .select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones")
       .eq("division_id", divisionId)
       .order("fecha_hora", { ascending: true })
   ]);
+
+  let equipos = equiposBase;
+  let equiposError = equiposBaseError;
+  if (equiposError) {
+    console.warn("No se pudo cargar equipos con perfil extendido. Se usa lectura base.", equiposError);
+    const fallback = await supabaseClient
+      .from("equipos")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .eq("division_id", divisionId)
+      .eq("activo", true)
+      .order("dorsal", { referencedTable: "jugadores", ascending: true })
+      .order("nombre", { ascending: true });
+    equipos = fallback.data;
+    equiposError = fallback.error;
+  }
 
   if (equiposError) throw equiposError;
   if (partidosError) throw partidosError;
@@ -1456,7 +1554,7 @@ function renderShirt(team) {
 }
 
 function renderRoster(team) {
-  return team.players.map((player) => `
+  return getActivePlayers(team).map((player) => `
     <tr>
       <td>${player.number}</td>
       <td>${player.name}</td>
@@ -1467,13 +1565,13 @@ function renderRoster(team) {
 
 function getPlayerStats(team, statType) {
   if (statType === "goals") {
-    return team.players
+    return getActivePlayers(team)
       .filter((player) => player.goals > 0)
       .sort((a, b) => b.goals - a.goals)
       .map((player) => ({ name: player.name, value: player.goals }));
   }
 
-  return team.players
+  return getActivePlayers(team)
     .filter((player) => player.yellow > 0 || player.red > 0)
     .sort((a, b) => (b.yellow + b.red) - (a.yellow + a.red))
     .map((player) => ({ name: player.name, value: `${player.yellow}A / ${player.red}R` }));
@@ -1606,7 +1704,7 @@ function renderTeamDetail() {
     </section>
 
     <section class="team-metrics">
-      <div><span>Jugadores</span><strong>${team.players.length}</strong></div>
+      <div><span>Jugadores</span><strong>${getActivePlayers(team).length}</strong></div>
       <div><span>PJ</span><strong>${standing.pj}</strong></div>
       <div><span>PG</span><strong>${standing.g}</strong></div>
       <div><span>PE</span><strong>${standing.e}</strong></div>
@@ -1881,8 +1979,19 @@ function renderRegulationContent() {
   `;
 }
 
+function getDriveFolderId(value = "") {
+  const rawValue = String(value || "").trim();
+  if (!rawValue) return "";
+  const foldersMatch = rawValue.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (foldersMatch) return foldersMatch[1];
+  const idMatch = rawValue.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idMatch) return idMatch[1];
+  return rawValue.replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
 function renderPhotosContent() {
-  const embedUrl = `https://drive.google.com/embeddedfolderview?id=${DRIVE_FOLDER_ID}#grid`;
+  const driveFolderId = getDriveFolderId(publicSettings.drivePhotosLink || DEFAULT_DRIVE_PHOTOS_LINK);
+  const embedUrl = driveFolderId ? `https://drive.google.com/embeddedfolderview?id=${driveFolderId}#grid` : "";
 
   return `
     <section class="public-info-panel photos-panel">
@@ -1893,7 +2002,9 @@ function renderPhotosContent() {
           <p>Aquí puedes visualizar todas las fotos del torneo, se encuentran organizadas por fecha.</p>
         </div>
       </div>
-      <iframe class="drive-photos-frame" src="${embedUrl}" title="Fotos del torneo Frame0 en Google Drive"></iframe>
+      ${embedUrl
+        ? `<iframe class="drive-photos-frame" src="${embedUrl}" title="Fotos del torneo Frame0 en Google Drive"></iframe>`
+        : `<div class="admin-empty-row">Configurá el link de Drive desde Administrador &gt; Configuraciones &gt; Public Page.</div>`}
     </section>
   `;
 }
@@ -2394,13 +2505,28 @@ function validateNewObserverForm() {
 
 function validateDelegatePlayerForm() {
   if (!saveDelegatePlayerButton) return;
-  saveDelegatePlayerButton.disabled = !(
+  const team = getTeam(sidebarContent.dataset.currentDelegateTeam);
+  const editingId = delegatePlayerForm?.dataset.editingId || "";
+  const dni = delegatePlayerDni?.value.trim() || "";
+  const hasDuplicateDni = Boolean(dni) && (team?.players || []).some((player) =>
+    String(player.dni || "").trim() === dni &&
+    String(player.id) !== String(editingId)
+  );
+  const isValid = Boolean(
     delegatePlayerLastName?.value.trim() &&
     delegatePlayerFirstName?.value.trim() &&
     delegatePlayerBirthDate?.value &&
-    /^[0-9]+$/.test(delegatePlayerDni?.value.trim() || "") &&
-    delegatePlayerNumber?.value
+    /^[0-9]+$/.test(dni) &&
+    delegatePlayerNumber?.value &&
+    !hasDuplicateDni
   );
+
+  if (delegatePlayerFeedback) {
+    delegatePlayerFeedback.textContent = hasDuplicateDni ? `Ya existe un jugador registrado con DNI ${dni}.` : "";
+    delegatePlayerFeedback.classList.toggle("is-error", hasDuplicateDni);
+  }
+
+  saveDelegatePlayerButton.disabled = !isValid;
 }
 
 function isPlayerRegistrationOpen(date = new Date()) {
@@ -2408,8 +2534,12 @@ function isPlayerRegistrationOpen(date = new Date()) {
   const to = tournamentSettings.playerRegistrationTo;
   if (!from || !to) return true;
 
-  const currentDate = new Date(date.toISOString().slice(0, 10));
-  return currentDate >= new Date(from) && currentDate <= new Date(to);
+  const currentDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const [fromYear, fromMonth, fromDay] = from.split("-").map(Number);
+  const [toYear, toMonth, toDay] = to.split("-").map(Number);
+  const fromDate = new Date(fromYear, fromMonth - 1, fromDay);
+  const toDate = new Date(toYear, toMonth - 1, toDay);
+  return currentDate >= fromDate && currentDate <= toDate;
 }
 
 function getTournamentDivisionKey(categoryName, divisionName) {
@@ -2794,21 +2924,55 @@ function getTeamFromUsername(username) {
 }
 
 async function getDelegateTeamFromSupabase(usuarioApp) {
-  if (!usuarioApp?.usuario || typeof supabaseClient === "undefined") return null;
+  if (!usuarioApp?.id || typeof supabaseClient === "undefined") return null;
+
+  const { data: delegateRelations, error: delegateError } = await supabaseClient
+    .from("delegados")
+    .select("id,usuario_id,equipo_id,activo")
+    .eq("usuario_id", usuarioApp.id)
+    .eq("activo", true)
+    .limit(3);
+
+  console.log("login delegado relaciones:", delegateRelations);
+  console.log("login delegado error relacion:", delegateError);
+
+  if (delegateError) throw delegateError;
+
+  const delegateRelation = delegateRelations?.[0];
+  let relatedTeam = null;
+  if (delegateRelation?.equipo_id) {
+    const { data: teamData, error: teamError } = await supabaseClient
+      .from("equipos")
+      .select("id,nombre,division_id,activo")
+      .eq("id", delegateRelation.equipo_id)
+      .eq("activo", true)
+      .maybeSingle();
+
+    console.log("login delegado equipo:", teamData);
+    console.log("login delegado error equipo:", teamError);
+    if (teamError) throw teamError;
+    relatedTeam = teamData;
+  }
+
+  if (relatedTeam?.id && relatedTeam?.division_id && relatedTeam.activo !== false) {
+    await loadDivisionDataFromSupabase(relatedTeam.division_id);
+    activeDivisionId = relatedTeam.division_id;
+    return getTeam(relatedTeam.id);
+  }
 
   const normalizedUsername = normalizeSearchText(usuarioApp.usuario);
-  const { data, error } = await supabaseClient
+  const { data: teamsData, error: teamsError } = await supabaseClient
     .from("equipos")
     .select("id,nombre,division_id,activo")
     .eq("activo", true);
 
-  if (error) throw error;
+  if (teamsError) throw teamsError;
 
-  const team = (data || []).find((item) =>
+  const fallbackTeam = (teamsData || []).find((item) =>
     normalizeSearchText(item.nombre).includes(normalizedUsername)
   );
-  const divisionId = team?.division_id;
-  const teamId = team?.id;
+  const divisionId = fallbackTeam?.division_id;
+  const teamId = fallbackTeam?.id;
   if (!divisionId || !teamId) return null;
 
   await loadDivisionDataFromSupabase(divisionId);
@@ -2817,7 +2981,7 @@ async function getDelegateTeamFromSupabase(usuarioApp) {
 }
 
 function getTeamStatusCounts(team) {
-  return team.players.reduce((counts, player) => {
+  return getActivePlayers(team).reduce((counts, player) => {
     const status = player.red > 0 ? "suspended" : player.yellow >= 4 ? "disabled" : "enabled";
     counts[status] += 1;
     return counts;
@@ -2861,8 +3025,8 @@ function renderDelegateHome(team) {
   return `
     <div class="section-toolbar admin-toolbar">
       <div>
-        <p class="section-kicker section-brand mb-1">Frame0</p>
-        <h2 class="section-title mb-0">${team.legalName}</h2>
+        <p class="section-kicker section-brand mb-1">${team.legalName}</p>
+        <h2 class="section-title mb-0">Resumen</h2>
       </div>
     </div>
 
@@ -2901,7 +3065,7 @@ function renderDelegateHome(team) {
       <div><span>Habilitados</span><strong>${statusCounts.enabled}</strong></div>
       <div><span>Suspendidos</span><strong>${statusCounts.suspended}</strong></div>
       <div><span>Inhabilitados</span><strong>${statusCounts.disabled}</strong></div>
-      <div><span>Jugadores</span><strong>${team.players.length}</strong></div>
+      <div><span>Jugadores</span><strong>${getActivePlayers(team).length}</strong></div>
     </section>
 
     <section class="division-table-panel">
@@ -3008,9 +3172,10 @@ function renderDelegateTeamView(team, isEditing = false) {
   `;
 }
 
-function renderDelegatePlayers(team) {
+function renderDelegatePlayers(team, includeInactive = false) {
   const canEditPlayers = isPlayerRegistrationOpen();
   const disabledAttribute = canEditPlayers ? "" : "disabled";
+  const visiblePlayers = (team.players || []).filter((player) => includeInactive ? player.active === false : player.active !== false);
   const registrationNotice = canEditPlayers
     ? `<div class="delegate-edit-window is-open"><i class="bi bi-unlock-fill"></i> Edición habilitada hasta ${tournamentSettings.playerRegistrationTo}</div>`
     : `<div class="delegate-edit-window is-closed"><i class="bi bi-lock-fill"></i> La edición de jugadores está cerrada. Período: ${tournamentSettings.playerRegistrationFrom} al ${tournamentSettings.playerRegistrationTo}</div>`;
@@ -3043,30 +3208,45 @@ function renderDelegatePlayers(team) {
             </tr>
           </thead>
           <tbody>
-            ${team.players.map((player, index) => {
+            ${visiblePlayers.length ? visiblePlayers.map((player, index) => {
               const playerWithTeam = { ...player, team };
+              const status = player.active === false ? "Dado de baja" : getPlayerStatus(playerWithTeam);
               return `
               <tr>
                 <td>${index + 1}</td>
                 <td>${player.name}</td>
                 <td>${getDemoPlayerBirthDate(player, index)}</td>
                 <td>${getDemoPlayerDni(player, index)}</td>
-                <td><span class="player-status ${getPlayerStatus(playerWithTeam).toLowerCase()}">${getPlayerStatus(playerWithTeam)}</span></td>
+                <td><span class="player-status ${status.toLowerCase().replace(/\s+/g, "-")}">${status}</span></td>
                 <td>${player.number}</td>
                 <td>${renderObservationNotificationSummary(playerWithTeam)}</td>
                 <td>
                   <div class="table-actions">
-                    <button type="button" aria-label="Editar ${player.name}" ${disabledAttribute}><i class="bi bi-pencil-fill"></i></button>
-                    <button type="button" aria-label="Eliminar ${player.name}" ${disabledAttribute}><i class="bi bi-trash-fill"></i></button>
+                    ${player.active === false
+                      ? `<button type="button" aria-label="Reactivar ${player.name}" data-delegate-player-activate="${escapeHtml(player.id)}" ${disabledAttribute}><i class="bi bi-arrow-counterclockwise"></i></button>`
+                      : `
+                        <button type="button" aria-label="Editar ${player.name}" data-delegate-player-edit="${escapeHtml(player.id)}" ${disabledAttribute}><i class="bi bi-pencil-fill"></i></button>
+                        <button type="button" aria-label="Dar de baja ${player.name}" data-delegate-player-deactivate="${escapeHtml(player.id)}" ${disabledAttribute}><i class="bi bi-trash-fill"></i></button>
+                      `}
                   </div>
                 </td>
               </tr>
             `;
-            }).join("")}
+            }).join("") : `
+              <tr>
+                <td colspan="8" class="admin-empty-row">${includeInactive ? "No hay jugadores dados de baja." : "No hay jugadores activos cargados."}</td>
+              </tr>
+            `}
           </tbody>
         </table>
       </div>
     </section>
+    <div class="admin-category-footer-actions">
+      <button class="btn btn-ingreso admin-view-inactive-btn" type="button" data-delegate-players-toggle-bajas="${includeInactive ? "false" : "true"}">
+        <i class="bi ${includeInactive ? "bi-eye-slash-fill" : "bi-eye-fill"}"></i>
+        ${includeInactive ? "Ocultar bajas" : "Ver bajas"}
+      </button>
+    </div>
   `;
 }
 
@@ -3189,17 +3369,34 @@ async function loadObserverDataFromSupabase() {
     return;
   }
 
-  const [{ data: equipos, error: equiposError }, { data: partidos, error: partidosError }] = await Promise.all([
-    supabaseClient
+  let equiposQuery = supabaseClient
       .from("equipos")
-      .select("id,nombre,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .select("id,nombre,abreviatura,nombre_corto,descripcion,escudo_url,color_principal,color_secundario,color_terciario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
       .eq("activo", true)
-      .order("nombre", { ascending: true }),
+      .order("dorsal", { referencedTable: "jugadores", ascending: true })
+      .order("nombre", { ascending: true });
+
+  const [{ data: equiposBase, error: equiposBaseError }, { data: partidos, error: partidosError }] = await Promise.all([
+    equiposQuery,
     supabaseClient
       .from("partidos")
       .select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones")
       .order("fecha_hora", { ascending: true })
   ]);
+
+  let equipos = equiposBase;
+  let equiposError = equiposBaseError;
+  if (equiposError) {
+    console.warn("No se pudo cargar equipos extendidos para veedor. Se usa lectura base.", equiposError);
+    const fallback = await supabaseClient
+      .from("equipos")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .eq("activo", true)
+      .order("dorsal", { referencedTable: "jugadores", ascending: true })
+      .order("nombre", { ascending: true });
+    equipos = fallback.data;
+    equiposError = fallback.error;
+  }
 
   if (equiposError) throw equiposError;
   if (partidosError) throw partidosError;
@@ -3235,7 +3432,7 @@ function renderScoreCounter(label, value, key) {
 }
 
 function renderObserverPlayerRows(team, matchId) {
-  return team.players.map((player) => {
+  return getActivePlayers(team).map((player) => {
     const status = getPlayerStatus(player);
     const isDisabledPlayer = status !== "Habilitado";
     const disabledAttribute = isDisabledPlayer ? "disabled" : "";
@@ -3555,6 +3752,10 @@ function renderTournamentGeneralSettings() {
           </table>
         </div>
       </div>
+      <button class="btn btn-ingreso settings-save-btn" type="button" data-save-tournament-settings>
+        <i class="bi bi-save-fill"></i>
+        Guardar generales torneo
+      </button>
     </form>
   `;
 }
@@ -3573,7 +3774,7 @@ function renderAdminSettingsView() {
           <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#settings-general" type="button" role="tab">Generales Torneo</button>
         </li>
         <li class="nav-item" role="presentation">
-          <button class="nav-link" data-bs-toggle="pill" data-bs-target="#settings-social" type="button" role="tab">Redes y Contacto</button>
+          <button class="nav-link" data-bs-toggle="pill" data-bs-target="#settings-social" type="button" role="tab">Public Page</button>
         </li>
         <li class="nav-item" role="presentation">
           <button class="nav-link" data-bs-toggle="pill" data-bs-target="#settings-sponsors" type="button" role="tab">Auspiciantes</button>
@@ -3603,6 +3804,14 @@ function renderAdminSettingsView() {
                 <span>Teléfono WhatsApp</span>
                 <input class="form-control" type="tel" inputmode="numeric" value="${escapeHtml(publicSettings.whatsappPhone)}" data-setting="whatsappPhone">
               </label>
+              <label class="admin-filter-field settings-wide">
+                <span>Link de Drive para fotos</span>
+                <input class="form-control" type="url" value="${escapeHtml(publicSettings.drivePhotosLink)}" placeholder="https://drive.google.com/drive/folders/..." data-setting="drivePhotosLink">
+              </label>
+              <label class="admin-filter-field settings-wide">
+                <span>Información del torneo</span>
+                <textarea class="form-control" rows="3" data-setting="tournamentInfoText">${escapeHtml(publicSettings.tournamentInfoText)}</textarea>
+              </label>
               <label class="admin-filter-field">
                 <span>Título ubicación</span>
                 <input class="form-control" type="text" value="${escapeHtml(publicSettings.locationTitle)}" data-setting="locationTitle">
@@ -3622,7 +3831,7 @@ function renderAdminSettingsView() {
             </div>
             <button class="btn btn-ingreso settings-save-btn" type="button" data-save-public-settings>
               <i class="bi bi-save-fill"></i>
-              Guardar redes y contacto
+              Guardar Public Page
             </button>
           </form>
         </div>
@@ -4181,7 +4390,11 @@ function renderAdminDivisionsView(selectedCategory = "", page = 1) {
 }
 
 function normalizeSearchText(value) {
-  return value.trim().toLowerCase();
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
 }
 
 function getEffectiveSearchTerm(value) {
@@ -4243,8 +4456,10 @@ function getAdminFilteredTeams(searchTerm = "") {
 }
 
 function getDivisionIdFromCatalog(categoryName = "", divisionName = "") {
-  const category = tournamentCatalog.find((item) => item.name === categoryName);
-  const division = category?.divisions.find((item) => item.name === divisionName);
+  const normalizedCategory = normalizeSearchText(categoryName);
+  const normalizedDivision = normalizeSearchText(divisionName);
+  const category = tournamentCatalog.find((item) => normalizeSearchText(item.name) === normalizedCategory);
+  const division = category?.divisions.find((item) => normalizeSearchText(item.name) === normalizedDivision);
   return division?.id || "";
 }
 
@@ -4253,42 +4468,133 @@ async function loadAdminTeamsForFilters(selectedCategory = "", selectedDivision 
   const divisionId = getDivisionIdFromCatalog(selectedCategory, selectedDivision);
   if (!divisionId || typeof supabaseClient === "undefined") return;
 
-  const { data, error } = await supabaseClient
+  let { data, error } = await supabaseClient
     .from("equipos")
-    .select("id,nombre,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+    .select("id,nombre,abreviatura,nombre_corto,descripcion,escudo_url,color_principal,color_secundario,color_terciario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
     .eq("division_id", divisionId)
     .eq("activo", true)
+    .order("dorsal", { referencedTable: "jugadores", ascending: true })
     .order("nombre", { ascending: true });
+
+  if (error) {
+    console.warn("No se pudo leer el perfil extendido de equipos. Se usa lectura base.", error);
+    const fallback = await supabaseClient
+      .from("equipos")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .eq("division_id", divisionId)
+      .eq("activo", true)
+      .order("dorsal", { referencedTable: "jugadores", ascending: true })
+      .order("nombre", { ascending: true });
+
+    data = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) throw error;
   adminTeamsForView = (data || []).map(normalizeSupabaseTeam);
+  console.log("delegados filtros:", {
+    selectedCategory,
+    selectedDivision,
+    divisionId,
+    equipos: adminTeamsForView.length
+  });
+}
+
+async function applyDelegateUsersFallback(includeInactive = false) {
+  const { data: users, error } = await supabaseClient
+    .from("usuarios_app")
+    .select("id,nombre,apellido,contacto,usuario,rol,activo")
+    .eq("rol", "delegado")
+    .eq("activo", !includeInactive);
+
+  if (error) throw error;
+
+  adminTeamsForView = adminTeamsForView.map((team) => {
+    const user = (users || []).find((delegateUser) => {
+      const normalizedUsername = normalizeSearchText(delegateUser.usuario || "");
+      return normalizedUsername && (
+        normalizeSearchText(team.name).includes(normalizedUsername) ||
+        normalizeSearchText(team.shortName).includes(normalizedUsername) ||
+        normalizeSearchText(team.legalName).includes(normalizedUsername)
+      );
+    });
+
+    return {
+      ...team,
+      delegateRelationId: "",
+      delegateId: user?.id || "",
+      delegate: user ? `${user.nombre || ""} ${user.apellido || ""}`.trim() || user.usuario : "-",
+      delegateFirstName: user?.nombre || "",
+      delegateLastName: user?.apellido || "",
+      contact: user?.contacto || "-",
+      delegateUsername: user?.usuario || "-"
+    };
+  });
 }
 
 async function loadAdminDelegatesForFilters(selectedCategory = "", selectedDivision = "") {
   await loadAdminTeamsForFilters(selectedCategory, selectedDivision);
+  const teamIds = adminTeamsForView.map((team) => team.id).filter(Boolean);
 
-  const { data, error } = await supabaseClient
-    .from("usuarios_app")
-    .select("id,nombre,apellido,contacto,usuario,rol,activo")
-    .eq("rol", "delegado")
-    .eq("activo", true);
+  if (!teamIds.length) return;
 
-  if (error) throw error;
+  let query = supabaseClient
+    .from("delegados")
+    .select("id,usuario_id,equipo_id,activo,usuario:usuarios_app(id,nombre,apellido,contacto,usuario,rol,activo)")
+    .in("equipo_id", teamIds);
 
-  const delegates = data || [];
+  if (!adminDelegatesState.includeInactive) {
+    query = query.eq("activo", true);
+  }
+  const { data, error } = await query;
+
+  if (error) {
+    console.warn("No se pudo leer delegados por relacion. Se usa busqueda por usuario.", error);
+    await applyDelegateUsersFallback(adminDelegatesState.includeInactive);
+    return;
+  }
+
+  console.log("delegados por relacion:", { relaciones: (data || []).length, equipos: teamIds.length });
+
+  if (!(data || []).length) {
+    console.warn("No hay relaciones activas en delegados para estos equipos. Se usa busqueda por usuario.");
+    await applyDelegateUsersFallback(adminDelegatesState.includeInactive);
+    return;
+  }
+
+  const delegatesByTeam = (data || []).reduce((map, row) => {
+    const user = row.usuario;
+    if (!user || user.rol !== "delegado") return map;
+    const shouldShow = adminDelegatesState.includeInactive
+      ? user.activo === false || row.activo === false
+      : user.activo !== false && row.activo !== false;
+    if (!shouldShow) return map;
+    map.set(String(row.equipo_id), {
+      relationId: row.id,
+      user
+    });
+    return map;
+  }, new Map());
+
+  if (!delegatesByTeam.size) {
+    console.warn("Las relaciones de delegados llegaron sin perfil de usuario activo. Se usa busqueda por usuario.");
+    await applyDelegateUsersFallback(adminDelegatesState.includeInactive);
+    return;
+  }
+
   adminTeamsForView = adminTeamsForView.map((team) => {
-    const delegate = delegates.find((user) =>
-      normalizeSearchText(team.name).includes(normalizeSearchText(user.usuario || ""))
-    );
+    const delegate = delegatesByTeam.get(String(team.id));
+    const user = delegate?.user;
 
     return {
       ...team,
-      delegateId: delegate?.id || "",
-      delegate: delegate ? `${delegate.nombre || ""} ${delegate.apellido || ""}`.trim() || delegate.usuario : "-",
-      delegateFirstName: delegate?.nombre || "",
-      delegateLastName: delegate?.apellido || "",
-      contact: delegate?.contacto || "-",
-      delegateUsername: delegate?.usuario || "-"
+      delegateRelationId: delegate?.relationId || "",
+      delegateId: user?.id || "",
+      delegate: user ? `${user.nombre || ""} ${user.apellido || ""}`.trim() || user.usuario : "-",
+      delegateFirstName: user?.nombre || "",
+      delegateLastName: user?.apellido || "",
+      contact: user?.contacto || "-",
+      delegateUsername: user?.usuario || "-"
     };
   });
 }
@@ -4296,12 +4602,19 @@ async function loadAdminDelegatesForFilters(selectedCategory = "", selectedDivis
 async function createTeamInSupabase() {
   const editingId = newTeamForm?.dataset.editingId || "";
   const divisionId = newTeamDivision.value;
+  const teamName = newTeamName.value.trim();
+  const currentTeam = adminTeamsForView.find((team) => String(team.id) === String(editingId));
+  const shortName = newTeamShortName.value.trim() || getShortTeamName(teamName);
   const payload = {
     division_id: divisionId,
-    nombre: newTeamName.value.trim(),
-    escudo_url: "",
-    color_principal: "#64748b",
-    color_secundario: "#111827",
+    nombre: teamName,
+    abreviatura: getInitialsFromName(shortName),
+    nombre_corto: shortName,
+    descripcion: currentTeam?.description || "",
+    escudo_url: currentTeam?.crest || "",
+    color_principal: currentTeam?.colors?.[0] || "#64748b",
+    color_secundario: currentTeam?.colors?.[1] || "#111827",
+    color_terciario: currentTeam?.shirtColors?.[2] || "#ffffff",
     activo: true
   };
 
@@ -4346,11 +4659,25 @@ async function openAdminTeamModal(teamId = "") {
 async function loadAllActiveTeamsForForms() {
   if (typeof supabaseClient === "undefined") return [];
 
-  const { data, error } = await supabaseClient
+  let { data, error } = await supabaseClient
     .from("equipos")
-    .select("id,nombre,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+    .select("id,nombre,abreviatura,nombre_corto,descripcion,escudo_url,color_principal,color_secundario,color_terciario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
     .eq("activo", true)
+    .order("dorsal", { referencedTable: "jugadores", ascending: true })
     .order("nombre", { ascending: true });
+
+  if (error) {
+    console.warn("No se pudo leer el perfil extendido de equipos para formularios. Se usa lectura base.", error);
+    const fallback = await supabaseClient
+      .from("equipos")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .eq("activo", true)
+      .order("dorsal", { referencedTable: "jugadores", ascending: true })
+      .order("nombre", { ascending: true });
+
+    data = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) throw error;
   teams = (data || []).map(normalizeSupabaseTeam);
@@ -4392,11 +4719,42 @@ async function createDelegateInSupabase() {
   });
 }
 
-async function openAdminDelegateModal(delegateUserId = "") {
+async function getAdminDelegateRowFallback(delegateUserId = "", teamId = "") {
+  if (!delegateUserId || typeof supabaseClient === "undefined") return null;
+
+  const { data: user, error } = await supabaseClient
+    .from("usuarios_app")
+    .select("id,nombre,apellido,contacto,usuario,rol,activo")
+    .eq("id", delegateUserId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!user) return null;
+
+  const team = adminTeamsForView.find((item) => String(item.id) === String(teamId))
+    || teams.find((item) => String(item.id) === String(teamId))
+    || {};
+
+  return {
+    ...team,
+    id: team.id || teamId,
+    delegateId: user.id,
+    delegate: `${user.nombre || ""} ${user.apellido || ""}`.trim() || user.usuario,
+    delegateFirstName: user.nombre || "",
+    delegateLastName: user.apellido || "",
+    contact: user.contacto || "-",
+    delegateUsername: user.usuario || "-"
+  };
+}
+
+async function openAdminDelegateModal(delegateUserId = "", teamId = "") {
   if (!newDelegateModalElement || !newDelegateForm) return;
 
   await loadAllActiveTeamsForForms();
-  const row = adminTeamsForView.find((team) => String(team.delegateId) === String(delegateUserId));
+  const row = adminTeamsForView.find((team) =>
+    String(team.delegateId) === String(delegateUserId) ||
+    (teamId && String(team.id) === String(teamId))
+  ) || await getAdminDelegateRowFallback(delegateUserId, teamId);
 
   newDelegateForm.reset();
   newDelegateForm.dataset.editingId = row?.delegateId || "";
@@ -4421,18 +4779,73 @@ async function openAdminDelegateModal(delegateUserId = "") {
   bootstrap.Modal.getOrCreateInstance(newDelegateModalElement).show();
 }
 
-async function createDelegatePlayerInSupabase(team) {
+function getDelegatePlayerNameParts(player = {}) {
+  if (player.firstName || player.lastName) {
+    return {
+      firstName: player.firstName || "",
+      lastName: player.lastName || ""
+    };
+  }
+
+  const parts = String(player.name || "").trim().split(/\s+/);
+  return {
+    firstName: parts.slice(0, -1).join(" ") || parts[0] || "",
+    lastName: parts.length > 1 ? parts.at(-1) : ""
+  };
+}
+
+function openDelegatePlayerModal(playerId = "") {
+  const team = getTeam(sidebarContent.dataset.currentDelegateTeam);
+  const player = team?.players.find((item) => String(item.id) === String(playerId));
+  const nameParts = getDelegatePlayerNameParts(player);
+
+  delegatePlayerForm?.reset();
+  delegatePlayerForm.dataset.editingId = player?.id || "";
+  delegatePlayerLastName.value = nameParts.lastName || "";
+  delegatePlayerFirstName.value = nameParts.firstName || "";
+  delegatePlayerBirthDate.value = player?.birthDate || "";
+  delegatePlayerDni.value = player?.dni || "";
+  delegatePlayerNumber.value = player?.number && player.number !== "-" ? player.number : "";
+  if (delegatePlayerFeedback) {
+    delegatePlayerFeedback.textContent = "";
+    delegatePlayerFeedback.classList.remove("is-error");
+  }
+
+  const title = document.querySelector("#delegatePlayerModalLabel");
+  if (title) title.textContent = player ? "Editar jugador" : "Cargar nuevo jugador";
+  if (saveDelegatePlayerButton) {
+    saveDelegatePlayerButton.innerHTML = `<i class="bi ${player ? "bi-save-fill" : "bi-plus-circle-fill"}"></i> ${player ? "Guardar cambios" : "Cargar jugador"}`;
+  }
+
+  validateDelegatePlayerForm();
+  bootstrap.Modal.getOrCreateInstance(delegatePlayerModalElement).show();
+}
+
+async function saveDelegatePlayerInSupabase(team) {
+  const editingId = delegatePlayerForm?.dataset.editingId || "";
+  const dni = delegatePlayerDni.value.trim();
+  const duplicatedDni = (team.players || []).find((player) =>
+    String(player.dni || "").trim() === dni &&
+    String(player.id) !== String(editingId)
+  );
+
+  if (duplicatedDni) {
+    throw new Error(`Ya existe un jugador registrado con DNI ${dni}.`);
+  }
+
   const payload = {
     equipo_id: team.id,
     nombre: delegatePlayerFirstName.value.trim(),
     apellido: delegatePlayerLastName.value.trim(),
     fecha_nacimiento: delegatePlayerBirthDate.value,
-    dni: delegatePlayerDni.value.trim(),
+    dni,
     dorsal: Number(delegatePlayerNumber.value),
     activo: true
   };
 
-  const response = await apiPost("/jugadores", payload);
+  const response = editingId
+    ? await apiPut(`/jugadores/${editingId}`, payload)
+    : await apiPost("/jugadores", payload);
   return getApiData(response);
 }
 
@@ -4559,18 +4972,21 @@ async function renderAdminTeamsView(selectedCategory = "", selectedDivision = ""
 
 function getAdminFilteredDelegateTeams(searchTerm = "") {
   const normalizedSearch = normalizeSearchText(searchTerm);
-  return teams.filter((team) =>
-    team.delegate.toLowerCase().includes(normalizedSearch) ||
-    team.shortName.toLowerCase().includes(normalizedSearch) ||
-    team.contact.toLowerCase().includes(normalizedSearch)
-  );
+  return adminTeamsForView
+    .filter((team) => Boolean(team.delegateId))
+    .filter((team) =>
+      team.delegate.toLowerCase().includes(normalizedSearch) ||
+      team.shortName.toLowerCase().includes(normalizedSearch) ||
+      (team.delegateUsername || "").toLowerCase().includes(normalizedSearch) ||
+      team.contact.toLowerCase().includes(normalizedSearch)
+    );
 }
 
 function renderAdminDelegateRows(hasCompletedFilters, searchTerm = "", page = 1) {
   if (!hasCompletedFilters) {
     return `
       <tr>
-        <td colspan="5" class="admin-empty-row">Seleccioná categoría y división para visualizar delegados.</td>
+        <td colspan="6" class="admin-empty-row">Seleccioná categoría y división para visualizar delegados.</td>
       </tr>
     `;
   }
@@ -4580,7 +4996,7 @@ function renderAdminDelegateRows(hasCompletedFilters, searchTerm = "", page = 1)
   if (!filteredTeams.length) {
     return `
       <tr>
-        <td colspan="5" class="admin-empty-row">No se encontraron delegados para la búsqueda indicada.</td>
+        <td colspan="6" class="admin-empty-row">${adminDelegatesState.includeInactive ? "No hay delegados dados de baja para la búsqueda indicada." : "No se encontraron delegados para la búsqueda indicada."}</td>
       </tr>
     `;
   }
@@ -4595,15 +5011,19 @@ function renderAdminDelegateRows(hasCompletedFilters, searchTerm = "", page = 1)
         <span class="fixture-team">${renderTeamBadge(team, "small")} ${team.shortName}</span>
       </td>
       <td>${team.contact}</td>
-      <td>${team.id}</td>
+      <td>${team.delegateUsername || "-"}</td>
       <td>
         <div class="table-actions">
-          <button type="button" aria-label="Editar delegado ${team.delegate}" data-admin-delegate-edit="${team.delegateId}" ${team.delegateId ? "" : "disabled"}>
-            <i class="bi bi-pencil-fill"></i>
-          </button>
-          <button type="button" aria-label="Dar de baja delegado ${team.delegate}" data-admin-delegate-deactivate="${team.delegateId}" ${team.delegateId ? "" : "disabled"}>
-            <i class="bi bi-trash-fill"></i>
-          </button>
+          ${adminDelegatesState.includeInactive
+            ? `<button type="button" aria-label="Reactivar delegado ${team.delegate}" data-admin-delegate-activate="${team.delegateId}" data-admin-delegate-relation="${team.delegateRelationId || ""}" ${team.delegateId ? "" : "disabled"}>
+                <i class="bi bi-arrow-counterclockwise"></i>
+              </button>`
+            : `<button type="button" aria-label="Editar delegado ${team.delegate}" data-admin-delegate-edit="${team.delegateId}" data-admin-delegate-team="${team.id}" ${team.delegateId ? "" : "disabled"}>
+                <i class="bi bi-pencil-fill"></i>
+              </button>
+              <button type="button" aria-label="Dar de baja delegado ${team.delegate}" data-admin-delegate-deactivate="${team.delegateId}" data-admin-delegate-relation="${team.delegateRelationId || ""}" ${team.delegateId ? "" : "disabled"}>
+                <i class="bi bi-trash-fill"></i>
+              </button>`}
         </div>
       </td>
     </tr>
@@ -4614,6 +5034,10 @@ async function renderAdminDelegatesView(selectedCategory = "", selectedDivision 
   if (!tournamentCatalog.length) {
     await cargarMenuCategorias();
   }
+
+  adminDelegatesState.selectedCategory = selectedCategory || "";
+  adminDelegatesState.selectedDivision = selectedDivision || "";
+  adminDelegatesState.searchTerm = searchTerm || "";
 
   const divisionMap = getAdminDivisionMap();
   const categories = Object.keys(divisionMap);
@@ -4669,7 +5093,7 @@ async function renderAdminDelegatesView(selectedCategory = "", selectedDivision 
 
         <label class="admin-filter-field admin-search-field">
           <span>Buscar delegado</span>
-          <input class="form-control" type="search" value="${searchTerm}" placeholder="Apellido y nombre, equipo o contacto" data-admin-delegate-search ${hasCompletedFilters ? "" : "disabled"}>
+          <input class="form-control" type="search" value="${searchTerm}" placeholder="Apellido y nombre, usuario, equipo o contacto" data-admin-delegate-search ${hasCompletedFilters ? "" : "disabled"}>
         </label>
       </div>
 
@@ -4682,13 +5106,21 @@ async function renderAdminDelegatesView(selectedCategory = "", selectedDivision 
               <th>Equipo</th>
               <th>Contacto</th>
               <th>Usuario</th>
-              <th>Editar</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody data-admin-delegate-rows>${renderAdminDelegateRows(hasCompletedFilters, searchTerm, delegatePageInfo.page)}</tbody>
         </table>
       </div>
       ${hasCompletedFilters ? renderAdminPagination("delegates", delegatePageInfo) : ""}
+      ${hasCompletedFilters ? `
+        <div class="admin-category-footer-actions">
+          <button class="btn btn-ingreso admin-view-inactive-btn" type="button" data-admin-delegates-toggle-bajas>
+            <i class="bi ${adminDelegatesState.includeInactive ? "bi-eye-slash-fill" : "bi-eye-fill"}"></i>
+            ${adminDelegatesState.includeInactive ? "Ocultar bajas" : "Ver bajas"}
+          </button>
+        </div>
+      ` : ""}
     </section>
   `;
 }
@@ -5051,7 +5483,7 @@ function getAdminPlayers(hasCompletedFilters, selectedTeamId = "", searchTerm = 
   const normalizedSearch = normalizeSearchText(searchTerm);
   return adminTeamsForView
     .filter((team) => !selectedTeamId || team.id === selectedTeamId)
-    .flatMap((team) => team.players.map((player) => ({ ...player, team })))
+    .flatMap((team) => getActivePlayers(team).map((player) => ({ ...player, team })))
     .filter((player) => player.name.toLowerCase().includes(normalizedSearch))
     .filter((player) => !onlyWithObservations || getPendingPlayerObservationsForAdmin(player).length > 0)
     .sort((a, b) => {
@@ -5197,7 +5629,9 @@ function renderAdminPlayersView(selectedCategory = "", selectedDivision = "", se
   `;
 }
 
-function enterDelegateView(team) {
+async function enterDelegateView(team) {
+  await loadTournamentSettingsFromSupabase();
+
   sidebarContent.innerHTML = `
     <div class="sidebar-main admin-sidebar-main">
       <div>
@@ -5232,7 +5666,7 @@ function enterDelegateView(team) {
       </button>
     </div>
   `;
-  sidebarContent.dataset.delegateTeam = team.id;
+  sidebarContent.dataset.currentDelegateTeam = team.id;
   contentShell.innerHTML = renderDelegateHome(team);
   document.body.classList.add("admin-view");
 }
@@ -5398,15 +5832,27 @@ sidebarContent.addEventListener("click", async (event) => {
     return;
   }
 
-  if (delegatePlayersButton || delegateHomeButton || delegateTeamButton) {
-    const team = getTeam(sidebarContent.dataset.delegateTeam);
-    const sectionName = delegatePlayersButton ? "Jugadores" : delegateTeamButton ? "Mi equipo" : "Resumen";
-    showContentLoader(sectionName, () => {
-      contentShell.innerHTML = delegatePlayersButton
-        ? renderDelegatePlayers(team)
-        : delegateTeamButton
-          ? renderDelegateTeamView(team)
-          : renderDelegateHome(team);
+  if (delegateHomeButton) {
+    const team = getTeam(sidebarContent.dataset.currentDelegateTeam);
+    showContentLoader("Resumen", () => {
+      contentShell.innerHTML = renderDelegateHome(team);
+    });
+    return;
+  }
+
+  if (delegateTeamButton) {
+    const team = getTeam(sidebarContent.dataset.currentDelegateTeam);
+    showContentLoader("Mi equipo", () => {
+      contentShell.innerHTML = renderDelegateTeamView(team);
+    });
+    return;
+  }
+
+  if (delegatePlayersButton) {
+    await loadTournamentSettingsFromSupabase();
+    const team = getTeam(sidebarContent.dataset.currentDelegateTeam);
+    showContentLoader("Jugadores", () => {
+      contentShell.innerHTML = renderDelegatePlayers(team);
     });
     return;
   }
@@ -5433,6 +5879,7 @@ sidebarContent.addEventListener("click", async (event) => {
       }
 
       if (actionName === "Delegados") {
+        adminDelegatesState.includeInactive = false;
         contentShell.innerHTML = await renderAdminDelegatesView();
         return;
       }
@@ -5491,15 +5938,22 @@ contentShell.addEventListener("click", async (event) => {
   const adminPlayerObservationButton = event.target.closest("[data-admin-player-observation]");
   const playerHistoryButton = event.target.closest("[data-player-history]");
   const observerSaveButton = event.target.closest("[data-observer-save]");
+  const saveTournamentSettingsButton = event.target.closest("[data-save-tournament-settings]");
   const adminPageButton = event.target.closest("[data-admin-page]");
   const delegateTeamEditButton = event.target.closest("[data-delegate-team-edit]");
   const openDelegatePlayerButton = event.target.closest("[data-open-delegate-player-modal]");
+  const editDelegatePlayerButton = event.target.closest("[data-delegate-player-edit]");
+  const deactivateDelegatePlayerButton = event.target.closest("[data-delegate-player-deactivate]");
+  const activateDelegatePlayerButton = event.target.closest("[data-delegate-player-activate]");
+  const toggleDelegatePlayersBajasButton = event.target.closest("[data-delegate-players-toggle-bajas]");
   const openNewTeamButton = event.target.closest("[data-open-new-team-modal]");
   const editAdminTeamButton = event.target.closest("[data-admin-team-edit]");
   const deactivateAdminTeamButton = event.target.closest("[data-admin-team-deactivate]");
   const openNewDelegateButton = event.target.closest("[data-open-new-delegate-modal]");
   const editAdminDelegateButton = event.target.closest("[data-admin-delegate-edit]");
   const deactivateAdminDelegateButton = event.target.closest("[data-admin-delegate-deactivate]");
+  const activateAdminDelegateButton = event.target.closest("[data-admin-delegate-activate]");
+  const toggleDelegatesBajasButton = event.target.closest("[data-admin-delegates-toggle-bajas]");
   const openNewObserverButton = event.target.closest("[data-open-new-observer-modal]");
   const savePublicSettingsButton = event.target.closest("[data-save-public-settings]");
   const removeSponsorImageButton = event.target.closest("[data-remove-sponsor-image]");
@@ -5754,6 +6208,34 @@ contentShell.addEventListener("click", async (event) => {
     return;
   }
 
+  if (saveTournamentSettingsButton) {
+    const confirmed = await requestConfirmation({
+      title: "Guardar generales torneo",
+      message: "Se van a guardar las fechas y configuración general del torneo. ¿Confirmás la edición?",
+      confirmLabel: "Guardar cambios"
+    });
+    if (!confirmed) return;
+
+    saveTournamentSettingsButton.disabled = true;
+    saveTournamentSettingsButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
+
+    try {
+      await saveTournamentSettingsToSupabase();
+      saveTournamentSettingsButton.classList.add("is-saved");
+      saveTournamentSettingsButton.innerHTML = `<i class="bi bi-check2-circle"></i> Guardado`;
+      window.setTimeout(() => {
+        saveTournamentSettingsButton.classList.remove("is-saved");
+        saveTournamentSettingsButton.disabled = false;
+        saveTournamentSettingsButton.innerHTML = `<i class="bi bi-save-fill"></i> Guardar generales torneo`;
+      }, 1400);
+    } catch (error) {
+      console.error("Error al guardar configuración general del torneo:", error);
+      saveTournamentSettingsButton.disabled = false;
+      saveTournamentSettingsButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
+    }
+    return;
+  }
+
   if (savePublicSettingsButton) {
     const confirmed = await requestConfirmation({
       title: "Guardar cambios",
@@ -5895,7 +6377,7 @@ contentShell.addEventListener("click", async (event) => {
   }
 
   if (delegateTeamEditButton) {
-    const team = getTeam(sidebarContent.dataset.delegateTeam);
+    const team = getTeam(sidebarContent.dataset.currentDelegateTeam);
     if (!team) return;
 
     if (delegateTeamEditButton.dataset.delegateTeamEdit === "edit") {
@@ -5904,7 +6386,7 @@ contentShell.addEventListener("click", async (event) => {
     }
 
     const crestInput = contentShell.querySelector('[data-team-edit-field="crest"]');
-    const crest = crestInput?.files?.[0] ? URL.createObjectURL(crestInput.files[0]) : team.crest;
+    const crest = crestInput?.files?.[0] ? (await readSponsorFile(crestInput.files[0])).src : team.crest;
     const abbreviation = contentShell.querySelector('[data-team-edit-field="abbreviation"]')?.value.trim() || team.abbreviation;
     const shortName = contentShell.querySelector('[data-team-edit-field="shortName"]')?.value.trim() || team.shortName;
     const description = contentShell.querySelector('[data-team-edit-field="description"]')?.value.trim() || team.description;
@@ -5923,18 +6405,28 @@ contentShell.addEventListener("click", async (event) => {
 
     try {
       await apiPut(`/equipos/${team.id}`, {
+        abreviatura: abbreviation,
+        nombre_corto: shortName,
+        descripcion: description,
         escudo_url: crest,
         color_principal: nextColors[0],
-        color_secundario: nextColors[1]
+        color_secundario: nextColors[1],
+        color_terciario: nextColors[2] || null
       });
 
-      team.crest = crest;
-      team.abbreviation = abbreviation;
-      team.shortName = shortName;
-      team.description = description;
-      team.shirtColors = nextColors;
-      team.colors = nextColors.slice(0, 2);
-      contentShell.innerHTML = renderDelegateTeamView(team);
+      if (activeDivisionId) {
+        await loadDivisionDataFromSupabase(activeDivisionId);
+      }
+      const updatedTeam = getTeam(team.id) || {
+        ...team,
+        crest,
+        abbreviation,
+        shortName,
+        description,
+        shirtColors: nextColors,
+        colors: nextColors.slice(0, 2)
+      };
+      contentShell.innerHTML = renderDelegateTeamView(updatedTeam);
     } catch (error) {
       console.error("Error al guardar el equipo del delegado:", error);
       contentShell.innerHTML = renderDelegateTeamView(team, true);
@@ -5943,9 +6435,77 @@ contentShell.addEventListener("click", async (event) => {
   }
 
   if (openDelegatePlayerButton) {
-    delegatePlayerForm?.reset();
-    if (saveDelegatePlayerButton) saveDelegatePlayerButton.disabled = true;
-    bootstrap.Modal.getOrCreateInstance(delegatePlayerModalElement).show();
+    openDelegatePlayerModal();
+    return;
+  }
+
+  if (editDelegatePlayerButton) {
+    openDelegatePlayerModal(editDelegatePlayerButton.dataset.delegatePlayerEdit);
+    return;
+  }
+
+  if (toggleDelegatePlayersBajasButton) {
+    const team = getTeam(sidebarContent.dataset.currentDelegateTeam);
+    contentShell.innerHTML = renderDelegatePlayers(team, toggleDelegatePlayersBajasButton.dataset.delegatePlayersToggleBajas === "true");
+    return;
+  }
+
+  if (deactivateDelegatePlayerButton) {
+    const team = getTeam(sidebarContent.dataset.currentDelegateTeam);
+    const player = team?.players.find((item) => String(item.id) === String(deactivateDelegatePlayerButton.dataset.delegatePlayerDeactivate));
+    const confirmed = await requestConfirmation({
+      title: "Dar de baja jugador",
+      message: `El jugador ${player?.name || "seleccionado"} quedará inactivo y dejará de mostrarse en el plantel. ¿Confirmás la baja?`,
+      confirmLabel: "Dar de baja"
+    });
+    if (!confirmed) return;
+
+    try {
+      await apiPatch(`/jugadores/${deactivateDelegatePlayerButton.dataset.delegatePlayerDeactivate}/desactivar`);
+      invalidateAdminMetrics();
+      if (activeDivisionId) {
+        await loadDivisionDataFromSupabase(activeDivisionId);
+      }
+      const updatedTeam = getTeam(team?.id);
+      contentShell.innerHTML = renderDelegatePlayers(updatedTeam || team);
+    } catch (error) {
+      console.error("Error al dar de baja el jugador:", error);
+    }
+    return;
+  }
+
+  if (activateDelegatePlayerButton) {
+    const team = getTeam(sidebarContent.dataset.currentDelegateTeam);
+    const player = team?.players.find((item) => String(item.id) === String(activateDelegatePlayerButton.dataset.delegatePlayerActivate));
+    const duplicatedDni = (team?.players || []).find((item) =>
+      item.active !== false &&
+      String(item.dni || "").trim() === String(player?.dni || "").trim() &&
+      String(item.id) !== String(player?.id)
+    );
+
+    if (duplicatedDni) {
+      alert(`No se puede reactivar: ya existe un jugador activo con DNI ${player?.dni}.`);
+      return;
+    }
+
+    const confirmed = await requestConfirmation({
+      title: "Reactivar jugador",
+      message: `El jugador ${player?.name || "seleccionado"} volverá a mostrarse en el plantel activo. ¿Confirmás la reactivación?`,
+      confirmLabel: "Reactivar"
+    });
+    if (!confirmed) return;
+
+    try {
+      await apiPatch(`/jugadores/${activateDelegatePlayerButton.dataset.delegatePlayerActivate}/activar`);
+      invalidateAdminMetrics();
+      if (activeDivisionId) {
+        await loadDivisionDataFromSupabase(activeDivisionId);
+      }
+      const updatedTeam = getTeam(team?.id);
+      contentShell.innerHTML = renderDelegatePlayers(updatedTeam || team, true);
+    } catch (error) {
+      console.error("Error al reactivar el jugador:", error);
+    }
     return;
   }
 
@@ -5986,26 +6546,56 @@ contentShell.addEventListener("click", async (event) => {
   }
 
   if (editAdminDelegateButton) {
-    await openAdminDelegateModal(editAdminDelegateButton.dataset.adminDelegateEdit);
+    await openAdminDelegateModal(
+      editAdminDelegateButton.dataset.adminDelegateEdit,
+      editAdminDelegateButton.dataset.adminDelegateTeam || ""
+    );
     return;
   }
 
-  if (deactivateAdminDelegateButton) {
+  if (toggleDelegatesBajasButton) {
+    adminDelegatesState.includeInactive = !adminDelegatesState.includeInactive;
+    contentShell.innerHTML = await renderAdminDelegatesView(
+      adminDelegatesState.selectedCategory,
+      adminDelegatesState.selectedDivision,
+      adminDelegatesState.searchTerm,
+      1
+    );
+    return;
+  }
+
+  if (deactivateAdminDelegateButton || activateAdminDelegateButton) {
+    const isDeactivate = Boolean(deactivateAdminDelegateButton);
+    const button = deactivateAdminDelegateButton || activateAdminDelegateButton;
+    const userId = isDeactivate ? button.dataset.adminDelegateDeactivate : button.dataset.adminDelegateActivate;
+    const relationId = button.dataset.adminDelegateRelation || "";
     const confirmed = await requestConfirmation({
-      title: "Dar de baja delegado",
-      message: "El delegado quedará inactivo y no podrá ingresar. ¿Confirmás la baja?",
-      confirmLabel: "Dar de baja"
+      title: isDeactivate ? "Dar de baja delegado" : "Reactivar delegado",
+      message: isDeactivate
+        ? "El delegado quedará inactivo y no podrá ingresar. ¿Confirmás la baja?"
+        : "El delegado volverá a estar activo y podrá ingresar. ¿Confirmás la reactivación?",
+      confirmLabel: isDeactivate ? "Dar de baja" : "Reactivar"
     });
     if (!confirmed) return;
 
     try {
-      await apiPatch(`/usuarios/${deactivateAdminDelegateButton.dataset.adminDelegateDeactivate}/desactivar`);
-      const category = contentShell.querySelector("[data-admin-delegate-category]")?.value || "";
-      const division = contentShell.querySelector("[data-admin-delegate-division]")?.value || "";
-      const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-delegate-search]")?.value || "");
-      contentShell.innerHTML = await renderAdminDelegatesView(category, division, searchTerm, 1);
+      const action = isDeactivate ? "desactivar" : "activar";
+      await apiPatch(`/usuarios/${userId}/${action}`);
+      if (relationId) {
+        try {
+          await apiPatch(`/delegados/${relationId}/${action}`);
+        } catch (relationError) {
+          console.warn(`No se pudo ${action} la relacion delegado-equipo:`, relationError);
+        }
+      }
+      contentShell.innerHTML = await renderAdminDelegatesView(
+        adminDelegatesState.selectedCategory,
+        adminDelegatesState.selectedDivision,
+        adminDelegatesState.searchTerm,
+        1
+      );
     } catch (error) {
-      console.error("Error al dar de baja el delegado:", error);
+      console.error(`Error al ${isDeactivate ? "dar de baja" : "reactivar"} el delegado:`, error);
     }
     return;
   }
@@ -6850,13 +7440,21 @@ delegatePlayerForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!saveDelegatePlayerButton || saveDelegatePlayerButton.disabled) return;
 
-  const team = getTeam(sidebarContent.dataset.delegateTeam);
+  const team = getTeam(sidebarContent.dataset.currentDelegateTeam);
   if (!team) return;
+  const editingId = delegatePlayerForm?.dataset.editingId || "";
+
+  if (!isPlayerRegistrationOpen()) {
+    alert(`La edición de jugadores está cerrada. Período: ${tournamentSettings.playerRegistrationFrom} al ${tournamentSettings.playerRegistrationTo}.`);
+    return;
+  }
 
   const confirmed = await requestConfirmation({
-    title: "Cargar jugador",
-    message: "Se va a cargar un nuevo jugador en el plantel. ¿Confirmás el alta?",
-    confirmLabel: "Cargar jugador"
+    title: editingId ? "Guardar cambios" : "Cargar jugador",
+    message: editingId
+      ? "Se van a guardar los cambios del jugador. ¿Confirmás la edición?"
+      : "Se va a cargar un nuevo jugador en el plantel. ¿Confirmás el alta?",
+    confirmLabel: editingId ? "Guardar cambios" : "Cargar jugador"
   });
   if (!confirmed) return;
 
@@ -6864,7 +7462,7 @@ delegatePlayerForm?.addEventListener("submit", async (event) => {
   saveDelegatePlayerButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
 
   try {
-    await createDelegatePlayerInSupabase(team);
+    await saveDelegatePlayerInSupabase(team);
     invalidateAdminMetrics();
     if (activeDivisionId) {
       await loadDivisionDataFromSupabase(activeDivisionId);
@@ -6872,10 +7470,15 @@ delegatePlayerForm?.addEventListener("submit", async (event) => {
     const updatedTeam = getTeam(team.id);
     bootstrap.Modal.getInstance(delegatePlayerModalElement)?.hide();
     delegatePlayerForm.reset();
+    delegatePlayerForm.dataset.editingId = "";
     validateDelegatePlayerForm();
     contentShell.innerHTML = renderDelegatePlayers(updatedTeam || team);
   } catch (error) {
     console.error("Error al guardar el jugador:", error);
+    if (delegatePlayerFeedback) {
+      delegatePlayerFeedback.textContent = error.message || "No se pudo guardar el jugador.";
+      delegatePlayerFeedback.classList.add("is-error");
+    }
     saveDelegatePlayerButton.disabled = false;
     saveDelegatePlayerButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
   }
@@ -6980,6 +7583,7 @@ if (darkModeToggle) {
 
 applyPublicSettings();
 loadPublicSettingsFromSupabase();
+loadTournamentSettingsFromSupabase();
 cargarResumenDashboard();
 cargarMenuCategorias();
 
@@ -7115,3 +7719,4 @@ async function cargarCategorias() {
 }
 
 // cargarCategorias();
+
