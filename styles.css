@@ -4474,10 +4474,18 @@ body.dark-mode .modal-content.login-modal {
   border: 0;
   background: transparent;
   box-shadow: none;
+  overflow: hidden;
+}
+
+.tournament-config-panel .table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tournament-config-table {
-  min-width: 980px;
+  min-width: 1280px;
+  table-layout: fixed;
 }
 
 .tournament-config-table th:nth-child(1),
@@ -4498,19 +4506,34 @@ body.dark-mode .modal-content.login-modal {
 
 .tournament-config-table th:nth-child(5),
 .tournament-config-table td:nth-child(5) {
-  min-width: 190px;
+  width: 128px;
+  min-width: 128px;
   text-align: center;
 }
 
 .tournament-config-table th:nth-child(6),
 .tournament-config-table td:nth-child(6) {
-  width: 118px;
-  min-width: 118px;
+  width: 150px;
+  min-width: 150px;
   text-align: center;
 }
 
 .tournament-config-table th:nth-child(7),
 .tournament-config-table td:nth-child(7) {
+  width: 154px;
+  min-width: 154px;
+  text-align: center;
+}
+
+.tournament-config-table th:nth-child(8),
+.tournament-config-table td:nth-child(8) {
+  width: 118px;
+  min-width: 118px;
+  text-align: center;
+}
+
+.tournament-config-table th:nth-child(9),
+.tournament-config-table td:nth-child(9) {
   min-width: 230px;
 }
 
@@ -4529,6 +4552,16 @@ body.dark-mode .modal-content.login-modal {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
+select.tournament-number-input,
+input[type="date"].tournament-number-input {
+  width: 118px;
+  max-width: 118px;
+}
+
+input[type="date"].tournament-number-input {
+  font-size: 0.78rem;
+}
+
 .tournament-number-input:focus {
   border-color: rgba(29, 183, 255, 0.8);
   box-shadow: 0 0 0 0.18rem rgba(29, 183, 255, 0.16);
@@ -4544,10 +4577,10 @@ body.dark-mode .modal-content.login-modal {
 
 .playoff-config {
   display: inline-grid;
-  grid-template-columns: 58px 76px;
+  grid-template-columns: 46px 56px;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
   width: 100%;
 }
 
@@ -4558,7 +4591,7 @@ body.dark-mode .modal-content.login-modal {
   gap: 0.5rem;
   min-height: 34px;
   margin: 0;
-  padding: 0.25rem 0.65rem;
+  padding: 0.25rem 0.5rem;
   border: 1px solid rgba(11, 79, 232, 0.16);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.68);
@@ -4576,6 +4609,14 @@ body.dark-mode .modal-content.login-modal {
 .playoff-config .form-check-input:checked {
   background-color: var(--frame-blue);
   border-color: var(--frame-blue);
+}
+
+select.tournament-number-input.tournament-playoff-select {
+  width: 56px;
+  max-width: 56px;
+  min-width: 56px;
+  padding-left: 0.35rem;
+  padding-right: 1.35rem;
 }
 
 .tournament-actions {

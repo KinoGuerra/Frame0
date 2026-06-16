@@ -172,6 +172,17 @@ const tournamentSettings = {
   playerRegistrationTo: "2026-07-31",
   divisions: {}
 };
+const MATCH_DAY_OPTIONS = [
+  { value: "1", label: "Lunes" },
+  { value: "2", label: "Martes" },
+  { value: "3", label: "Miércoles" },
+  { value: "4", label: "Jueves" },
+  { value: "5", label: "Viernes" },
+  { value: "6", label: "Sábado" },
+  { value: "0", label: "Domingo" }
+];
+const DEFAULT_FIXTURE_MATCH_DAY = "0";
+const DEFAULT_FIXTURE_START_DATE = "2026-07-01";
 const aboutMembers = [
   {
     name: "Ignacio Cerutti",
@@ -611,6 +622,34 @@ async function saveTournamentSettingsToSupabase() {
     p_usuario: adminSettingsSession.usuario,
     p_password: adminSettingsSession.password,
     p_valor: getTournamentSettingsPayload()
+  });
+
+  if (error) throw error;
+}
+
+async function saveFixtureMatchesToSupabase(fixture) {
+  if (typeof supabaseClient === "undefined") {
+    throw new Error("Supabase no está disponible.");
+  }
+
+  if (!adminSettingsSession?.usuario || !adminSettingsSession?.password) {
+    throw new Error("La sesión de administrador no está disponible. Cerrá sesión e ingresá nuevamente.");
+  }
+
+  const matches = (fixture.rounds || []).flatMap((round) =>
+    (round.dbMatches || []).map((match) => ({
+      fecha: match.round,
+      equipo_local_id: match.homeTeamId,
+      equipo_visitante_id: match.awayTeamId,
+      fecha_hora: match.fechaHora
+    }))
+  );
+
+  const { error } = await supabaseClient.rpc("guardar_fixture_partidos", {
+    p_usuario: adminSettingsSession.usuario,
+    p_password: adminSettingsSession.password,
+    p_division_id: fixture.divisionId,
+    p_partidos: matches
   });
 
   if (error) throw error;
@@ -2553,10 +2592,19 @@ function getTournamentDivisionConfig(categoryName, divisionName, teamCount) {
   if (!tournamentSettings.divisions[key]) {
     tournamentSettings.divisions[key] = {
       datesCount: Math.max(teamCount - 1, 1),
+      matchDay: DEFAULT_FIXTURE_MATCH_DAY,
+      startDate: DEFAULT_FIXTURE_START_DATE,
       playoffEnabled: false,
       playoffTeams: defaultPlayoffTeams,
       fixture: null
     };
+  }
+
+  if (tournamentSettings.divisions[key].matchDay === undefined) {
+    tournamentSettings.divisions[key].matchDay = DEFAULT_FIXTURE_MATCH_DAY;
+  }
+  if (!tournamentSettings.divisions[key].startDate) {
+    tournamentSettings.divisions[key].startDate = DEFAULT_FIXTURE_START_DATE;
   }
 
   return tournamentSettings.divisions[key];
@@ -2576,6 +2624,7 @@ function getTournamentDivisionRows() {
     category.divisions.map((division) => ({
       category: category.name,
       division: division.name,
+      divisionId: division.id,
       teams: division.teams,
       config: getTournamentDivisionConfig(category.name, division.name, division.teams)
     }))
@@ -2691,12 +2740,63 @@ function shuffleItems(items) {
   return shuffled;
 }
 
-function getFixtureTeamNames(categoryName, divisionName, teamCount) {
-  return teams.map((team) => team.shortName).slice(0, teamCount);
+function parseLocalDate(value = "") {
+  const [year, month, day] = String(value || "").split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
 }
 
-function buildRoundRobinRounds(teamNames, requestedDates) {
-  const teamsList = shuffleItems(teamNames);
+function formatLocalDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getNextMatchDate(startDate = DEFAULT_FIXTURE_START_DATE, matchDay = DEFAULT_FIXTURE_MATCH_DAY) {
+  const date = parseLocalDate(startDate) || parseLocalDate(DEFAULT_FIXTURE_START_DATE);
+  const targetDay = Number(matchDay);
+  const safeTargetDay = Number.isInteger(targetDay) && targetDay >= 0 && targetDay <= 6 ? targetDay : Number(DEFAULT_FIXTURE_MATCH_DAY);
+  const dayOffset = (safeTargetDay - date.getDay() + 7) % 7;
+  date.setDate(date.getDate() + dayOffset);
+  return date;
+}
+
+function getRoundMatchDateIso(roundNumber, startDate, matchDay) {
+  const date = getNextMatchDate(startDate, matchDay);
+  date.setDate(date.getDate() + (Math.max(Number(roundNumber) || 1, 1) - 1) * 7);
+  date.setHours(0, 0, 0, 0);
+  return `${formatLocalDate(date)}T00:00:00-03:00`;
+}
+
+async function getFixtureTeamsByDivision(divisionId = "") {
+  if (!divisionId || typeof supabaseClient === "undefined") return [];
+
+  let { data, error } = await supabaseClient
+    .from("equipos")
+    .select("id,nombre,abreviatura,nombre_corto,descripcion,escudo_url,color_principal,color_secundario,color_terciario,activo")
+    .eq("division_id", divisionId)
+    .eq("activo", true)
+    .order("nombre", { ascending: true });
+
+  if (error) {
+    console.warn("No se pudieron cargar equipos extendidos para fixture. Se usa lectura base.", error);
+    const fallback = await supabaseClient
+      .from("equipos")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo")
+      .eq("division_id", divisionId)
+      .eq("activo", true)
+      .order("nombre", { ascending: true });
+    data = fallback.data;
+    error = fallback.error;
+  }
+
+  if (error) throw error;
+  return (data || []).map(normalizeSupabaseTeam);
+}
+
+function buildRoundRobinRounds(teamItems, requestedDates, startDate = DEFAULT_FIXTURE_START_DATE, matchDay = DEFAULT_FIXTURE_MATCH_DAY) {
+  const teamsList = shuffleItems(teamItems);
   const hasBye = teamsList.length % 2 !== 0;
   const rotation = hasBye ? [...teamsList, null] : [...teamsList];
   const baseRoundCount = rotation.length - 1;
@@ -2712,13 +2812,25 @@ function buildRoundRobinRounds(teamNames, requestedDates) {
       const away = rotation[rotation.length - 1 - index];
 
       if (home && away) {
-        matches.push(cycleRound % 2 === 0 ? `${home} vs ${away}` : `${away} vs ${home}`);
+        const homeTeam = cycleRound % 2 === 0 ? home : away;
+        const awayTeam = cycleRound % 2 === 0 ? away : home;
+        matches.push({
+          home: homeTeam,
+          away: awayTeam,
+          label: `${homeTeam.shortName} vs ${awayTeam.shortName}`
+        });
       }
     }
 
     rounds.push({
       name: `Fecha ${roundIndex + 1}`,
-      matches
+      matches: matches.map((match) => match.label),
+      dbMatches: matches.map((match) => ({
+        round: roundIndex + 1,
+        homeTeamId: match.home.id,
+        awayTeamId: match.away.id,
+        fechaHora: getRoundMatchDateIso(roundIndex + 1, startDate, matchDay)
+      }))
     });
 
     rotation.splice(1, 0, rotation.pop());
@@ -2727,25 +2839,29 @@ function buildRoundRobinRounds(teamNames, requestedDates) {
   return rounds;
 }
 
-function generateFixturePlan(categoryName, divisionName) {
-  const row = getTournamentDivisionRows().find((item) =>
-    item.category === categoryName && item.division === divisionName
-  );
+async function generateFixturePlan(row) {
   if (!row) return null;
 
   const config = row.config;
-  const teamsCount = row.teams;
-  const fixtureTeamNames = getFixtureTeamNames(categoryName, divisionName, teamsCount);
-  if (fixtureTeamNames.length < 2) return null;
+  const fixtureTeams = await getFixtureTeamsByDivision(row.divisionId);
+  const teamsCount = fixtureTeams.length;
+  if (teamsCount < 2) return null;
 
-  const rounds = buildRoundRobinRounds(fixtureTeamNames, config.datesCount);
+  const matchDay = config.matchDay || DEFAULT_FIXTURE_MATCH_DAY;
+  const startDate = config.startDate || DEFAULT_FIXTURE_START_DATE;
+  const firstMatchDate = formatLocalDate(getNextMatchDate(startDate, matchDay));
+  const rounds = buildRoundRobinRounds(fixtureTeams, config.datesCount, startDate, matchDay);
   const datesCount = rounds.length;
   config.datesCount = datesCount;
 
   config.fixture = {
     generatedAt: new Date().toLocaleString("es-AR"),
-    category: categoryName,
-    division: divisionName,
+    category: row.category,
+    division: row.division,
+    divisionId: row.divisionId,
+    matchDay,
+    startDate,
+    firstMatchDate,
     teamsCount,
     datesCount,
     rounds,
@@ -2759,6 +2875,7 @@ function renderFixtureDownloadDocument(fixture) {
   const roundsHtml = fixture.rounds.map((round) => `
     <section>
       <h2>${round.name}</h2>
+      ${round.dbMatches?.[0]?.fechaHora ? `<p class="meta">Programado: ${new Date(round.dbMatches[0].fechaHora).toLocaleDateString("es-AR")}</p>` : ""}
       <ul>${round.matches.map((match) => `<li>${match}</li>`).join("")}</ul>
     </section>
   `).join("");
@@ -3665,6 +3782,9 @@ function renderTournamentGeneralRows() {
     const playoffOptions = [2, 4, 8, 16, 32].map((option) => `
       <option value="${option}" ${Number(row.config.playoffTeams) === option ? "selected" : ""} ${option > row.teams ? "disabled" : ""}>${option}</option>
     `).join("");
+    const matchDayOptions = MATCH_DAY_OPTIONS.map((option) => `
+      <option value="${option.value}" ${String(row.config.matchDay || DEFAULT_FIXTURE_MATCH_DAY) === option.value ? "selected" : ""}>${option.label}</option>
+    `).join("");
 
     return `
       <tr data-tournament-row="${escapeHtml(key)}">
@@ -3675,25 +3795,33 @@ function renderTournamentGeneralRows() {
           <input class="form-control form-control-sm tournament-number-input" type="number" min="1" max="60" value="${row.config.datesCount}" data-tournament-dates="${escapeHtml(key)}" aria-label="Cantidad de fechas de ${row.division}">
         </td>
         <td>
+          <select class="form-select form-select-sm tournament-number-input" data-tournament-match-day="${escapeHtml(key)}" aria-label="Día de juego de ${row.division}">
+            ${matchDayOptions}
+          </select>
+        </td>
+        <td>
+          <input class="form-control form-control-sm tournament-number-input" type="date" value="${escapeHtml(row.config.startDate || DEFAULT_FIXTURE_START_DATE)}" data-tournament-start-date="${escapeHtml(key)}" aria-label="Fecha de inicio de ${row.division}">
+        </td>
+        <td>
           <div class="playoff-config">
             <label class="form-check form-switch m-0">
               <input class="form-check-input" type="checkbox" ${row.config.playoffEnabled ? "checked" : ""} data-tournament-playoff="${escapeHtml(key)}">
             </label>
-            <select class="form-select form-select-sm tournament-number-input" ${row.config.playoffEnabled ? "" : "disabled"} data-tournament-playoff-teams="${escapeHtml(key)}" aria-label="Cantidad de equipos playoff de ${row.division}">
+            <select class="form-select form-select-sm tournament-number-input tournament-playoff-select" ${row.config.playoffEnabled ? "" : "disabled"} data-tournament-playoff-teams="${escapeHtml(key)}" aria-label="Cantidad de equipos playoff de ${row.division}">
               ${playoffOptions}
             </select>
           </div>
         </td>
         <td>
           <div class="tournament-actions">
-            <button class="table-action-btn" type="button" data-generate-fixture="${escapeHtml(key)}" aria-label="Generar fixture ${row.division}">
+            <button class="table-action-btn" type="button" data-generate-fixture="${escapeHtml(key)}" aria-label="Generar fixture ${row.division}" title="Generar fixture">
               <i class="bi bi-shuffle"></i>
             </button>
-            <button class="table-action-btn" type="button" data-download-fixture="${escapeHtml(key)}" ${fixture ? "" : "disabled"} aria-label="Descargar fixture ${row.division}">
+            <button class="table-action-btn" type="button" data-download-fixture="${escapeHtml(key)}" ${fixture ? "" : "disabled"} aria-label="Descargar fixture ${row.division}" title="Descargar fixture">
               <i class="bi bi-file-earmark-pdf-fill"></i>
             </button>
           </div>
-          <small class="fixture-generated-state">${fixture ? `Generado ${fixture.generatedAt}` : "Pendiente"}</small>
+          <small class="fixture-generated-state">${fixture ? `Generado ${fixture.generatedAt} · Primera fecha ${fixture.firstMatchDate || row.config.startDate}` : "Pendiente"}</small>
         </td>
         <td><small>${playoffSummary}</small></td>
       </tr>
@@ -3743,6 +3871,8 @@ function renderTournamentGeneralSettings() {
                 <th>División</th>
                 <th>Equipos</th>
                 <th>Fechas</th>
+                <th>Día</th>
+                <th>Inicio</th>
                 <th>Playoff</th>
                 <th>Fixture</th>
                 <th>Resumen</th>
@@ -5905,6 +6035,10 @@ sidebarContent.addEventListener("click", async (event) => {
       }
 
       if (actionName === "Configuraciones") {
+        await Promise.all([
+          loadPublicSettingsFromSupabase(),
+          loadTournamentSettingsFromSupabase()
+        ]);
         contentShell.innerHTML = renderAdminSettingsView();
         return;
       }
@@ -6312,8 +6446,35 @@ contentShell.addEventListener("click", async (event) => {
     const row = getTournamentConfigByKey(key);
     if (!row) return;
 
-    generateFixturePlan(row.category, row.division);
-    refreshTournamentGeneralRows();
+    const confirmed = await requestConfirmation({
+      title: "Generar fixture",
+      message: "Se generará el fixture y se reemplazarán los partidos programados de esta división. ¿Confirmás la acción?",
+      confirmLabel: "Generar fixture"
+    });
+    if (!confirmed) return;
+
+    generateFixtureButton.disabled = true;
+
+    try {
+      const fixture = await generateFixturePlan(row);
+      if (!fixture) {
+        alert("No hay equipos suficientes para generar el fixture.");
+        return;
+      }
+      await saveFixtureMatchesToSupabase(fixture);
+      await saveTournamentSettingsToSupabase();
+      if (activeDivisionId && String(activeDivisionId) === String(row.divisionId)) {
+        await loadDivisionDataFromSupabase(activeDivisionId);
+        renderFixtureDateOptions();
+        renderFixture();
+      }
+      refreshTournamentGeneralRows();
+    } catch (error) {
+      console.error("Error al generar fixture en Supabase:", error);
+      alert(`No se pudo generar el fixture: ${error.message || "error desconocido"}`);
+    } finally {
+      generateFixtureButton.disabled = false;
+    }
     return;
   }
 
@@ -6666,6 +6827,8 @@ contentShell.addEventListener("change", async (event) => {
   const registrationFromInput = event.target.closest("[data-registration-from]");
   const registrationToInput = event.target.closest("[data-registration-to]");
   const tournamentDatesInput = event.target.closest("[data-tournament-dates]");
+  const tournamentMatchDayInput = event.target.closest("[data-tournament-match-day]");
+  const tournamentStartDateInput = event.target.closest("[data-tournament-start-date]");
   const tournamentPlayoffInput = event.target.closest("[data-tournament-playoff]");
   const tournamentPlayoffTeamsInput = event.target.closest("[data-tournament-playoff-teams]");
   const sponsorUploadInput = event.target.closest("[data-sponsor-upload]");
@@ -6696,11 +6859,21 @@ contentShell.addEventListener("change", async (event) => {
 
   if (registrationFromInput) {
     tournamentSettings.playerRegistrationFrom = registrationFromInput.value;
+    if (tournamentSettings.playerRegistrationTo && tournamentSettings.playerRegistrationFrom > tournamentSettings.playerRegistrationTo) {
+      tournamentSettings.playerRegistrationTo = tournamentSettings.playerRegistrationFrom;
+      const toInput = contentShell.querySelector("[data-registration-to]");
+      if (toInput) toInput.value = tournamentSettings.playerRegistrationTo;
+    }
     return;
   }
 
   if (registrationToInput) {
     tournamentSettings.playerRegistrationTo = registrationToInput.value;
+    if (tournamentSettings.playerRegistrationFrom && tournamentSettings.playerRegistrationTo < tournamentSettings.playerRegistrationFrom) {
+      tournamentSettings.playerRegistrationFrom = tournamentSettings.playerRegistrationTo;
+      const fromInput = contentShell.querySelector("[data-registration-from]");
+      if (fromInput) fromInput.value = tournamentSettings.playerRegistrationFrom;
+    }
     return;
   }
 
@@ -6708,6 +6881,26 @@ contentShell.addEventListener("change", async (event) => {
     const row = getTournamentConfigByKey(tournamentDatesInput.dataset.tournamentDates);
     if (row) {
       row.config.datesCount = Math.max(Number(tournamentDatesInput.value) || 1, 1);
+      row.config.fixture = null;
+      refreshTournamentGeneralRows();
+    }
+    return;
+  }
+
+  if (tournamentMatchDayInput) {
+    const row = getTournamentConfigByKey(tournamentMatchDayInput.dataset.tournamentMatchDay);
+    if (row) {
+      row.config.matchDay = tournamentMatchDayInput.value;
+      row.config.fixture = null;
+      refreshTournamentGeneralRows();
+    }
+    return;
+  }
+
+  if (tournamentStartDateInput) {
+    const row = getTournamentConfigByKey(tournamentStartDateInput.dataset.tournamentStartDate);
+    if (row) {
+      row.config.startDate = tournamentStartDateInput.value || DEFAULT_FIXTURE_START_DATE;
       row.config.fixture = null;
       refreshTournamentGeneralRows();
     }
