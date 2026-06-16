@@ -2672,6 +2672,107 @@ function renderFixtureDownloadDocument(fixture) {
   `;
 }
 
+function getCurrentObserverFullName() {
+  const lastName = currentAppUser?.apellido || "";
+  const firstName = currentAppUser?.nombre || currentAppUser?.usuario || "";
+  return `${lastName} ${firstName}`.trim() || "Veedor no informado";
+}
+
+function renderMatchSheetPlayerRows(team) {
+  return (team?.players || []).map((player, index) => `
+    <tr>
+      <td class="index">${index + 1}</td>
+      <td>${escapeHtml(player.name || "-")}</td>
+      <td>${escapeHtml(player.dni || "-")}</td>
+      <td class="shirt">${escapeHtml(String(player.number || "-"))}</td>
+      <td class="status">${escapeHtml(getPlayerStatus({ ...player, team }) || "-")}</td>
+      <td><span class="signature-line"></span></td>
+      <td class="mark">TA <span class="radio-circle"></span></td>
+      <td class="mark">TR <span class="radio-circle"></span></td>
+      <td class="goals">G <span class="goals-line"></span></td>
+    </tr>
+  `).join("");
+}
+
+function renderMatchSheetTeam(team, label) {
+  return `
+    <section class="team-sheet">
+      <h2>${escapeHtml(label)}: ${escapeHtml(team?.name || team?.shortName || "-")}</h2>
+      <table>
+        <thead>
+          <tr>
+            <th class="index">N°</th>
+            <th>Apellido y nombre</th>
+            <th>DNI</th>
+            <th class="shirt"># camiseta</th>
+            <th>Estado</th>
+            <th>Firma del jugador</th>
+            <th>TA</th>
+            <th>TR</th>
+            <th>G</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${renderMatchSheetPlayerRows(team)}
+        </tbody>
+      </table>
+    </section>
+  `;
+}
+
+function renderObserverMatchSheetDocument(match, homeTeam, awayTeam) {
+  const observerName = getCurrentObserverFullName();
+
+  return `
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="utf-8">
+        <title>Planilla ${escapeHtml(homeTeam?.shortName || "Equipo A")} vs ${escapeHtml(awayTeam?.shortName || "Equipo B")}</title>
+        <style>
+          @page { size: A4; margin: 12mm; }
+          * { box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; color: #111827; margin: 0; }
+          h1 { margin: 0 0 8px; color: #0b4fe8; font-size: 22px; }
+          h2 { margin: 14px 0 8px; font-size: 16px; color: #111827; }
+          .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; margin-bottom: 10px; font-size: 12px; }
+          .meta span { border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
+          .divider { height: 1px; margin: 16px 0 10px; background: #94a3b8; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; }
+          th, td { border: 1px solid #cbd5e1; padding: 5px 4px; vertical-align: middle; }
+          th { background: #eef6ff; color: #0f2742; text-align: left; }
+          .index { width: 28px; text-align: center; }
+          .shirt { width: 58px; text-align: center; }
+          th:nth-child(2), td:nth-child(2) { width: 160px; }
+          th:nth-child(3), td:nth-child(3) { width: 78px; text-align: center; }
+          th:nth-child(5), td:nth-child(5) { width: 78px; text-align: center; }
+          th:nth-child(6), td:nth-child(6) { width: 118px; }
+          th:nth-child(7), td:nth-child(7),
+          th:nth-child(8), td:nth-child(8) { width: 40px; text-align: center; }
+          th:nth-child(9), td:nth-child(9) { width: 58px; text-align: center; }
+          .status { font-size: 9px; }
+          .signature-line, .goals-line { display: inline-block; width: 100%; border-bottom: 1px solid #111827; height: 12px; }
+          .goals-line { width: 28px; }
+          .radio-circle { display: inline-block; width: 10px; height: 10px; margin-left: 4px; border: 1.5px solid #111827; border-radius: 50%; vertical-align: middle; }
+          .mark, .goals { white-space: nowrap; }
+          .team-sheet { page-break-inside: avoid; }
+        </style>
+      </head>
+      <body>
+        <h1>Planilla de partido</h1>
+        <div class="meta">
+          <span><strong>Veedor:</strong> ${escapeHtml(observerName)}</span>
+          <span><strong>Fecha:</strong> ${escapeHtml(match?.date || "-")}</span>
+        </div>
+        ${renderMatchSheetTeam(homeTeam, "Nombre del equipo A")}
+        <div class="divider"></div>
+        ${renderMatchSheetTeam(awayTeam, "Nombre del equipo B")}
+        <script>window.setTimeout(() => window.print(), 250);</script>
+      </body>
+    </html>
+  `;
+}
+
 function renderAdminSummaryList(items) {
   return items.map((item) => `
     <div class="admin-summary-row">
@@ -3144,6 +3245,7 @@ function renderObserverPlayerRows(team, matchId) {
     return `
     <tr class="${isDisabledPlayer ? "observer-player-disabled" : ""}">
       <td>${player.name}</td>
+      <td>${escapeHtml(player.dni || "-")}</td>
       <td>${player.number}</td>
       <td><span class="player-status ${status.toLowerCase()}">${status}</span></td>
       <td>
@@ -3189,6 +3291,7 @@ function renderObserverPlayersTable(team, sideLabel, matchId) {
           <thead>
             <tr>
               <th>Apellido y nombre</th>
+              <th>DNI</th>
               <th>#</th>
               <th>Estado</th>
               <th>Incidencias</th>
@@ -3219,6 +3322,10 @@ function renderObserverEditMatch(matchId) {
       <button class="back-to-division" type="button" data-observer-back>
         <i class="bi bi-arrow-left"></i>
         Volver a partidos
+      </button>
+      <button class="btn btn-outline-light admin-secondary-btn observer-sheet-btn" type="button" data-observer-download-sheet="${escapeHtml(match.id)}">
+        <i class="bi bi-file-earmark-pdf-fill"></i>
+        Descargar planilla
       </button>
       <button class="btn btn-ingreso observer-save-btn" type="button" data-observer-save>
         <i class="bi bi-save-fill"></i>
@@ -4957,7 +5064,7 @@ function renderAdminPlayerRows(hasCompletedFilters, selectedTeamId = "", searchT
   if (!hasCompletedFilters) {
     return `
       <tr>
-        <td colspan="7" class="admin-empty-row">Seleccioná categoría y división para visualizar jugadores.</td>
+        <td colspan="8" class="admin-empty-row">Seleccioná categoría y división para visualizar jugadores.</td>
       </tr>
     `;
   }
@@ -4967,7 +5074,7 @@ function renderAdminPlayerRows(hasCompletedFilters, selectedTeamId = "", searchT
   if (!players.length) {
     return `
       <tr>
-        <td colspan="7" class="admin-empty-row">No se encontraron jugadores para la búsqueda indicada.</td>
+        <td colspan="8" class="admin-empty-row">No se encontraron jugadores para la búsqueda indicada.</td>
       </tr>
     `;
   }
@@ -4982,6 +5089,7 @@ function renderAdminPlayerRows(hasCompletedFilters, selectedTeamId = "", searchT
     <tr>
       <td>${(pageInfo.page - 1) * ADMIN_PAGE_SIZE + index + 1}</td>
       <td>${player.name}</td>
+      <td>${escapeHtml(player.dni || "-")}</td>
       <td>
         <span class="fixture-team">${renderTeamBadge(player.team, "small")} ${player.team.shortName}</span>
       </td>
@@ -5073,6 +5181,7 @@ function renderAdminPlayersView(selectedCategory = "", selectedDivision = "", se
             <tr>
               <th>N&deg;</th>
               <th>Apellido y nombre</th>
+              <th>DNI</th>
               <th>Equipo</th>
               <th>Contacto</th>
               <th>Estado</th>
@@ -5372,6 +5481,7 @@ sidebarContent.addEventListener("change", (event) => {
 contentShell.addEventListener("click", async (event) => {
   const editButton = event.target.closest("[data-observer-edit-match]");
   const observerBackButton = event.target.closest("[data-observer-back]");
+  const observerDownloadSheetButton = event.target.closest("[data-observer-download-sheet]");
   const scoreIncButton = event.target.closest("[data-score-inc]");
   const scoreDecButton = event.target.closest("[data-score-dec]");
   const goalIncButton = event.target.closest("[data-goal-inc]");
@@ -5579,6 +5689,28 @@ contentShell.addEventListener("click", async (event) => {
     showContentLoader("Partidos", () => {
       contentShell.innerHTML = renderObserverMatches();
     });
+    return;
+  }
+
+  if (observerDownloadSheetButton) {
+    const match = getObserverMatch(observerDownloadSheetButton.dataset.observerDownloadSheet);
+    const homeTeam = getTeam(match?.home);
+    const awayTeam = getTeam(match?.away);
+
+    if (!match || !homeTeam || !awayTeam) {
+      alert("No se pudo generar la planilla porque faltan datos del partido o de los equipos.");
+      return;
+    }
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("El navegador bloqueó la ventana de descarga. Permití ventanas emergentes para generar el PDF.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(renderObserverMatchSheetDocument(match, homeTeam, awayTeam));
+    printWindow.document.close();
     return;
   }
 

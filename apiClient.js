@@ -288,7 +288,6 @@ async function apiGet(endpoint) {
 }
 
 async function createObserver(body = {}) {
-
   const nombre = String(body.nombre || "").trim();
   const apellido = String(body.apellido || "").trim();
   const contacto = String(body.contacto || "").trim();
@@ -301,23 +300,9 @@ async function createObserver(body = {}) {
 
   await ensureUniqueUsername(usuario);
 
-  const email = getObserverAuthEmail(usuario);
-  const { data: authData, error: authError } = await getSupabaseClient().auth.signUp({
-    email,
-    password
-  });
-
-  if (authError) throw authError;
-
-  const userId = authData?.user?.id;
-  if (!userId) {
-    throw new Error("Supabase Auth no devolvi? un usuario para asociar al veedor.");
-  }
-
-  const { error: profileError } = await getSupabaseClient()
+  const { data: profile, error: profileError } = await getSupabaseClient()
     .from("usuarios_app")
     .insert({
-      id: userId,
       nombre,
       apellido,
       contacto,
@@ -325,13 +310,15 @@ async function createObserver(body = {}) {
       rol: "veedor",
       password_hash: password,
       activo: true
-    });
+    })
+    .select("id,nombre,apellido,contacto,usuario,rol,activo")
+    .single();
 
   if (profileError) throw profileError;
 
   const { data, error } = await getSupabaseClient()
     .from("veedores")
-    .insert({ usuario_id: userId, activo: true })
+    .insert({ usuario_id: profile.id, activo: true })
     .select(FRAME0_TABLES.veedores.select)
     .single();
 
