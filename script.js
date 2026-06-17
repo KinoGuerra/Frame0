@@ -163,6 +163,8 @@ La organización podrá reprogramar encuentros por razones climáticas, disponib
 const PUBLIC_SETTINGS_CONFIG_KEY = "public_settings";
 const TOURNAMENT_SETTINGS_CONFIG_KEY = "tournament_settings";
 let adminSettingsSession = null;
+let observerSettingsSession = null;
+let delegateSettingsSession = null;
 let currentAppUser = null;
 let tournamentCatalog = [];
 let activeDivisionId = "";
@@ -656,6 +658,65 @@ async function saveFixtureMatchesToSupabase(fixture) {
   if (error) throw error;
 }
 
+function requireDelegateSettingsSession() {
+  if (!delegateSettingsSession?.usuario || !delegateSettingsSession?.password) {
+    throw new Error("La sesión del delegado no está disponible. Cerrá sesión e ingresá nuevamente.");
+  }
+
+  return delegateSettingsSession;
+}
+
+async function saveDelegateTeamToSupabase(teamId, payload = {}) {
+  if (typeof supabaseClient === "undefined") {
+    throw new Error("Supabase no está disponible.");
+  }
+
+  const session = requireDelegateSettingsSession();
+  const { error } = await supabaseClient.rpc("guardar_equipo_delegado", {
+    p_usuario: session.usuario,
+    p_password: session.password,
+    p_equipo_id: teamId,
+    p_valor: payload
+  });
+
+  if (error) throw error;
+}
+
+async function saveDelegatePlayerToSupabase(teamId, playerId, payload = {}) {
+  if (typeof supabaseClient === "undefined") {
+    throw new Error("Supabase no está disponible.");
+  }
+
+  const session = requireDelegateSettingsSession();
+  const { data, error } = await supabaseClient.rpc("guardar_jugador_delegado", {
+    p_usuario: session.usuario,
+    p_password: session.password,
+    p_equipo_id: teamId,
+    p_jugador_id: playerId || null,
+    p_valor: payload
+  });
+
+  if (error) throw error;
+  return data;
+}
+
+async function changeDelegatePlayerStatusInSupabase(playerId, active) {
+  if (typeof supabaseClient === "undefined") {
+    throw new Error("Supabase no está disponible.");
+  }
+
+  const session = requireDelegateSettingsSession();
+  const { data, error } = await supabaseClient.rpc("cambiar_estado_jugador_delegado", {
+    p_usuario: session.usuario,
+    p_password: session.password,
+    p_jugador_id: playerId,
+    p_activo: active
+  });
+
+  if (error) throw error;
+  return data;
+}
+
 async function hasExistingFixtureForDivision(divisionId = "") {
   if (!divisionId || typeof supabaseClient === "undefined") return false;
 
@@ -897,6 +958,7 @@ let standings = [];
 let fixtures = {};
 let observerMatches = [];
 let observers = [];
+let matchDetailsById = new Map();
 
 function getTeam(teamId) {
   return teams.find((team) => String(team.id) === String(teamId))
@@ -930,6 +992,125 @@ function getPlayerFromObservationKey(key) {
   return player ? { ...player, team } : null;
 }
 
+function getPlayerMatchIncidence(player = {}, matchId = "") {
+  const matchStats = player.matchStats || {};
+  return matchStats[String(matchId)] || {
+    goals: 0,
+    yellow: 0,
+    red: 0,
+    observation: ""
+  };
+}
+
+function buildMatchLabel(match) {
+  if (!match) return "Partido";
+
+  const homeName = getTeam(match.home)?.shortName || "Equipo 1";
+  const awayName = getTeam(match.away)?.shortName || "Equipo 2";
+  return `${match.date || "Sin fecha"} - ${homeName} vs ${awayName}`;
+}
+
+async function loadMatchIncidences(matchIds = []) {
+  if (!matchIds.length || typeof supabaseClient === "undefined") {
+    return { goals: [], cards: [], sanctions: [] };
+  }
+
+  const [{ data: goals, error: goalsError }, { data: cards, error: cardsError }, { data: sanctions, error: sanctionsError }] = await Promise.all([
+    supabaseClient
+      .from("goles")
+      .select("id,partido_id,jugador_id,equipo_id,tipo")
+      .in("partido_id", matchIds),
+    supabaseClient
+      .from("tarjetas")
+      .select("id,partido_id,jugador_id,equipo_id,tipo,motivo")
+      .in("partido_id", matchIds),
+    supabaseClient
+      .from("sanciones")
+      .select("id,jugador_id,partido_id,motivo,fechas_suspension,cumplida")
+      .in("partido_id", matchIds)
+  ]);
+
+  if (goalsError) throw goalsError;
+  if (cardsError) throw cardsError;
+  if (sanctionsError) throw sanctionsError;
+
+  return {
+    goals: goals || [],
+    cards: cards || [],
+    sanctions: sanctions || []
+  };
+}
+
+function applyPlayerStatsToTeams(teamList = [], incidences = {}) {
+  const playerMap = new Map();
+
+  teamList.forEach((team) => {
+    (team.players || []).forEach((player) => {
+      player.goals = 0;
+      player.yellow = 0;
+      player.red = 0;
+      player.observations = [];
+      player.suspensionMatches = 0;
+      player.matchStats = {};
+      if (player.id) playerMap.set(String(player.id), { player, team });
+    });
+  });
+
+  const ensureMatchStats = (player, matchId) => {
+    const key = String(matchId || "");
+    if (!player.matchStats[key]) {
+      player.matchStats[key] = {
+        goals: 0,
+        yellow: 0,
+        red: 0,
+        observation: ""
+      };
+    }
+    return player.matchStats[key];
+  };
+
+  (incidences.goals || []).forEach((goal) => {
+    const entry = playerMap.get(String(goal.jugador_id || ""));
+    if (!entry) return;
+    entry.player.goals += 1;
+    ensureMatchStats(entry.player, goal.partido_id).goals += 1;
+  });
+
+  (incidences.cards || []).forEach((card) => {
+    const entry = playerMap.get(String(card.jugador_id || ""));
+    if (!entry) return;
+    const matchStats = ensureMatchStats(entry.player, card.partido_id);
+    if (card.tipo === "roja") {
+      entry.player.red += 1;
+      matchStats.red += 1;
+      return;
+    }
+    entry.player.yellow += 1;
+    matchStats.yellow += 1;
+  });
+
+  (incidences.sanctions || []).forEach((sanction) => {
+    const entry = playerMap.get(String(sanction.jugador_id || ""));
+    if (!entry) return;
+    const text = String(sanction.motivo || "").trim();
+    const suspensionMatches = Math.max(Number(sanction.fechas_suspension) || 0, 0);
+    if (suspensionMatches > 0 && sanction.cumplida !== true) {
+      entry.player.suspensionMatches += suspensionMatches;
+    }
+    if (!text) return;
+
+    const matchStats = ensureMatchStats(entry.player, sanction.partido_id);
+    matchStats.observation = text;
+    entry.player.observations.push({
+      id: sanction.id,
+      matchId: sanction.partido_id,
+      text,
+      suspensionMatches,
+      fulfilled: sanction.cumplida === true
+    });
+  });
+}
+
 function getPlayerObservationCount() {
   return Object.entries(playerObservations)
     .filter(([key, text]) => String(text || "").trim() && !playerObservationResolutions[key])
@@ -945,6 +1126,26 @@ function getFixtureDateLabel(match) {
   );
 
   return fixtureMatch ? `Fecha ${fixtureMatch[0]}` : "Sin fixture asociado";
+}
+
+function rememberMatchDetails(matches = []) {
+  matchDetailsById = new Map(matchDetailsById);
+  matches.forEach((match, index) => {
+    const normalized = normalizeSupabaseMatch(match, index);
+    if (!normalized.id) return;
+
+    const date = match.fecha_hora ? new Date(match.fecha_hora) : null;
+    matchDetailsById.set(String(normalized.id), {
+      id: normalized.id,
+      date: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("es-AR") : "Sin fecha",
+      fixtureDate: `Fecha ${normalized.dateNumber}`,
+      home: normalized.home,
+      away: normalized.away,
+      homeGoals: normalized.homeGoals,
+      awayGoals: normalized.awayGoals,
+      reporter: "Veedor"
+    });
+  });
 }
 
 function getObservationReporter(matchId) {
@@ -993,24 +1194,54 @@ function updatePlayerObservationBadge() {
 }
 
 function getPlayerObservationsForAdmin(player) {
-  return Object.entries(playerObservations)
+  const persistedObservations = (player.observations || [])
+    .filter((observation) => String(observation.text || "").trim())
+    .map((observation) => {
+      const match = getObserverMatch(observation.matchId);
+      const key = getPlayerObservationKey(observation.matchId, player.team.id, player);
+      const resolution = playerObservationResolutions[key] || (observation.suspensionMatches > 0 ? {
+        detail: observation.text,
+        suspensionMatches: observation.suspensionMatches,
+        status: observation.fulfilled ? "Habilitado" : "Suspendido",
+        playerKey: getPlayerStatusKey(player)
+      } : null);
+
+      return {
+        key,
+        calendarDate: match?.date || "Sin fecha calendario",
+        fixtureDate: getFixtureDateLabel(match),
+        matchLabel: buildMatchLabel(match),
+        reporter: getObservationReporter(observation.matchId),
+        resolution,
+        text: String(observation.text).trim()
+      };
+    });
+
+  const memoryObservations = Object.entries(playerObservations)
     .filter(([key, text]) => key.includes(`::${player.team.id}::${player.number}::${player.name}`) && String(text || "").trim())
     .map(([key, text]) => {
       const [matchId] = key.split("::");
       const match = getObserverMatch(matchId);
-      const matchLabel = match ? `${match.date} - ${getTeam(match.home)?.shortName || ""} vs ${getTeam(match.away)?.shortName || ""}` : "Partido";
       const resolution = playerObservationResolutions[key] || null;
 
       return {
         key,
         calendarDate: match?.date || "Sin fecha calendario",
         fixtureDate: getFixtureDateLabel(match),
-        matchLabel,
+        matchLabel: buildMatchLabel(match),
         reporter: getObservationReporter(matchId),
         resolution,
         text: String(text).trim()
       };
     });
+
+  const seen = new Set();
+  return [...persistedObservations, ...memoryObservations].filter((observation) => {
+    const uniqueKey = `${observation.key}::${observation.text}`;
+    if (seen.has(uniqueKey)) return false;
+    seen.add(uniqueKey);
+    return true;
+  });
 }
 
 function getPendingPlayerObservationsForAdmin(player) {
@@ -1371,6 +1602,9 @@ function normalizeSupabasePlayer(player = {}) {
     goals: 0,
     yellow: 0,
     red: 0,
+    observations: [],
+    suspensionMatches: 0,
+    matchStats: {},
     active: player.activo !== false,
     birthDate: player.fecha_nacimiento || "",
     dni: player.dni || ""
@@ -1535,7 +1769,7 @@ async function loadDivisionDataFromSupabase(divisionId) {
 
   let equiposQuery = supabaseClient
       .from("equipos")
-      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,color_terciario,abreviatura,nombre_corto,descripcion,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
       .eq("division_id", divisionId)
       .eq("activo", true)
       .order("dorsal", { referencedTable: "jugadores", ascending: true })
@@ -1556,7 +1790,7 @@ async function loadDivisionDataFromSupabase(divisionId) {
     console.warn("No se pudo cargar equipos con perfil extendido. Se usa lectura base.", equiposError);
     const fallback = await supabaseClient
       .from("equipos")
-      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,color_terciario,abreviatura,nombre_corto,descripcion,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
       .eq("division_id", divisionId)
       .eq("activo", true)
       .order("dorsal", { referencedTable: "jugadores", ascending: true })
@@ -1568,6 +1802,8 @@ async function loadDivisionDataFromSupabase(divisionId) {
   if (equiposError) throw equiposError;
   if (partidosError) throw partidosError;
 
+  rememberMatchDetails(partidos || []);
+  const matchIncidences = await loadMatchIncidences((partidos || []).map((match) => match.id).filter(Boolean));
   const delegateMap = await loadTeamDelegatesByTeam((equipos || []).map((team) => team.id).filter(Boolean));
   teams = (equipos || []).map((team) => {
     const normalized = normalizeSupabaseTeam(team);
@@ -1576,6 +1812,7 @@ async function loadDivisionDataFromSupabase(divisionId) {
       ? { ...normalized, delegate: delegate.name, contact: delegate.contact }
       : normalized;
   });
+  applyPlayerStatsToTeams(teams, matchIncidences);
   fixtures = filterDuplicateProgrammedMatches(partidos || []).reduce((grouped, match, index) => {
     const normalized = normalizeSupabaseMatch(match, index);
     const round = normalized.dateNumber;
@@ -1673,9 +1910,16 @@ function getPlayerStats(team, statType) {
   }
 
   return getActivePlayers(team)
-    .filter((player) => player.yellow > 0 || player.red > 0)
-    .sort((a, b) => (b.yellow + b.red) - (a.yellow + a.red))
-    .map((player) => ({ name: player.name, value: `${player.yellow}A / ${player.red}R` }));
+    .filter((player) => player.yellow > 0 || player.red > 0 || (player.observations || []).length > 0)
+    .sort((a, b) =>
+      (b.yellow + b.red + (b.observations || []).length) -
+      (a.yellow + a.red + (a.observations || []).length)
+    )
+    .map((player) => {
+      const observationsCount = (player.observations || []).length;
+      const observationsLabel = observationsCount > 0 ? ` / ${observationsCount} obs.` : "";
+      return { name: player.name, value: `${player.yellow}A / ${player.red}R${observationsLabel}` };
+    });
 }
 
 function renderPlayerStats(team, statType = "goals") {
@@ -2099,6 +2343,8 @@ function showHome() {
 
 async function exitProfileToPublicHome() {
   adminSettingsSession = null;
+  observerSettingsSession = null;
+  delegateSettingsSession = null;
   currentAppUser = null;
 
   supabaseClient?.auth?.signOut?.().catch((error) => {
@@ -2884,7 +3130,7 @@ async function getFixtureTeamsByDivision(divisionId = "") {
 
   let { data, error } = await supabaseClient
     .from("equipos")
-    .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo")
+    .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,color_terciario,abreviatura,nombre_corto,descripcion,activo")
     .eq("division_id", divisionId)
     .eq("activo", true)
     .order("nombre", { ascending: true });
@@ -2893,7 +3139,7 @@ async function getFixtureTeamsByDivision(divisionId = "") {
     console.warn("No se pudieron cargar equipos extendidos para fixture. Se usa lectura base.", error);
     const fallback = await supabaseClient
       .from("equipos")
-      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,color_terciario,abreviatura,nombre_corto,descripcion,activo")
       .eq("division_id", divisionId)
       .eq("activo", true)
       .order("nombre", { ascending: true });
@@ -3240,6 +3486,7 @@ function getTeamRecord(teamId) {
 function getPlayerStatus(player) {
   const resolvedStatus = getResolvedPlayerStatus(player);
   if (resolvedStatus) return resolvedStatus;
+  if ((Number(player.suspensionMatches) || 0) > 0) return "Suspendido";
   if (player.red > 0) return "Suspendido";
   if (player.yellow >= 4) return "Inhabilitado";
   return "Habilitado";
@@ -3478,7 +3725,7 @@ function renderDelegatePlayers(team, includeInactive = false) {
 }
 
 function getObserverMatch(matchId) {
-  return observerMatches.find((match) => match.id === matchId);
+  return observerMatches.find((match) => match.id === matchId) || matchDetailsById.get(String(matchId || ""));
 }
 
 function parseLocalDate(dateText) {
@@ -3598,7 +3845,7 @@ async function loadObserverDataFromSupabase() {
 
   let equiposQuery = supabaseClient
       .from("equipos")
-      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,color_terciario,abreviatura,nombre_corto,descripcion,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
       .eq("activo", true)
       .order("dorsal", { referencedTable: "jugadores", ascending: true })
       .order("nombre", { ascending: true });
@@ -3617,7 +3864,7 @@ async function loadObserverDataFromSupabase() {
     console.warn("No se pudo cargar equipos extendidos para veedor. Se usa lectura base.", equiposError);
     const fallback = await supabaseClient
       .from("equipos")
-      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,color_terciario,abreviatura,nombre_corto,descripcion,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
       .eq("activo", true)
       .order("dorsal", { referencedTable: "jugadores", ascending: true })
       .order("nombre", { ascending: true });
@@ -3628,7 +3875,10 @@ async function loadObserverDataFromSupabase() {
   if (equiposError) throw equiposError;
   if (partidosError) throw partidosError;
 
+  rememberMatchDetails(partidos || []);
+  const matchIncidences = await loadMatchIncidences((partidos || []).map((match) => match.id).filter(Boolean));
   teams = (equipos || []).map(normalizeSupabaseTeam);
+  applyPlayerStatsToTeams(teams, matchIncidences);
   observerMatches = (partidos || []).map((match, index) => {
     const normalized = normalizeSupabaseMatch(match, index);
     const date = match.fecha_hora ? new Date(match.fecha_hora) : null;
@@ -3661,13 +3911,15 @@ function renderScoreCounter(label, value, key) {
 function renderObserverPlayerRows(team, matchId) {
   return getActivePlayers(team).map((player) => {
     const status = getPlayerStatus(player);
-    const isDisabledPlayer = status !== "Habilitado";
+    const currentStats = getPlayerMatchIncidence(player, matchId);
+    const hasCurrentMatchRecord = currentStats.goals > 0 || currentStats.yellow > 0 || currentStats.red > 0 || currentStats.observation;
+    const isDisabledPlayer = status !== "Habilitado" && !hasCurrentMatchRecord;
     const disabledAttribute = isDisabledPlayer ? "disabled" : "";
     const observationKey = getPlayerObservationKey(matchId, team.id, player);
-    const currentObservation = playerObservations[observationKey] || "";
+    const currentObservation = playerObservations[observationKey] || currentStats.observation || "";
 
     return `
-    <tr class="${isDisabledPlayer ? "observer-player-disabled" : ""}">
+    <tr class="${isDisabledPlayer ? "observer-player-disabled" : ""}" data-observer-player-row data-player-id="${escapeHtml(player.id || "")}" data-team-id="${escapeHtml(team.id)}" data-observation-key="${escapeHtml(observationKey)}">
       <td>${player.name}</td>
       <td>${escapeHtml(player.dni || "-")}</td>
       <td>${player.number}</td>
@@ -3677,10 +3929,10 @@ function renderObserverPlayerRows(team, matchId) {
           <button class="event-btn player-of-match" type="button" aria-label="Jugador del partido" ${disabledAttribute}>
             <i class="bi bi-star-fill"></i>
           </button>
-          <button class="event-btn yellow-card" type="button" aria-label="Tarjeta amarilla" ${disabledAttribute}>
+          <button class="event-btn yellow-card ${currentStats.yellow > 0 ? "is-selected" : ""}" type="button" aria-label="Tarjeta amarilla" ${disabledAttribute}>
             <i class="bi bi-square-fill"></i>
           </button>
-          <button class="event-btn red-card" type="button" aria-label="Tarjeta roja" ${disabledAttribute}>
+          <button class="event-btn red-card ${currentStats.red > 0 ? "is-selected" : ""}" type="button" aria-label="Tarjeta roja" ${disabledAttribute}>
             <i class="bi bi-square-fill"></i>
           </button>
         </div>
@@ -3689,7 +3941,7 @@ function renderObserverPlayerRows(team, matchId) {
         <div class="goal-counter">
           <button type="button" data-goal-dec aria-label="Restar gol" ${disabledAttribute}><i class="bi bi-dash-lg"></i></button>
           <span><img src="assets/soccer-ball.svg" alt="" class="goal-ball-icon"></span>
-          <strong data-goal-value>0</strong>
+          <strong data-goal-value>${currentStats.goals}</strong>
           <button type="button" data-goal-inc aria-label="Sumar gol" ${disabledAttribute}><i class="bi bi-plus-lg"></i></button>
         </div>
       </td>
@@ -3751,7 +4003,7 @@ function renderObserverEditMatch(matchId) {
         <i class="bi bi-file-earmark-pdf-fill"></i>
         Descargar planilla
       </button>
-      <button class="btn btn-ingreso observer-save-btn" type="button" data-observer-save>
+      <button class="btn btn-ingreso observer-save-btn" type="button" data-observer-save="${escapeHtml(match.id)}">
         <i class="bi bi-save-fill"></i>
         Guardar
       </button>
@@ -3777,6 +4029,57 @@ function renderObserverEditMatch(matchId) {
       ${renderObserverPlayersTable(awayTeam, "Equipo 2", match.id)}
     </div>
   `;
+}
+
+function collectObserverMatchIncidences() {
+  return [...contentShell.querySelectorAll("[data-observer-player-row]")]
+    .map((row) => {
+      const observationKey = row.dataset.observationKey || "";
+      const observationButton = row.querySelector("[data-observation]");
+      const observationText = playerObservations[observationKey]
+        || observationButton?.dataset.observationText
+        || "";
+
+      return {
+        jugador_id: row.dataset.playerId || "",
+        equipo_id: row.dataset.teamId || "",
+        goles: Math.max(Number(row.querySelector("[data-goal-value]")?.textContent) || 0, 0),
+        amarillas: row.querySelector(".yellow-card.is-selected") ? 1 : 0,
+        rojas: row.querySelector(".red-card.is-selected") ? 1 : 0,
+        observacion: String(observationText || "").trim()
+      };
+    })
+    .filter((item) => item.jugador_id && item.equipo_id);
+}
+
+function getObserverScoreValue(key) {
+  return Math.max(Number(contentShell.querySelector(`[data-score-value="${key}"]`)?.textContent) || 0, 0);
+}
+
+async function saveObserverMatchDetailsToSupabase(matchId) {
+  if (typeof supabaseClient === "undefined") {
+    throw new Error("Supabase no está disponible.");
+  }
+
+  if (!observerSettingsSession?.usuario || !observerSettingsSession?.password) {
+    throw new Error("La sesión del veedor no está disponible. Cerrá sesión e ingresá nuevamente.");
+  }
+
+  const { error } = await supabaseClient.rpc("guardar_detalle_partido_veedor", {
+    p_usuario: observerSettingsSession.usuario,
+    p_password: observerSettingsSession.password,
+    p_partido_id: matchId,
+    p_goles_local: getObserverScoreValue("home"),
+    p_goles_visitante: getObserverScoreValue("away"),
+    p_incidencias: collectObserverMatchIncidences()
+  });
+
+  if (error) throw error;
+
+  await loadObserverDataFromSupabase();
+  if (activeDivisionId) {
+    await loadDivisionDataFromSupabase(activeDivisionId);
+  }
 }
 
 function renderAdminHome() {
@@ -4710,7 +5013,7 @@ async function loadAdminTeamsForFilters(selectedCategory = "", selectedDivision 
 
   let { data, error } = await supabaseClient
     .from("equipos")
-    .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+    .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,color_terciario,abreviatura,nombre_corto,descripcion,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
     .eq("division_id", divisionId)
     .eq("activo", true)
     .order("dorsal", { referencedTable: "jugadores", ascending: true })
@@ -4720,7 +5023,7 @@ async function loadAdminTeamsForFilters(selectedCategory = "", selectedDivision 
     console.warn("No se pudo leer el perfil extendido de equipos. Se usa lectura base.", error);
     const fallback = await supabaseClient
       .from("equipos")
-      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,color_terciario,abreviatura,nombre_corto,descripcion,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
       .eq("division_id", divisionId)
       .eq("activo", true)
       .order("dorsal", { referencedTable: "jugadores", ascending: true })
@@ -4732,6 +5035,15 @@ async function loadAdminTeamsForFilters(selectedCategory = "", selectedDivision 
 
   if (error) throw error;
   adminTeamsForView = (data || []).map(normalizeSupabaseTeam);
+  const { data: partidos, error: partidosError } = await supabaseClient
+    .from("partidos")
+    .select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones")
+    .eq("division_id", divisionId);
+
+  if (partidosError) throw partidosError;
+  rememberMatchDetails(partidos || []);
+  const matchIncidences = await loadMatchIncidences((partidos || []).map((match) => match.id).filter(Boolean));
+  applyPlayerStatsToTeams(adminTeamsForView, matchIncidences);
   console.log("delegados filtros:", {
     selectedCategory,
     selectedDivision,
@@ -4901,7 +5213,7 @@ async function loadAllActiveTeamsForForms() {
 
   let { data, error } = await supabaseClient
     .from("equipos")
-    .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+    .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,color_terciario,abreviatura,nombre_corto,descripcion,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
     .eq("activo", true)
     .order("dorsal", { referencedTable: "jugadores", ascending: true })
     .order("nombre", { ascending: true });
@@ -4910,7 +5222,7 @@ async function loadAllActiveTeamsForForms() {
     console.warn("No se pudo leer el perfil extendido de equipos para formularios. Se usa lectura base.", error);
     const fallback = await supabaseClient
       .from("equipos")
-      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,color_terciario,abreviatura,nombre_corto,descripcion,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
       .eq("activo", true)
       .order("dorsal", { referencedTable: "jugadores", ascending: true })
       .order("nombre", { ascending: true });
@@ -5083,10 +5395,7 @@ async function saveDelegatePlayerInSupabase(team) {
     activo: true
   };
 
-  const response = editingId
-    ? await apiPut(`/jugadores/${editingId}`, payload)
-    : await apiPost("/jugadores", payload);
-  return getApiData(response);
+  return saveDelegatePlayerToSupabase(team.id, editingId || null, payload);
 }
 
 function renderAdminTeamRows(hasCompletedFilters, searchTerm = "", page = 1) {
@@ -6443,12 +6752,25 @@ contentShell.addEventListener("click", async (event) => {
     });
     if (!confirmed) return;
 
-    observerSaveButton.classList.add("is-saved");
-    observerSaveButton.innerHTML = `<i class="bi bi-check2-circle"></i> Guardado`;
-    window.setTimeout(() => {
-      observerSaveButton.classList.remove("is-saved");
-      observerSaveButton.innerHTML = `<i class="bi bi-save-fill"></i> Guardar`;
-    }, 1600);
+    const matchId = observerSaveButton.dataset.observerSave;
+    observerSaveButton.disabled = true;
+    observerSaveButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
+
+    try {
+      await saveObserverMatchDetailsToSupabase(matchId);
+      observerSaveButton.classList.add("is-saved");
+      observerSaveButton.innerHTML = `<i class="bi bi-check2-circle"></i> Guardado`;
+      window.setTimeout(() => {
+        observerSaveButton.classList.remove("is-saved");
+        observerSaveButton.disabled = false;
+        observerSaveButton.innerHTML = `<i class="bi bi-save-fill"></i> Guardar`;
+      }, 1600);
+    } catch (error) {
+      console.error("Error al guardar el detalle del partido:", error);
+      observerSaveButton.disabled = false;
+      observerSaveButton.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Reintentar`;
+      alert(`No se pudo guardar el detalle del partido: ${error.message || "Error desconocido"}`);
+    }
     return;
   }
 
@@ -6678,7 +7000,7 @@ contentShell.addEventListener("click", async (event) => {
     if (!confirmed) return;
 
     try {
-      await apiPut(`/equipos/${team.id}`, {
+      await saveDelegateTeamToSupabase(team.id, {
         abreviatura: abbreviation,
         nombre_corto: shortName,
         descripcion: description,
@@ -6688,21 +7010,15 @@ contentShell.addEventListener("click", async (event) => {
         color_terciario: nextColors[2] || null
       });
 
-      if (activeDivisionId) {
-        await loadDivisionDataFromSupabase(activeDivisionId);
+      await loadDivisionDataFromSupabase(activeDivisionId || team.division_id);
+      const updatedTeam = getTeam(team.id);
+      if (!updatedTeam) {
+        throw new Error("El equipo se guardó, pero no se pudo recargar desde Supabase.");
       }
-      const updatedTeam = getTeam(team.id) || {
-        ...team,
-        crest,
-        abbreviation,
-        shortName,
-        description,
-        shirtColors: nextColors,
-        colors: nextColors.slice(0, 2)
-      };
       contentShell.innerHTML = renderDelegateTeamView(updatedTeam);
     } catch (error) {
       console.error("Error al guardar el equipo del delegado:", error);
+      alert(error.message || "No se pudo guardar el equipo del delegado.");
       contentShell.innerHTML = renderDelegateTeamView(team, true);
     }
     return;
@@ -6735,15 +7051,17 @@ contentShell.addEventListener("click", async (event) => {
     if (!confirmed) return;
 
     try {
-      await apiPatch(`/jugadores/${deactivateDelegatePlayerButton.dataset.delegatePlayerDeactivate}/desactivar`);
+      await changeDelegatePlayerStatusInSupabase(deactivateDelegatePlayerButton.dataset.delegatePlayerDeactivate, false);
       invalidateAdminMetrics();
-      if (activeDivisionId) {
-        await loadDivisionDataFromSupabase(activeDivisionId);
-      }
+      await loadDivisionDataFromSupabase(activeDivisionId || team?.division_id);
       const updatedTeam = getTeam(team?.id);
-      contentShell.innerHTML = renderDelegatePlayers(updatedTeam || team);
+      if (!updatedTeam) {
+        throw new Error("El jugador se actualizó, pero no se pudo recargar el equipo desde Supabase.");
+      }
+      contentShell.innerHTML = renderDelegatePlayers(updatedTeam);
     } catch (error) {
       console.error("Error al dar de baja el jugador:", error);
+      alert(error.message || "No se pudo dar de baja el jugador.");
     }
     return;
   }
@@ -6770,15 +7088,17 @@ contentShell.addEventListener("click", async (event) => {
     if (!confirmed) return;
 
     try {
-      await apiPatch(`/jugadores/${activateDelegatePlayerButton.dataset.delegatePlayerActivate}/activar`);
+      await changeDelegatePlayerStatusInSupabase(activateDelegatePlayerButton.dataset.delegatePlayerActivate, true);
       invalidateAdminMetrics();
-      if (activeDivisionId) {
-        await loadDivisionDataFromSupabase(activeDivisionId);
-      }
+      await loadDivisionDataFromSupabase(activeDivisionId || team?.division_id);
       const updatedTeam = getTeam(team?.id);
-      contentShell.innerHTML = renderDelegatePlayers(updatedTeam || team, true);
+      if (!updatedTeam) {
+        throw new Error("El jugador se actualizó, pero no se pudo recargar el equipo desde Supabase.");
+      }
+      contentShell.innerHTML = renderDelegatePlayers(updatedTeam, true);
     } catch (error) {
       console.error("Error al reactivar el jugador:", error);
+      alert(error.message || "No se pudo reactivar el jugador.");
     }
     return;
   }
@@ -7770,15 +8090,16 @@ delegatePlayerForm?.addEventListener("submit", async (event) => {
   try {
     await saveDelegatePlayerInSupabase(team);
     invalidateAdminMetrics();
-    if (activeDivisionId) {
-      await loadDivisionDataFromSupabase(activeDivisionId);
-    }
+    await loadDivisionDataFromSupabase(activeDivisionId || team.division_id);
     const updatedTeam = getTeam(team.id);
+    if (!updatedTeam) {
+      throw new Error("El jugador se guardó, pero no se pudo recargar el equipo desde Supabase.");
+    }
     bootstrap.Modal.getInstance(delegatePlayerModalElement)?.hide();
     delegatePlayerForm.reset();
     delegatePlayerForm.dataset.editingId = "";
     validateDelegatePlayerForm();
-    contentShell.innerHTML = renderDelegatePlayers(updatedTeam || team);
+    contentShell.innerHTML = renderDelegatePlayers(updatedTeam);
   } catch (error) {
     console.error("Error al guardar el jugador:", error);
     if (delegatePlayerFeedback) {
@@ -7922,6 +8243,8 @@ if (loginRetryButton && loginErrorModalElement && loginModalElement) {
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   adminSettingsSession = null;
+  observerSettingsSession = null;
+  delegateSettingsSession = null;
   currentAppUser = null;
 
   const username = document.querySelector("#username").value.trim();
@@ -7970,6 +8293,10 @@ loginForm.addEventListener("submit", async (event) => {
       modalInstance.hide();
     }
 
+    observerSettingsSession = {
+      usuario: usuarioApp.usuario || username.trim(),
+      password: password.trim()
+    };
     currentAppUser = usuarioApp;
     showProfileLoader("Veedor", enterObserverView);
     loginForm.reset();
@@ -7995,6 +8322,10 @@ loginForm.addEventListener("submit", async (event) => {
     }
 
     if (team) {
+      delegateSettingsSession = {
+        usuario: usuarioApp.usuario || username.trim(),
+        password: password.trim()
+      };
       currentAppUser = usuarioApp;
       const modalElement = document.querySelector("#loginModal");
       const modalInstance = bootstrap.Modal.getInstance(modalElement);

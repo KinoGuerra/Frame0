@@ -31,6 +31,7 @@ El sitio se publica desde la raiz del repositorio en GitHub Pages. Debe funciona
 - Mantener RLS, grants y RPC sincronizados con el flujo real de la UI.
 - Para cambios de login, permisos, configuraciones o escritura desde admin/delegado/veedor, revisar y actualizar migraciones nuevas en `supabase/migrations/`.
 - Si una consulta usa columnas nuevas, agregar migracion y considerar fallback de lectura base para que la UI no se rompa mientras Supabase no esta actualizado.
+- Las escrituras iniciadas por roles con login propio de Frame0 (`usuarios_app.usuario` + `password_hash`) deben usar RPC `security definer` con `p_usuario` y `p_password`; no depender de politicas `authenticated` salvo que ese rol use Supabase Auth real.
 
 ## Login actual
 El login admin/delegado/veedor usa la tabla `public.usuarios_app`, no debe buscar usuarios por email.
@@ -101,6 +102,8 @@ Reglas del login:
 - Los campos publicos de equipo persisten en `equipos`: `abreviatura`, `nombre_corto`, `descripcion`, `color_terciario`.
 - Si el delegado modifica `Mi equipo`, el cambio debe guardarse en Supabase y luego recargarse desde Supabase para impactar en home y otras vistas.
 - La migracion `013_add_team_public_profile_fields.sql` agrega esos campos.
+- La escritura del perfil de equipo delegado debe pasar por `guardar_equipo_delegado`.
+- Altas, ediciones, bajas y reactivaciones de jugadores desde delegado deben pasar por RPCs de delegado que validen la relacion `usuarios_app.id -> delegados.usuario_id -> delegados.equipo_id`.
 
 ## Roles y navegacion
 - No romper los roles existentes: publico, administrador, delegado y veedor.
@@ -127,6 +130,7 @@ Reglas del login:
 - `014_allow_active_delegates_lookup.sql`: lectura de relaciones activas de delegados.
 - `015_allow_delegate_admin_status_management.sql`: baja/reactivacion de delegados desde admin.
 - `016_save_tournament_settings_rpc.sql`: RPC para guardar `tournament_settings`.
+- `022_delegate_profile_write_rpcs.sql`: RPCs para guardar equipo y jugadores desde perfil delegado con login propio.
 
 ## Limpieza
 - Buscar referencias obsoletas con `localhost`, `127.0.0.1`, `/api`, `fetch(` y `axios` cuando se toque la capa de datos.

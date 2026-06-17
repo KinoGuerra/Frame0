@@ -31,7 +31,7 @@ const FRAME0_TABLES = {
   },
   equipos: {
     table: "equipos",
-    select: "id,division_id,nombre,escudo_url,color_principal,color_secundario,activo,created_at",
+    select: "id,division_id,nombre,escudo_url,color_principal,color_secundario,color_terciario,abreviatura,nombre_corto,descripcion,activo,created_at",
     activeColumn: "activo",
     orderBy: "nombre"
   },
@@ -43,7 +43,7 @@ const FRAME0_TABLES = {
   },
   delegados: {
     table: "delegados",
-    select: "id,usuario_id,equipo_id,activo,created_at,usuario:usuarios_app(id,nombre,apellido,contacto,usuario,rol,activo),equipo:equipos(id,nombre,division_id,activo)",
+    select: "id,usuario_id,equipo_id,activo,created_at,usuario:usuarios_app(id,nombre,apellido,contacto,usuario,rol,activo),equipo:equipos(id,nombre,division_id,abreviatura,nombre_corto,activo)",
     activeColumn: "activo",
     orderBy: "created_at"
   }
@@ -85,19 +85,6 @@ function cleanPayload(payload = {}) {
     if (value !== undefined) clean[key] = value;
     return clean;
   }, {});
-}
-
-const TEAM_EXTENDED_COLUMNS = ["abreviatura", "nombre_corto", "descripcion", "color_terciario"];
-
-function withoutUnsupportedTeamColumns(payload = {}) {
-  return Object.entries(payload).reduce((clean, [key, value]) => {
-    if (!TEAM_EXTENDED_COLUMNS.includes(key)) clean[key] = value;
-    return clean;
-  }, {});
-}
-
-function isMissingColumnError(error) {
-  return error?.code === "42703" || error?.code === "PGRST204";
 }
 
 function normalizeUsername(value) {
@@ -519,16 +506,6 @@ async function apiPost(endpoint, body) {
     .select(config.select)
     .single();
 
-  if (error && resource === "equipos" && isMissingColumnError(error)) {
-    const fallback = await getSupabaseClient()
-      .from(config.table)
-      .insert(cleanPayload(withoutUnsupportedTeamColumns(body)))
-      .select(config.select)
-      .single();
-    if (fallback.error) throw fallback.error;
-    return fallback.data;
-  }
-
   if (error) throw error;
   return data;
 }
@@ -555,17 +532,6 @@ async function apiPut(endpoint, body) {
     .eq("id", id)
     .select(config.select)
     .single();
-
-  if (error && resource === "equipos" && isMissingColumnError(error)) {
-    const fallback = await getSupabaseClient()
-      .from(config.table)
-      .update(cleanPayload(withoutUnsupportedTeamColumns(body)))
-      .eq("id", id)
-      .select(config.select)
-      .single();
-    if (fallback.error) throw fallback.error;
-    return fallback.data;
-  }
 
   if (error) throw error;
   return data;
