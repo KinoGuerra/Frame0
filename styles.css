@@ -2336,6 +2336,10 @@ select {
   outline: none;
 }
 
+body.admin-view .floating-mascot {
+  display: none;
+}
+
 .floating-mascot-image-wrap {
   width: clamp(78px, 8vw, 118px);
   aspect-ratio: 1;
