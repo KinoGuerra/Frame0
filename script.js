@@ -2424,10 +2424,11 @@ function renderAboutContent() {
 
   return `
     <section class="public-info-panel about-panel" data-about-carousel data-about-active="0">
-      <div class="about-hero">
-        <img src="assets/frame0-logo.png" alt="Escudo Frame0" class="about-frame-logo">
+      <div class="about-page-heading">
         <p class="section-kicker mb-2">Nosotros</p>
-        <h2>Somos TheBlackListSystem</h2>
+      </div>
+      <div class="about-hero">
+        <h3>Somos TheBlackListSystem</h3>
       </div>
 
       <div class="about-carousel-shell">
