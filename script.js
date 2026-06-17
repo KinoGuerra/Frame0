@@ -95,6 +95,7 @@ const saveDelegatePlayerButton = document.querySelector("#saveDelegatePlayerButt
 
 let divisionLoadTimer;
 let selectedTeamId = null;
+let selectedTeamFixtureRound = "";
 let activeObservationButton = null;
 const playerObservations = {};
 const playerObservationResolutions = {};
@@ -653,6 +654,22 @@ async function saveFixtureMatchesToSupabase(fixture) {
   });
 
   if (error) throw error;
+}
+
+async function hasExistingFixtureForDivision(divisionId = "") {
+  if (!divisionId || typeof supabaseClient === "undefined") return false;
+
+  const { count, error } = await supabaseClient
+    .from("partidos")
+    .select("id", { count: "exact", head: true })
+    .eq("division_id", divisionId);
+
+  if (error) {
+    console.warn("No se pudo verificar si ya existe fixture para la división:", error);
+    return false;
+  }
+
+  return Number(count || 0) > 0;
 }
 
 // Cuenta registros de una tabla de Supabase sin traer filas al navegador.
@@ -1393,6 +1410,31 @@ function normalizeSupabaseTeam(team = {}) {
   };
 }
 
+async function loadTeamDelegatesByTeam(teamIds = []) {
+  if (!teamIds.length || typeof supabaseClient === "undefined") return new Map();
+
+  const { data, error } = await supabaseClient
+    .from("delegados")
+    .select("equipo_id,activo,usuario:usuarios_app(nombre,apellido,contacto,usuario,activo)")
+    .in("equipo_id", teamIds)
+    .eq("activo", true);
+
+  if (error) {
+    console.warn("No se pudieron cargar delegados para el detalle público de equipos:", error);
+    return new Map();
+  }
+
+  return new Map((data || [])
+    .filter((item) => item.usuario?.activo !== false)
+    .map((item) => {
+      const fullName = `${item.usuario?.nombre || ""} ${item.usuario?.apellido || ""}`.trim() || item.usuario?.usuario || "-";
+      return [item.equipo_id, {
+        name: fullName,
+        contact: item.usuario?.contacto || "-"
+      }];
+    }));
+}
+
 function getFixtureRound(match = {}, index = 0) {
   const observation = String(match.observaciones || "");
   const roundMatch = observation.match(/fecha\s*(\d+)/i);
@@ -1415,6 +1457,19 @@ function normalizeSupabaseMatch(match = {}, index = 0) {
     dateNumber: getFixtureRound(match, index),
     fechaHora: match.fecha_hora || ""
   };
+}
+
+function filterDuplicateProgrammedMatches(matches = []) {
+  const roundsWithRealMatches = new Set(
+    matches
+      .filter((match) => match.estado && match.estado !== "programado")
+      .map((match, index) => getFixtureRound(match, index))
+  );
+
+  return matches.filter((match, index) => {
+    const round = getFixtureRound(match, index);
+    return match.estado !== "programado" || !roundsWithRealMatches.has(round);
+  });
 }
 
 function calculateStandingsFromMatches(teamList = [], groupedFixtures = {}) {
@@ -1480,7 +1535,7 @@ async function loadDivisionDataFromSupabase(divisionId) {
 
   let equiposQuery = supabaseClient
       .from("equipos")
-      .select("id,nombre,abreviatura,nombre_corto,descripcion,escudo_url,color_principal,color_secundario,color_terciario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
       .eq("division_id", divisionId)
       .eq("activo", true)
       .order("dorsal", { referencedTable: "jugadores", ascending: true })
@@ -1513,8 +1568,15 @@ async function loadDivisionDataFromSupabase(divisionId) {
   if (equiposError) throw equiposError;
   if (partidosError) throw partidosError;
 
-  teams = (equipos || []).map(normalizeSupabaseTeam);
-  fixtures = (partidos || []).reduce((grouped, match, index) => {
+  const delegateMap = await loadTeamDelegatesByTeam((equipos || []).map((team) => team.id).filter(Boolean));
+  teams = (equipos || []).map((team) => {
+    const normalized = normalizeSupabaseTeam(team);
+    const delegate = delegateMap.get(normalized.id);
+    return delegate
+      ? { ...normalized, delegate: delegate.name, contact: delegate.contact }
+      : normalized;
+  });
+  fixtures = filterDuplicateProgrammedMatches(partidos || []).reduce((grouped, match, index) => {
     const normalized = normalizeSupabaseMatch(match, index);
     const round = normalized.dateNumber;
     if (!grouped[round]) grouped[round] = [];
@@ -1643,6 +1705,40 @@ function getTeamMatches(teamId) {
   );
 }
 
+function getSortedTeamMatches(teamId) {
+  return getTeamMatches(teamId).sort((a, b) =>
+    Number(a.dateNumber) - Number(b.dateNumber) ||
+    String(a.fechaHora || "").localeCompare(String(b.fechaHora || ""))
+  );
+}
+
+function getDefaultTeamFixtureRound(teamId) {
+  const matches = getSortedTeamMatches(teamId);
+  if (!matches.length) return "";
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const nextScheduled = matches.find((match) => {
+    if (match.homeGoals !== null || match.awayGoals !== null || !match.fechaHora) return false;
+    const matchDate = new Date(match.fechaHora);
+    if (Number.isNaN(matchDate.getTime())) return false;
+    matchDate.setHours(0, 0, 0, 0);
+    return matchDate >= today;
+  });
+  const nextPending = matches.find((match) => match.homeGoals === null && match.awayGoals === null);
+
+  return String((nextScheduled || nextPending || matches[0]).dateNumber);
+}
+
+function renderTeamFixtureRoundOptions(teamId, selectedRound = "") {
+  const rounds = [...new Set(getSortedTeamMatches(teamId).map((match) => String(match.dateNumber)))];
+  if (!rounds.length) return `<option value="">Sin fechas</option>`;
+
+  return rounds.map((round) => `
+    <option value="${escapeHtml(round)}" ${String(selectedRound) === String(round) ? "selected" : ""}>Fecha ${escapeHtml(round)}</option>
+  `).join("");
+}
+
 function getMatchResultClass(match, teamId) {
   if (match.homeGoals === null || match.awayGoals === null) return "match-pending";
   if (match.homeGoals === match.awayGoals) return "match-draw";
@@ -1652,10 +1748,11 @@ function getMatchResultClass(match, teamId) {
   return won ? "match-win" : "match-loss";
 }
 
-function renderTeamMatches(teamId) {
-  const matches = getTeamMatches(teamId);
+function renderTeamMatches(teamId, selectedRound = "") {
+  const matches = getSortedTeamMatches(teamId)
+    .filter((match) => !selectedRound || String(match.dateNumber) === String(selectedRound));
   if (!matches.length) {
-    return `<tr><td colspan="3">Sin partidos cargados</td></tr>`;
+    return `<tr><td colspan="3">Sin partidos cargados para esta fecha</td></tr>`;
   }
 
   return matches.map((match) => {
@@ -1704,6 +1801,10 @@ function renderTeamDetail() {
   const standing = getTeamStanding(selectedTeamId);
   const goalsAgainst = standing.gc || 0;
   const goalsFor = standing.gf || 0;
+  const teamRounds = [...new Set(getSortedTeamMatches(team.id).map((match) => String(match.dateNumber)))];
+  if (!teamRounds.includes(String(selectedTeamFixtureRound))) {
+    selectedTeamFixtureRound = getDefaultTeamFixtureRound(team.id);
+  }
 
   teamDetailView.innerHTML = `
     <button class="back-to-division" type="button" data-back-to-division>
@@ -1774,9 +1875,17 @@ function renderTeamDetail() {
 
       <div class="team-side-tables">
       <section class="division-table-panel">
-        <div class="division-section-heading">
-          <p class="section-kicker mb-1">Calendario</p>
-          <h2>Partidos</h2>
+        <div class="fixture-toolbar">
+          <div class="division-section-heading">
+            <p class="section-kicker mb-1">Calendario</p>
+            <h2>Partidos</h2>
+          </div>
+          <label class="fixture-select-label" for="teamFixtureDateSelect">
+            Fecha
+            <select id="teamFixtureDateSelect" class="form-select form-select-sm" data-team-fixture-select>
+              ${renderTeamFixtureRoundOptions(team.id, selectedTeamFixtureRound)}
+            </select>
+          </label>
         </div>
         <div class="table-responsive">
           <table class="table frame-table team-matches-table mb-0">
@@ -1787,7 +1896,7 @@ function renderTeamDetail() {
                 <th>Resultado</th>
               </tr>
             </thead>
-            <tbody>${renderTeamMatches(team.id)}</tbody>
+            <tbody>${renderTeamMatches(team.id, selectedTeamFixtureRound)}</tbody>
           </table>
         </div>
       </section>
@@ -1903,6 +2012,7 @@ function selectTeam(teamId) {
   if (!getTeam(teamId)) return;
 
   selectedTeamId = teamId;
+  selectedTeamFixtureRound = getDefaultTeamFixtureRound(teamId);
   const teamIndex = teams.findIndex((team) => team.id === teamId);
   if (teamIndex >= 0) {
     teamCarouselActiveIndex = teamIndex;
@@ -2774,7 +2884,7 @@ async function getFixtureTeamsByDivision(divisionId = "") {
 
   let { data, error } = await supabaseClient
     .from("equipos")
-    .select("id,nombre,abreviatura,nombre_corto,descripcion,escudo_url,color_principal,color_secundario,color_terciario,activo")
+    .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo")
     .eq("division_id", divisionId)
     .eq("activo", true)
     .order("nombre", { ascending: true });
@@ -3488,7 +3598,7 @@ async function loadObserverDataFromSupabase() {
 
   let equiposQuery = supabaseClient
       .from("equipos")
-      .select("id,nombre,abreviatura,nombre_corto,descripcion,escudo_url,color_principal,color_secundario,color_terciario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+      .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
       .eq("activo", true)
       .order("dorsal", { referencedTable: "jugadores", ascending: true })
       .order("nombre", { ascending: true });
@@ -4600,7 +4710,7 @@ async function loadAdminTeamsForFilters(selectedCategory = "", selectedDivision 
 
   let { data, error } = await supabaseClient
     .from("equipos")
-    .select("id,nombre,abreviatura,nombre_corto,descripcion,escudo_url,color_principal,color_secundario,color_terciario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+    .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
     .eq("division_id", divisionId)
     .eq("activo", true)
     .order("dorsal", { referencedTable: "jugadores", ascending: true })
@@ -4791,7 +4901,7 @@ async function loadAllActiveTeamsForForms() {
 
   let { data, error } = await supabaseClient
     .from("equipos")
-    .select("id,nombre,abreviatura,nombre_corto,descripcion,escudo_url,color_principal,color_secundario,color_terciario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
+    .select("id,nombre,division_id,escudo_url,color_principal,color_secundario,activo,jugadores(id,nombre,apellido,dni,fecha_nacimiento,dorsal,activo)")
     .eq("activo", true)
     .order("dorsal", { referencedTable: "jugadores", ascending: true })
     .order("nombre", { ascending: true });
@@ -6446,10 +6556,13 @@ contentShell.addEventListener("click", async (event) => {
     const row = getTournamentConfigByKey(key);
     if (!row) return;
 
+    const existingFixture = row.config.fixture || await hasExistingFixtureForDivision(row.divisionId);
     const confirmed = await requestConfirmation({
-      title: "Generar fixture",
-      message: "Se generará el fixture y se reemplazarán los partidos programados de esta división. ¿Confirmás la acción?",
-      confirmLabel: "Generar fixture"
+      title: existingFixture ? "Reemplazar fixture" : "Generar fixture",
+      message: existingFixture
+        ? `Ya existe un fixture para ${row.category} - ${row.division}. Si confirmás, se borrará y se creará uno nuevo.`
+        : `Se generará el fixture para ${row.category} - ${row.division}. ¿Confirmás la acción?`,
+      confirmLabel: existingFixture ? "Reemplazar fixture" : "Generar fixture"
     });
     if (!confirmed) return;
 
@@ -7751,9 +7864,17 @@ teamDetailView.addEventListener("click", (event) => {
 
 teamDetailView.addEventListener("change", (event) => {
   const statSelect = event.target.closest("[data-team-stat-select]");
-  if (!statSelect) return;
+  const fixtureSelect = event.target.closest("[data-team-fixture-select]");
 
-  updateTeamStats(statSelect.value);
+  if (statSelect) {
+    updateTeamStats(statSelect.value);
+    return;
+  }
+
+  if (fixtureSelect) {
+    selectedTeamFixtureRound = fixtureSelect.value;
+    renderTeamDetail();
+  }
 });
 
 standingsBody.addEventListener("click", (event) => {
