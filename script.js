@@ -5053,7 +5053,21 @@ async function loadAdminTeamsForFilters(selectedCategory = "", selectedDivision 
   });
 }
 
-async function applyDelegateUsersFallback(includeInactive = false) {
+async function applyDelegateUsersFallback(includeInactive = false, fallbackToUsername = true) {
+  if (!fallbackToUsername) {
+    adminTeamsForView = adminTeamsForView.map((team) => ({
+      ...team,
+      delegateRelationId: "",
+      delegateId: "",
+      delegate: "-",
+      delegateFirstName: "",
+      delegateLastName: "",
+      contact: "-",
+      delegateUsername: "-"
+    }));
+    return;
+  }
+
   const { data: users, error } = await supabaseClient
     .from("usuarios_app")
     .select("id,nombre,apellido,contacto,usuario,rol,activo")
@@ -5085,7 +5099,10 @@ async function applyDelegateUsersFallback(includeInactive = false) {
   });
 }
 
-async function loadAdminDelegatesForFilters(selectedCategory = "", selectedDivision = "") {
+async function loadAdminDelegatesForFilters(selectedCategory = "", selectedDivision = "", options = {}) {
+  const includeInactive = options.includeInactive ?? adminDelegatesState.includeInactive;
+  const fallbackToUsername = options.fallbackToUsername ?? true;
+
   await loadAdminTeamsForFilters(selectedCategory, selectedDivision);
   const teamIds = adminTeamsForView.map((team) => team.id).filter(Boolean);
 
@@ -5096,14 +5113,14 @@ async function loadAdminDelegatesForFilters(selectedCategory = "", selectedDivis
     .select("id,usuario_id,equipo_id,activo,usuario:usuarios_app(id,nombre,apellido,contacto,usuario,rol,activo)")
     .in("equipo_id", teamIds);
 
-  if (!adminDelegatesState.includeInactive) {
+  if (!includeInactive) {
     query = query.eq("activo", true);
   }
   const { data, error } = await query;
 
   if (error) {
     console.warn("No se pudo leer delegados por relacion. Se usa busqueda por usuario.", error);
-    await applyDelegateUsersFallback(adminDelegatesState.includeInactive);
+    await applyDelegateUsersFallback(includeInactive, fallbackToUsername);
     return;
   }
 
@@ -5111,14 +5128,14 @@ async function loadAdminDelegatesForFilters(selectedCategory = "", selectedDivis
 
   if (!(data || []).length) {
     console.warn("No hay relaciones activas en delegados para estos equipos. Se usa busqueda por usuario.");
-    await applyDelegateUsersFallback(adminDelegatesState.includeInactive);
+    await applyDelegateUsersFallback(includeInactive, fallbackToUsername);
     return;
   }
 
   const delegatesByTeam = (data || []).reduce((map, row) => {
     const user = row.usuario;
     if (!user || user.rol !== "delegado") return map;
-    const shouldShow = adminDelegatesState.includeInactive
+    const shouldShow = includeInactive
       ? user.activo === false || row.activo === false
       : user.activo !== false && row.activo !== false;
     if (!shouldShow) return map;
@@ -5131,7 +5148,7 @@ async function loadAdminDelegatesForFilters(selectedCategory = "", selectedDivis
 
   if (!delegatesByTeam.size) {
     console.warn("Las relaciones de delegados llegaron sin perfil de usuario activo. Se usa busqueda por usuario.");
-    await applyDelegateUsersFallback(adminDelegatesState.includeInactive);
+    await applyDelegateUsersFallback(includeInactive, fallbackToUsername);
     return;
   }
 
@@ -5452,7 +5469,10 @@ async function renderAdminTeamsView(selectedCategory = "", selectedDivision = ""
   const hasCompletedFilters = Boolean(selectedCategory && selectedDivision);
   if (hasCompletedFilters) {
     try {
-      await loadAdminTeamsForFilters(selectedCategory, selectedDivision);
+      await loadAdminDelegatesForFilters(selectedCategory, selectedDivision, {
+        includeInactive: false,
+        fallbackToUsername: false
+      });
     } catch (error) {
       console.error("Error al cargar equipos desde Supabase:", error);
       adminTeamsForView = [];
@@ -7519,7 +7539,10 @@ contentShell.addEventListener("input", (event) => {
       const division = contentShell.querySelector("[data-admin-team-division]")?.value || "";
       const searchTerm = getEffectiveSearchTerm(teamSearch.value);
       const rows = contentShell.querySelector("[data-admin-team-rows]");
-      await loadAdminTeamsForFilters(category, division);
+      await loadAdminDelegatesForFilters(category, division, {
+        includeInactive: false,
+        fallbackToUsername: false
+      });
       const pageInfo = paginateItems(getAdminFilteredTeams(searchTerm), 1);
 
       rows.innerHTML = renderAdminTeamRows(Boolean(category && division), searchTerm, 1);
