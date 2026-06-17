@@ -270,6 +270,7 @@ function applyPublicSettings() {
   setLinkIfExists("#loginFacebookLink", publicSettings.facebookUrl);
   setLinkIfExists("#homeWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
   setLinkIfExists("#loginWhatsappLink", getWhatsappUrl(publicSettings.whatsappPhone));
+  setLinkIfExists("#floatingMascotWhatsapp", getWhatsappUrl(publicSettings.whatsappPhone));
   renderSponsorCarousel();
   renderHomeCarouselImages();
 }
@@ -6326,6 +6327,12 @@ async function enterObserverView() {
 }
 
 document.querySelector(".frame-logo").addEventListener("click", showHome);
+
+document.querySelector("#floatingMascotWhatsapp")?.addEventListener("click", (event) => {
+  if (event.currentTarget.getAttribute("href") === "#") {
+    event.preventDefault();
+  }
+});
 
 passwordToggle.addEventListener("click", () => {
   const isPasswordVisible = passwordInput.type === "text";
