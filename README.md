@@ -23,6 +23,33 @@ const SUPABASE_ANON_KEY = "tu-anon-key";
 
 No colocar `service_role_key` en el frontend. Esa clave es privada y solo debe usarse en entornos seguros de servidor o Edge Functions.
 
+## Reporteria IA
+
+La pantalla `Administrador > Reporteria IA` usa una Supabase Edge Function para generar reportes ejecutivos del torneo sin exponer claves privadas en GitHub Pages.
+
+Configurar secretos en Supabase:
+
+```bash
+supabase secrets set GROQ_API_KEY=tu_groq_api_key
+supabase secrets set GROQ_MODEL=openai/gpt-oss-20b
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY=tu_service_role_key
+```
+
+Desplegar la funcion:
+
+```bash
+supabase functions deploy generate-ai-report
+```
+
+Si `GROQ_API_KEY` no existe, se supera el limite gratuito o Groq responde error, la funcion devuelve un reporte basico por reglas locales usando los mismos datos de Supabase.
+
+Si la pantalla muestra `Failed to send a request to the Edge Function`, revisar:
+
+- que `generate-ai-report` este desplegada;
+- que el proyecto Supabase sea el mismo configurado en `supabaseClient.js`;
+- que los secretos esten cargados;
+- que la funcion responda a `OPTIONS` y `POST`.
+
 ## Datos y autenticacion
 
 Las pantallas administrativas usan consultas directas a Supabase:

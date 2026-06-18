@@ -56,6 +56,7 @@ const adminObserverForm = document.querySelector("#adminObserverForm");
 const adminObserverId = document.querySelector("#adminObserverId");
 const adminObserverFirstName = document.querySelector("#adminObserverFirstName");
 const adminObserverLastName = document.querySelector("#adminObserverLastName");
+const adminObserverDocument = document.querySelector("#adminObserverDocument");
 const adminObserverContact = document.querySelector("#adminObserverContact");
 const adminObserverUsername = document.querySelector("#adminObserverUsername");
 const adminObserverPassword = document.querySelector("#adminObserverPassword");
@@ -66,6 +67,7 @@ const newDelegateModalElement = document.querySelector("#newDelegateModal");
 const newDelegateForm = document.querySelector("#newDelegateForm");
 const newDelegateLastName = document.querySelector("#newDelegateLastName");
 const newDelegateFirstName = document.querySelector("#newDelegateFirstName");
+const newDelegateDocument = document.querySelector("#newDelegateDocument");
 const newDelegateContact = document.querySelector("#newDelegateContact");
 const newDelegateCategory = document.querySelector("#newDelegateCategory");
 const newDelegateTeam = document.querySelector("#newDelegateTeam");
@@ -77,6 +79,7 @@ const newObserverModalElement = document.querySelector("#newObserverModal");
 const newObserverForm = document.querySelector("#newObserverForm");
 const newObserverLastName = document.querySelector("#newObserverLastName");
 const newObserverFirstName = document.querySelector("#newObserverFirstName");
+const newObserverDocument = document.querySelector("#newObserverDocument");
 const newObserverContact = document.querySelector("#newObserverContact");
 const newObserverUsername = document.querySelector("#newObserverUsername");
 const newObserverPassword = document.querySelector("#newObserverPassword");
@@ -143,6 +146,8 @@ const HELP_URLS = {
   delegate: "https://sites.google.com/view/frame0-delegados/inicio"
 };
 const REQUIRED_FIELDS_NOTE_TEXT = "Los campos identificados con * son obligatorios";
+const AI_REPORT_TITLE = "Resumen ejecutivo del torneo";
+const AI_REPORT_PDF_FOOTER = "Generado automáticamente por Frame0 IA";
 const publicSettings = {
   instagramUrl: "#",
   facebookUrl: "#",
@@ -176,6 +181,7 @@ const adminObservedSummaryState = {
   count: 0,
   rows: []
 };
+let currentAiReport = null;
 const tournamentSettings = {
   playerRegistrationFrom: "2026-06-01",
   playerRegistrationTo: "2026-07-31",
@@ -2675,6 +2681,7 @@ async function exitProfileToPublicHome() {
   observerSettingsSession = null;
   delegateSettingsSession = null;
   currentAppUser = null;
+  currentAiReport = null;
 
   supabaseClient?.auth?.signOut?.().catch((error) => {
     console.error("Error al cerrar sesión de Supabase:", error);
@@ -2814,6 +2821,221 @@ function syncRequiredFieldIndicators(scope = document) {
     } else {
       form.append(note);
     }
+  });
+}
+
+function normalizeAiReport(report = {}) {
+  return {
+    title: report.title || AI_REPORT_TITLE,
+    generatedAt: report.generatedAt || new Date().toISOString(),
+    source: report.source || "Frame0 IA",
+    model: report.model || "",
+    summary: report.summary || "No se pudo generar un resumen detallado con los datos disponibles.",
+    metrics: Array.isArray(report.metrics) ? report.metrics : [],
+    sections: Array.isArray(report.sections) ? report.sections : [],
+    alerts: Array.isArray(report.alerts) ? report.alerts : [],
+    recommendations: Array.isArray(report.recommendations) ? report.recommendations : [],
+    warning: report.warning || ""
+  };
+}
+
+function getAiReportDisplayDate(report = {}) {
+  const date = report.generatedAt ? new Date(report.generatedAt) : new Date();
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("es-AR");
+}
+
+function countBy(items = [], keyGetter = () => "") {
+  return items.reduce((map, item) => {
+    const key = keyGetter(item) || "Sin dato";
+    map.set(key, (map.get(key) || 0) + 1);
+    return map;
+  }, new Map());
+}
+
+function getTopEntriesFromCountMap(countMap, labelGetter = (key) => key, limit = 5) {
+  return [...countMap.entries()]
+    .sort((first, second) => second[1] - first[1])
+    .slice(0, limit)
+    .map(([key, count]) => `${labelGetter(key)} (${count})`);
+}
+
+async function selectSanctionsForAiReport() {
+  let { data, error } = await supabaseClient
+    .from("sanciones")
+    .select("id,jugador_id,partido_id,motivo,fechas_suspension,cumplida,resolucion_detalle,estado_jugador,resuelta_at");
+
+  if (error) {
+    console.warn("No se pudieron leer columnas extendidas de sanciones para reportería IA. Se usa lectura base.", error);
+    const fallback = await supabaseClient
+      .from("sanciones")
+      .select("id,jugador_id,partido_id,motivo,fechas_suspension,cumplida");
+    data = fallback.data;
+    error = fallback.error;
+  }
+
+  if (error) throw error;
+  return data || [];
+}
+
+async function fetchAiReportDatasetFromSupabase() {
+  if (typeof supabaseClient === "undefined") {
+    throw new Error("Supabase no está disponible.");
+  }
+
+  const [
+    categoriasResult,
+    divisionesResult,
+    equiposResult,
+    jugadoresResult,
+    partidosResult,
+    golesResult,
+    tarjetasResult,
+    sanciones
+  ] = await Promise.all([
+    supabaseClient.from("categorias").select("id,nombre,activa"),
+    supabaseClient.from("divisiones").select("id,nombre,categoria_id,activa"),
+    supabaseClient.from("equipos").select("id,nombre,division_id,activo"),
+    supabaseClient.from("jugadores").select("id,equipo_id,nombre,apellido,activo,dorsal"),
+    supabaseClient.from("partidos").select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones"),
+    supabaseClient.from("goles").select("id,partido_id,jugador_id,equipo_id,tipo"),
+    supabaseClient.from("tarjetas").select("id,partido_id,jugador_id,equipo_id,tipo"),
+    selectSanctionsForAiReport()
+  ]);
+
+  const results = [categoriasResult, divisionesResult, equiposResult, jugadoresResult, partidosResult, golesResult, tarjetasResult];
+  const firstError = results.find((result) => result.error)?.error;
+  if (firstError) throw firstError;
+
+  return {
+    categorias: categoriasResult.data || [],
+    divisiones: divisionesResult.data || [],
+    equipos: equiposResult.data || [],
+    jugadores: jugadoresResult.data || [],
+    partidos: partidosResult.data || [],
+    goles: golesResult.data || [],
+    tarjetas: tarjetasResult.data || [],
+    sanciones
+  };
+}
+
+function buildRuleBasedAiReport(dataset = {}, options = {}) {
+  const source = options.source || "Fallback local";
+  const categorias = dataset.categorias || [];
+  const divisiones = dataset.divisiones || [];
+  const equipos = dataset.equipos || [];
+  const jugadores = dataset.jugadores || [];
+  const partidos = dataset.partidos || [];
+  const goles = dataset.goles || [];
+  const tarjetas = dataset.tarjetas || [];
+  const sanciones = dataset.sanciones || [];
+
+  const activeTeams = equipos.filter((team) => team.activo !== false);
+  const activePlayers = jugadores.filter((player) => player.activo !== false);
+  const activeCategories = categorias.filter((category) => category.activa !== false);
+  const activeDivisions = divisiones.filter((division) => division.activa !== false);
+  const finishedMatches = partidos.filter((match) => match.estado === "finalizado");
+  const programmedMatches = partidos.filter((match) => match.estado === "programado");
+  const suspendedMatches = partidos.filter((match) => ["suspendido", "cancelado"].includes(match.estado));
+  const yellowCards = tarjetas.filter((card) => card.tipo === "amarilla").length;
+  const redCards = tarjetas.filter((card) => card.tipo === "roja").length;
+  const pendingSanctions = sanciones.filter((sanction) => {
+    const hasText = String(sanction.motivo || "").trim();
+    const hasResolution = sanction.resuelta_at || sanction.resolucion_detalle || sanction.estado_jugador;
+    return hasText && !hasResolution;
+  });
+  const averagePlayers = activeTeams.length ? Math.round(activePlayers.length / activeTeams.length) : 0;
+
+  const playerNameMap = new Map(activePlayers.map((player) => [
+    String(player.id),
+    `${player.apellido || ""} ${player.nombre || ""}`.trim() || "Jugador"
+  ]));
+  const teamNameMap = new Map(activeTeams.map((team) => [String(team.id), team.nombre || "Equipo"]));
+  const divisionNameMap = new Map(activeDivisions.map((division) => {
+    const category = activeCategories.find((item) => String(item.id) === String(division.categoria_id));
+    return [String(division.id), `${category?.nombre || "Categoría"} - ${division.nombre || "División"}`];
+  }));
+
+  const topScorers = getTopEntriesFromCountMap(
+    countBy(goles.filter((goal) => goal.jugador_id), (goal) => String(goal.jugador_id)),
+    (playerId) => playerNameMap.get(String(playerId)) || "Jugador sin identificar"
+  );
+  const teamsByGoals = getTopEntriesFromCountMap(
+    countBy(goles.filter((goal) => goal.equipo_id), (goal) => String(goal.equipo_id)),
+    (teamId) => teamNameMap.get(String(teamId)) || "Equipo sin identificar"
+  );
+  const matchesByDivision = getTopEntriesFromCountMap(
+    countBy(partidos, (match) => String(match.division_id || "")),
+    (divisionId) => divisionNameMap.get(String(divisionId)) || "División sin identificar"
+  );
+
+  const alerts = [];
+  if (!activeTeams.length) alerts.push("No hay equipos activos cargados para analizar.");
+  if (!partidos.length) alerts.push("No hay partidos cargados en Supabase.");
+  if (pendingSanctions.length) alerts.push(`Hay ${pendingSanctions.length} observaciones disciplinarias pendientes de resolución.`);
+  if (suspendedMatches.length) alerts.push(`Hay ${suspendedMatches.length} partidos suspendidos o cancelados para revisar.`);
+  if (averagePlayers > 0 && averagePlayers < 7) alerts.push("El promedio de jugadores por equipo es bajo; conviene revisar listas de buena fe.");
+  if (!alerts.length) alerts.push("No se detectan alertas críticas con los datos actuales.");
+
+  const summary = `El torneo registra ${activeCategories.length} categorías activas, ${activeDivisions.length} divisiones, ${activeTeams.length} equipos y ${activePlayers.length} jugadores activos. Hay ${partidos.length} partidos cargados, con ${finishedMatches.length} finalizados y ${programmedMatches.length} programados.`;
+
+  return normalizeAiReport({
+    title: AI_REPORT_TITLE,
+    generatedAt: new Date().toISOString(),
+    source,
+    model: source === "Groq" ? "openai/gpt-oss-20b" : "Reglas locales",
+    summary,
+    metrics: [
+      { label: "Categorías", value: activeCategories.length },
+      { label: "Divisiones", value: activeDivisions.length },
+      { label: "Equipos", value: activeTeams.length },
+      { label: "Jugadores", value: activePlayers.length },
+      { label: "Partidos finalizados", value: finishedMatches.length },
+      { label: "Observaciones pendientes", value: pendingSanctions.length }
+    ],
+    sections: [
+      {
+        title: "Estado deportivo",
+        items: [
+          `Partidos programados: ${programmedMatches.length}.`,
+          `Partidos finalizados: ${finishedMatches.length}.`,
+          `Goles registrados: ${goles.length}.`,
+          `Divisiones con más partidos: ${matchesByDivision.join(", ") || "sin datos suficientes"}.`
+        ]
+      },
+      {
+        title: "Rendimiento y estadísticas",
+        items: [
+          `Promedio de jugadores por equipo: ${averagePlayers}.`,
+          `Goleadores destacados: ${topScorers.join(", ") || "sin goles registrados"}.`,
+          `Equipos con más goles: ${teamsByGoals.join(", ") || "sin goles registrados"}.`
+        ]
+      },
+      {
+        title: "Disciplina",
+        items: [
+          `Tarjetas amarillas: ${yellowCards}.`,
+          `Tarjetas rojas: ${redCards}.`,
+          `Sanciones/observaciones totales: ${sanciones.length}.`,
+          `Pendientes de resolución: ${pendingSanctions.length}.`
+        ]
+      }
+    ],
+    alerts,
+    recommendations: [
+      pendingSanctions.length ? "Resolver las observaciones disciplinarias pendientes antes de la próxima fecha." : "Mantener la revisión disciplinaria después de cada fecha.",
+      programmedMatches.length ? "Verificar canchas y horarios de los partidos programados." : "Generar o actualizar el fixture para sostener la planificación.",
+      "Revisar equipos con baja cantidad de jugadores activos para evitar problemas de presentación.",
+      "Publicar novedades relevantes para delegados si hubo cambios de fixture o sanciones."
+    ],
+    warning: options.warning || ""
+  });
+}
+
+async function generateLocalAiReportFallback(warning = "") {
+  const dataset = await fetchAiReportDatasetFromSupabase();
+  return buildRuleBasedAiReport(dataset, {
+    source: "Fallback local",
+    warning
   });
 }
 
@@ -3254,6 +3476,7 @@ function validateNewDelegateForm() {
   const isValid = Boolean(
     newDelegateLastName.value.trim() &&
     newDelegateFirstName.value.trim() &&
+    newDelegateDocument.value.trim() &&
     isValidPhone &&
     newDelegateTeam.value &&
     newDelegateUsername.value.trim() &&
@@ -3291,6 +3514,7 @@ function validateNewObserverForm() {
   const isValid = Boolean(
     newObserverLastName.value.trim() &&
     newObserverFirstName.value.trim() &&
+    newObserverDocument.value.trim() &&
     isValidPhone &&
     username &&
     isUniqueUsername &&
@@ -4572,6 +4796,271 @@ function renderAdminHome() {
   `;
 }
 
+function renderAiReportMetrics(report) {
+  if (!report?.metrics?.length) return "";
+
+  return `
+    <section class="quick-stats admin-quick-stats ai-report-metrics" aria-label="Métricas del reporte IA">
+      ${report.metrics.map((metric) => `
+        <div class="quick-stat">
+          <i class="bi bi-activity"></i>
+          <div class="quick-stat-content">
+            <strong>${escapeHtml(metric.value ?? "-")}</strong>
+            <div class="quick-stat-copy">
+              <span>${escapeHtml(metric.label || "Métrica")}</span>
+              <small>Dato del reporte</small>
+            </div>
+          </div>
+        </div>
+      `).join("")}
+    </section>
+  `;
+}
+
+function renderAiReportList(items = [], emptyText = "Sin datos para mostrar.") {
+  const visibleItems = items.filter((item) => String(item || "").trim());
+  if (!visibleItems.length) {
+    return `<p class="ai-report-empty">${escapeHtml(emptyText)}</p>`;
+  }
+
+  return `
+    <ul class="ai-report-list">
+      ${visibleItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+    </ul>
+  `;
+}
+
+function renderAiReportResult(report) {
+  if (!report) {
+    return `
+      <div class="ai-report-placeholder">
+        <i class="bi bi-stars"></i>
+        <h3>Generá el primer informe inteligente</h3>
+        <p>Frame0 va a leer datos de Supabase y preparar un resumen ejecutivo para la administración del torneo.</p>
+      </div>
+    `;
+  }
+
+  return `
+    <article class="ai-report-result" data-ai-report-ready="true">
+      <div class="ai-report-header">
+        <div>
+          <p class="section-kicker mb-1">${escapeHtml(report.source || "Frame0 IA")}</p>
+          <h3>${escapeHtml(report.title)}</h3>
+          <small>Generado: ${escapeHtml(getAiReportDisplayDate(report))}${report.model ? ` · Modelo: ${escapeHtml(report.model)}` : ""}</small>
+        </div>
+        <i class="bi bi-robot"></i>
+      </div>
+
+      ${report.warning ? `<div class="delegate-edit-window is-closed ai-report-warning"><i class="bi bi-exclamation-triangle-fill"></i> ${escapeHtml(report.warning)}</div>` : ""}
+
+      <p class="ai-report-summary">${escapeHtml(report.summary)}</p>
+      ${renderAiReportMetrics(report)}
+
+      <div class="ai-report-grid">
+        ${(report.sections || []).map((section) => `
+          <section class="ai-report-section">
+            <h4>${escapeHtml(section.title || "Sección")}</h4>
+            ${renderAiReportList(section.items || [])}
+          </section>
+        `).join("")}
+        <section class="ai-report-section is-alert">
+          <h4>Alertas</h4>
+          ${renderAiReportList(report.alerts || [])}
+        </section>
+        <section class="ai-report-section is-recommendation">
+          <h4>Recomendaciones</h4>
+          ${renderAiReportList(report.recommendations || [])}
+        </section>
+      </div>
+    </article>
+  `;
+}
+
+function renderAdminAiReportView(report = currentAiReport) {
+  const hasReport = Boolean(report);
+
+  return `
+    <div class="section-toolbar admin-toolbar">
+      <div>
+        <p class="section-kicker section-brand mb-1">Frame0</p>
+        <div class="ai-title-row">
+          <h2 class="section-title mb-0">Reportería IA</h2>
+          <span class="ai-thinking-robot" aria-hidden="true">
+            <span class="ai-thinking-bubbles">
+              <span></span>
+              <span></span>
+              <span></span>
+            </span>
+            <i class="bi bi-robot"></i>
+            <span class="ai-robot-steps">
+              <span></span>
+              <span></span>
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <section class="division-table-panel ai-report-panel">
+      <div class="fixture-toolbar delegate-players-toolbar ai-report-toolbar">
+        <div class="division-section-heading">
+          <p class="section-kicker mb-1">Administrador</p>
+          <h2>Resumen ejecutivo del torneo</h2>
+        </div>
+        <div class="ai-report-actions">
+          <button class="btn btn-ingreso" type="button" data-generate-ai-report>
+            <i class="bi bi-stars"></i>
+            Generar reporte IA
+          </button>
+          <button class="btn btn-outline-light admin-secondary-btn" type="button" data-download-ai-report ${hasReport ? "" : "disabled"}>
+            <i class="bi bi-file-earmark-pdf-fill"></i>
+            Descargar PDF
+          </button>
+        </div>
+      </div>
+
+      <div data-ai-report-status></div>
+      <div data-ai-report-output>
+        ${renderAiReportResult(report)}
+      </div>
+    </section>
+  `;
+}
+
+function renderAiReportPrintDocument(report) {
+  const safeReport = normalizeAiReport(report);
+
+  return `
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="utf-8">
+        <title>${escapeHtml(safeReport.title)}</title>
+        <style>
+          @page { size: A4; margin: 14mm; }
+          * { box-sizing: border-box; }
+          body { margin: 0; font-family: Arial, sans-serif; color: #111827; }
+          h1 { margin: 0; color: #0b4fe8; font-size: 24px; }
+          h2 { margin: 18px 0 8px; font-size: 15px; color: #0f2742; }
+          p { line-height: 1.45; }
+          .meta { margin: 7px 0 14px; color: #475569; font-size: 11px; }
+          .summary { border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fbff; padding: 12px; }
+          .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+          .metric { border: 1px solid #dbe7f3; border-radius: 6px; padding: 8px; }
+          .metric strong { display: block; color: #0b4fe8; font-size: 18px; }
+          ul { margin-top: 6px; padding-left: 18px; }
+          li { margin-bottom: 5px; }
+          footer { margin-top: 22px; border-top: 1px solid #cbd5e1; padding-top: 8px; color: #64748b; font-size: 10px; }
+        </style>
+      </head>
+      <body>
+        <h1>${escapeHtml(safeReport.title)}</h1>
+        <div class="meta">
+          Generado: ${escapeHtml(getAiReportDisplayDate(safeReport))} · Fuente: ${escapeHtml(safeReport.source || "Frame0 IA")}${safeReport.model ? ` · Modelo: ${escapeHtml(safeReport.model)}` : ""}
+        </div>
+        <p class="summary">${escapeHtml(safeReport.summary)}</p>
+        ${safeReport.metrics?.length ? `
+          <div class="metrics">
+            ${safeReport.metrics.map((metric) => `
+              <div class="metric">
+                <strong>${escapeHtml(metric.value ?? "-")}</strong>
+                <span>${escapeHtml(metric.label || "Métrica")}</span>
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
+        ${(safeReport.sections || []).map((section) => `
+          <h2>${escapeHtml(section.title || "Sección")}</h2>
+          ${renderAiReportList(section.items || [])}
+        `).join("")}
+        <h2>Alertas</h2>
+        ${renderAiReportList(safeReport.alerts || [])}
+        <h2>Recomendaciones</h2>
+        ${renderAiReportList(safeReport.recommendations || [])}
+        <footer>${AI_REPORT_PDF_FOOTER}</footer>
+        <script>window.setTimeout(() => window.print(), 250);</script>
+      </body>
+    </html>
+  `;
+}
+
+async function requestAiReportFromEdgeFunction() {
+  if (typeof supabaseClient === "undefined" || !supabaseClient.functions?.invoke) {
+    throw new Error("Las funciones de Supabase no están disponibles.");
+  }
+
+  if (!adminSettingsSession?.usuario || !adminSettingsSession?.password) {
+    throw new Error("La sesión del administrador no está disponible. Cerrá sesión e ingresá nuevamente.");
+  }
+
+  const { data, error } = await supabaseClient.functions.invoke("generate-ai-report", {
+    body: {
+      usuario: adminSettingsSession.usuario,
+      password: adminSettingsSession.password,
+      tipo: "resumen_torneo"
+    }
+  });
+
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return normalizeAiReport(data?.report || data);
+}
+
+function getAiReportFallbackWarning(error) {
+  const rawMessage = error?.message || String(error || "error desconocido");
+  const normalizedMessage = normalizeSearchText(rawMessage);
+
+  if (
+    normalizedMessage.includes("failed to send")
+    || normalizedMessage.includes("failed to fetch")
+    || normalizedMessage.includes("edge function")
+    || normalizedMessage.includes("functionsfetcherror")
+  ) {
+    return "No se pudo conectar con la Edge Function generate-ai-report. Verificá que esté desplegada en Supabase y que los secretos GROQ_API_KEY, GROQ_MODEL y SUPABASE_SERVICE_ROLE_KEY estén configurados. Mientras tanto se generó un reporte básico por reglas locales.";
+  }
+
+  if (normalizedMessage.includes("groq") || normalizedMessage.includes("api_key") || normalizedMessage.includes("rate") || normalizedMessage.includes("limit")) {
+    return `La Edge Function respondió, pero Groq no pudo generar el reporte (${rawMessage}). Se generó un reporte básico por reglas locales.`;
+  }
+
+  return `No se pudo usar la reportería IA (${rawMessage}). Se generó un reporte básico por reglas locales.`;
+}
+
+async function generateAiReportForAdmin() {
+  try {
+    return await requestAiReportFromEdgeFunction();
+  } catch (error) {
+    console.warn("No se pudo generar el reporte con Groq. Se usa fallback local.", error);
+    return generateLocalAiReportFallback(getAiReportFallbackWarning(error));
+  }
+}
+
+function updateAiReportView(report) {
+  currentAiReport = normalizeAiReport(report);
+  const output = contentShell.querySelector("[data-ai-report-output]");
+  const downloadButton = contentShell.querySelector("[data-download-ai-report]");
+  const status = contentShell.querySelector("[data-ai-report-status]");
+
+  if (output) output.innerHTML = renderAiReportResult(currentAiReport);
+  if (downloadButton) downloadButton.disabled = false;
+  if (status) status.innerHTML = "";
+}
+
+function downloadCurrentAiReportPdf() {
+  if (!currentAiReport) return;
+
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    alert("El navegador bloqueó la ventana de descarga. Permití ventanas emergentes para generar el PDF.");
+    return;
+  }
+
+  printWindow.document.open();
+  printWindow.document.write(renderAiReportPrintDocument(currentAiReport));
+  printWindow.document.close();
+}
+
 function renderAdminActionView(actionName) {
   return `
     <div class="section-toolbar admin-toolbar">
@@ -5467,6 +5956,7 @@ async function applyDelegateUsersFallback(includeInactive = false, fallbackToUse
       delegate: "-",
       delegateFirstName: "",
       delegateLastName: "",
+      delegateDocument: "",
       contact: "-",
       delegateUsername: "-"
     }));
@@ -5475,7 +5965,7 @@ async function applyDelegateUsersFallback(includeInactive = false, fallbackToUse
 
   const { data: users, error } = await supabaseClient
     .from("usuarios_app")
-    .select("id,nombre,apellido,contacto,usuario,rol,activo")
+    .select("id,nombre,apellido,documento,contacto,usuario,rol,activo")
     .eq("rol", "delegado")
     .eq("activo", !includeInactive);
 
@@ -5498,6 +5988,7 @@ async function applyDelegateUsersFallback(includeInactive = false, fallbackToUse
       delegate: user ? `${user.nombre || ""} ${user.apellido || ""}`.trim() || user.usuario : "-",
       delegateFirstName: user?.nombre || "",
       delegateLastName: user?.apellido || "",
+      delegateDocument: user?.documento || "",
       contact: user?.contacto || "-",
       delegateUsername: user?.usuario || "-"
     };
@@ -5515,7 +6006,7 @@ async function loadAdminDelegatesForFilters(selectedCategory = "", selectedDivis
 
   let query = supabaseClient
     .from("delegados")
-    .select("id,usuario_id,equipo_id,activo,usuario:usuarios_app(id,nombre,apellido,contacto,usuario,rol,activo)")
+    .select("id,usuario_id,equipo_id,activo,usuario:usuarios_app(id,nombre,apellido,documento,contacto,usuario,rol,activo)")
     .in("equipo_id", teamIds);
 
   if (!includeInactive) {
@@ -5568,6 +6059,7 @@ async function loadAdminDelegatesForFilters(selectedCategory = "", selectedDivis
       delegate: user ? `${user.nombre || ""} ${user.apellido || ""}`.trim() || user.usuario : "-",
       delegateFirstName: user?.nombre || "",
       delegateLastName: user?.apellido || "",
+      delegateDocument: user?.documento || "",
       contact: user?.contacto || "-",
       delegateUsername: user?.usuario || "-"
     };
@@ -5664,6 +6156,7 @@ async function createDelegateInSupabase() {
   const payload = {
     nombre: newDelegateFirstName.value.trim(),
     apellido: newDelegateLastName.value.trim(),
+    documento: newDelegateDocument.value.trim(),
     contacto: newDelegateContact.value.trim(),
     usuario: newDelegateUsername.value.trim(),
     password: newDelegatePassword.value,
@@ -5675,6 +6168,7 @@ async function createDelegateInSupabase() {
     const updatePayload = {
       nombre: payload.nombre,
       apellido: payload.apellido,
+      documento: payload.documento,
       contacto: payload.contacto,
       usuario: payload.usuario,
       rol: "delegado",
@@ -5699,7 +6193,7 @@ async function getAdminDelegateRowFallback(delegateUserId = "", teamId = "") {
 
   const { data: user, error } = await supabaseClient
     .from("usuarios_app")
-    .select("id,nombre,apellido,contacto,usuario,rol,activo")
+    .select("id,nombre,apellido,documento,contacto,usuario,rol,activo")
     .eq("id", delegateUserId)
     .maybeSingle();
 
@@ -5717,6 +6211,7 @@ async function getAdminDelegateRowFallback(delegateUserId = "", teamId = "") {
     delegate: `${user.nombre || ""} ${user.apellido || ""}`.trim() || user.usuario,
     delegateFirstName: user.nombre || "",
     delegateLastName: user.apellido || "",
+    delegateDocument: user.documento || "",
     contact: user.contacto || "-",
     delegateUsername: user.usuario || "-"
   };
@@ -5735,6 +6230,7 @@ async function openAdminDelegateModal(delegateUserId = "", teamId = "") {
   newDelegateForm.dataset.editingId = row?.delegateId || "";
   newDelegateLastName.value = row?.delegateLastName || "";
   newDelegateFirstName.value = row?.delegateFirstName || "";
+  newDelegateDocument.value = row?.delegateDocument || "";
   newDelegateContact.value = row?.contact && row.contact !== "-" ? row.contact : "";
   newDelegateUsername.value = row?.delegateUsername && row.delegateUsername !== "-" ? row.delegateUsername : "";
   newDelegatePassword.value = row ? "" : "123456";
@@ -5953,6 +6449,7 @@ function getAdminFilteredDelegateTeams(searchTerm = "") {
       team.delegate.toLowerCase().includes(normalizedSearch) ||
       team.shortName.toLowerCase().includes(normalizedSearch) ||
       (team.delegateUsername || "").toLowerCase().includes(normalizedSearch) ||
+      (team.delegateDocument || "").toLowerCase().includes(normalizedSearch) ||
       team.contact.toLowerCase().includes(normalizedSearch)
     );
 }
@@ -5961,7 +6458,7 @@ function renderAdminDelegateRows(hasCompletedFilters, searchTerm = "", page = 1)
   if (!hasCompletedFilters) {
     return `
       <tr>
-        <td colspan="6" class="admin-empty-row">Seleccioná categoría y división para visualizar delegados.</td>
+        <td colspan="7" class="admin-empty-row">Seleccioná categoría y división para visualizar delegados.</td>
       </tr>
     `;
   }
@@ -5971,7 +6468,7 @@ function renderAdminDelegateRows(hasCompletedFilters, searchTerm = "", page = 1)
   if (!filteredTeams.length) {
     return `
       <tr>
-        <td colspan="6" class="admin-empty-row">${adminDelegatesState.includeInactive ? "No hay delegados dados de baja para la búsqueda indicada." : "No se encontraron delegados para la búsqueda indicada."}</td>
+        <td colspan="7" class="admin-empty-row">${adminDelegatesState.includeInactive ? "No hay delegados dados de baja para la búsqueda indicada." : "No se encontraron delegados para la búsqueda indicada."}</td>
       </tr>
     `;
   }
@@ -5985,6 +6482,7 @@ function renderAdminDelegateRows(hasCompletedFilters, searchTerm = "", page = 1)
       <td>
         <span class="fixture-team">${renderTeamBadge(team, "small")} ${team.shortName}</span>
       </td>
+      <td>${escapeHtml(team.delegateDocument || "-")}</td>
       <td>${team.contact}</td>
       <td>${team.delegateUsername || "-"}</td>
       <td>
@@ -6068,7 +6566,7 @@ async function renderAdminDelegatesView(selectedCategory = "", selectedDivision 
 
         <label class="admin-filter-field admin-search-field">
           <span>Buscar delegado</span>
-          <input class="form-control" type="search" value="${searchTerm}" placeholder="Apellido y nombre, usuario, equipo o contacto" data-admin-delegate-search ${hasCompletedFilters ? "" : "disabled"}>
+          <input class="form-control" type="search" value="${searchTerm}" placeholder="Apellido y nombre, documento, usuario, equipo o contacto" data-admin-delegate-search ${hasCompletedFilters ? "" : "disabled"}>
         </label>
       </div>
 
@@ -6079,6 +6577,7 @@ async function renderAdminDelegatesView(selectedCategory = "", selectedDivision 
               <th>N&deg;</th>
               <th>Apellido y nombre</th>
               <th>Equipo</th>
+              <th>DNI/Pasaporte</th>
               <th>Contacto</th>
               <th>Usuario</th>
               <th>Acciones</th>
@@ -6342,7 +6841,7 @@ function renderAdminObserverRows(searchTerm = adminObserversState.searchTerm, pa
   if (!filteredObservers.length) {
     return `
       <tr>
-        <td colspan="6" class="admin-empty-row">No se encontraron veedores.</td>
+        <td colspan="7" class="admin-empty-row">No se encontraron veedores.</td>
       </tr>
     `;
   }
@@ -6356,6 +6855,7 @@ function renderAdminObserverRows(searchTerm = adminObserversState.searchTerm, pa
       <tr>
         <td>${(pageInfo.page - 1) * ADMIN_PAGE_SIZE + index + 1}</td>
         <td>${escapeHtml(`${user.nombre || ""} ${user.apellido || ""}`.trim() || "Usuario sin nombre")}</td>
+        <td>${escapeHtml(user.documento || "-")}</td>
         <td>${escapeHtml(user.contacto || "-")}</td>
         <td>${escapeHtml(user.usuario || "-")}</td>
         <td>
@@ -6387,7 +6887,7 @@ function getAdminFilteredObserversFromBackend(searchTerm = "") {
   const normalizedSearch = normalizeSearchText(searchTerm);
   return adminObserversState.items.filter((observer) => {
     const user = observer.usuario || {};
-    return `${user.nombre || ""} ${user.apellido || ""} ${user.contacto || ""} ${user.usuario || ""}`.toLowerCase().includes(normalizedSearch);
+    return `${user.nombre || ""} ${user.apellido || ""} ${user.documento || ""} ${user.contacto || ""} ${user.usuario || ""}`.toLowerCase().includes(normalizedSearch);
   });
 }
 
@@ -6421,7 +6921,7 @@ async function renderAdminObserversView(searchTerm = adminObserversState.searchT
       <div class="admin-filter-grid admin-single-filter-grid" aria-label="Filtro de veedores">
         <label class="admin-filter-field admin-search-field">
           <span>Buscar veedor</span>
-          <input class="form-control" type="search" value="${escapeHtml(adminObserversState.searchTerm)}" placeholder="Nombre, contacto o usuario" data-admin-observer-search>
+          <input class="form-control" type="search" value="${escapeHtml(adminObserversState.searchTerm)}" placeholder="Nombre, documento, contacto o usuario" data-admin-observer-search>
         </label>
       </div>
 
@@ -6431,6 +6931,7 @@ async function renderAdminObserversView(searchTerm = adminObserversState.searchT
             <tr>
               <th>N&deg;</th>
               <th>Apellido y nombre</th>
+              <th>DNI/Pasaporte</th>
               <th>Contacto</th>
               <th>Usuario</th>
               <th>Estado</th>
@@ -6685,6 +7186,10 @@ async function enterAdminView() {
             <i class="bi bi-clipboard2-check-fill"></i>
             Veedores
           </button>
+          <button class="division-link" type="button" data-admin-action="Reportería IA">
+            <i class="bi bi-robot"></i>
+            Reportería IA
+          </button>
           <div class="admin-menu-accordion">
             <button class="division-link admin-menu-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#adminTournamentMenu" aria-expanded="false" aria-controls="adminTournamentMenu">
               <i class="bi bi-trophy-fill"></i>
@@ -6879,6 +7384,11 @@ sidebarContent.addEventListener("click", async (event) => {
         return;
       }
 
+      if (actionName === "Reportería IA") {
+        contentShell.innerHTML = renderAdminAiReportView();
+        return;
+      }
+
       if (actionName === "Categorías") {
         contentShell.innerHTML = await renderAdminCategoriesView({ includeInactive: false, editingId: null });
         return;
@@ -6927,6 +7437,8 @@ contentShell.addEventListener("click", async (event) => {
   const adminPlayerObservationButton = event.target.closest("[data-admin-player-observation]");
   const playerHistoryButton = event.target.closest("[data-player-history]");
   const observerSaveButton = event.target.closest("[data-observer-save]");
+  const generateAiReportButton = event.target.closest("[data-generate-ai-report]");
+  const downloadAiReportButton = event.target.closest("[data-download-ai-report]");
   const saveTournamentSettingsButton = event.target.closest("[data-save-tournament-settings]");
   const adminPageButton = event.target.closest("[data-admin-page]");
   const delegateTeamEditButton = event.target.closest("[data-delegate-team-edit]");
@@ -6966,6 +7478,43 @@ contentShell.addEventListener("click", async (event) => {
   const deactivateAdminObserverButton = event.target.closest("[data-admin-observer-deactivate]");
   const activateAdminObserverButton = event.target.closest("[data-admin-observer-activate]");
   const toggleObserversBajasButton = event.target.closest("[data-admin-observers-toggle-bajas]");
+
+  if (generateAiReportButton) {
+    const status = contentShell.querySelector("[data-ai-report-status]");
+    const output = contentShell.querySelector("[data-ai-report-output]");
+    const downloadButton = contentShell.querySelector("[data-download-ai-report]");
+    const originalLabel = generateAiReportButton.innerHTML;
+
+    generateAiReportButton.disabled = true;
+    if (downloadButton) downloadButton.disabled = true;
+    generateAiReportButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Generando`;
+    if (status) {
+      status.innerHTML = `<div class="delegate-edit-window is-open ai-report-loading"><i class="bi bi-stars"></i> Generando reporte con IA. Esto puede tardar unos segundos.</div>`;
+    }
+    if (output && !currentAiReport) {
+      output.innerHTML = renderAiReportResult(null);
+    }
+
+    try {
+      const report = await generateAiReportForAdmin();
+      updateAiReportView(report);
+    } catch (error) {
+      console.error("Error al generar reporte IA:", error);
+      if (status) {
+        status.innerHTML = `<div class="delegate-edit-window is-closed"><i class="bi bi-exclamation-triangle-fill"></i> No se pudo generar el reporte: ${escapeHtml(error.message || "Error desconocido")}</div>`;
+      }
+      if (downloadButton && currentAiReport) downloadButton.disabled = false;
+    } finally {
+      generateAiReportButton.disabled = false;
+      generateAiReportButton.innerHTML = originalLabel;
+    }
+    return;
+  }
+
+  if (downloadAiReportButton) {
+    downloadCurrentAiReportPdf();
+    return;
+  }
 
   if (newDivisionButton) {
     await openAdminDivisionModal();
@@ -8133,6 +8682,7 @@ function validateAdminObserverForm() {
   const isValid = Boolean(
     adminObserverFirstName?.value.trim() &&
     adminObserverLastName?.value.trim() &&
+    adminObserverDocument?.value.trim() &&
     isContactValid &&
     isUsernameFormatValid &&
     isUsernameUnique &&
@@ -8187,6 +8737,7 @@ async function openAdminObserverModal(observerId = "") {
   adminObserverId.value = observer?.id || "";
   adminObserverFirstName.value = user.nombre || "";
   adminObserverLastName.value = user.apellido || "";
+  adminObserverDocument.value = user.documento || "";
   adminObserverContact.value = user.contacto || "";
   adminObserverUsername.value = user.usuario || "";
   adminObserverPassword.value = "";
@@ -8349,6 +8900,7 @@ adminObserverForm?.addEventListener("submit", async (event) => {
   const payload = {
     nombre: adminObserverFirstName.value.trim(),
     apellido: adminObserverLastName.value.trim(),
+    documento: adminObserverDocument.value.trim(),
     contacto: adminObserverContact.value.trim(),
     usuario: adminObserverUsername.value.trim(),
     password: adminObserverPassword.value
@@ -8612,6 +9164,7 @@ newObserverForm.addEventListener("submit", async (event) => {
     await apiPost("/veedores", {
       nombre: newObserverFirstName.value.trim(),
       apellido: newObserverLastName.value.trim(),
+      documento: newObserverDocument.value.trim(),
       contacto: newObserverContact.value.trim(),
       usuario: newObserverUsername.value.trim(),
       password: newObserverPassword.value
@@ -8713,6 +9266,7 @@ loginForm.addEventListener("submit", async (event) => {
   observerSettingsSession = null;
   delegateSettingsSession = null;
   currentAppUser = null;
+  currentAiReport = null;
 
   const username = document.querySelector("#username").value.trim();
   const password = document.querySelector("#password").value;

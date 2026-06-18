@@ -7,3 +7,5 @@ deprecated-backend/.env
 .vs/
 deprecated-backend/node_modules/
 node_modules/
+
+supabase/.temp/

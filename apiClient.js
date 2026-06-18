@@ -19,13 +19,13 @@ const FRAME0_TABLES = {
   },
   usuarios: {
     table: "usuarios_app",
-    select: "id,nombre,apellido,contacto,usuario,rol,activo",
+    select: "id,nombre,apellido,documento,contacto,usuario,rol,activo",
     activeColumn: "activo",
     orderBy: "nombre"
   },
   veedores: {
     table: "veedores",
-    select: "id,usuario_id,activo,created_at,usuario:usuarios_app(id,nombre,apellido,contacto,usuario,rol,activo)",
+    select: "id,usuario_id,activo,created_at,usuario:usuarios_app(id,nombre,apellido,documento,contacto,usuario,rol,activo)",
     activeColumn: "activo",
     orderBy: "created_at"
   },
@@ -43,7 +43,7 @@ const FRAME0_TABLES = {
   },
   delegados: {
     table: "delegados",
-    select: "id,usuario_id,equipo_id,activo,created_at,usuario:usuarios_app(id,nombre,apellido,contacto,usuario,rol,activo),equipo:equipos(id,nombre,division_id,abreviatura,nombre_corto,activo)",
+    select: "id,usuario_id,equipo_id,activo,created_at,usuario:usuarios_app(id,nombre,apellido,documento,contacto,usuario,rol,activo),equipo:equipos(id,nombre,division_id,abreviatura,nombre_corto,activo)",
     activeColumn: "activo",
     orderBy: "created_at"
   }
@@ -290,12 +290,13 @@ async function apiGet(endpoint) {
 async function createObserver(body = {}) {
   const nombre = String(body.nombre || "").trim();
   const apellido = String(body.apellido || "").trim();
+  const documento = String(body.documento || "").trim();
   const contacto = String(body.contacto || "").trim();
   const usuario = normalizeUsername(body.usuario);
   const password = String(body.password || "");
 
-  if (!nombre || !apellido || !contacto || !usuario || !password) {
-    throw new Error("Campos requeridos: nombre, apellido, contacto, usuario, password");
+  if (!nombre || !apellido || !documento || !contacto || !usuario || !password) {
+    throw new Error("Campos requeridos: nombre, apellido, documento, contacto, usuario, password");
   }
 
   await ensureUniqueUsername(usuario);
@@ -305,13 +306,14 @@ async function createObserver(body = {}) {
     .insert({
       nombre,
       apellido,
+      documento,
       contacto,
       usuario,
       rol: "veedor",
       password_hash: password,
       activo: true
     })
-    .select("id,nombre,apellido,contacto,usuario,rol,activo")
+    .select("id,nombre,apellido,documento,contacto,usuario,rol,activo")
     .single();
 
   if (profileError) throw profileError;
@@ -329,21 +331,22 @@ async function createObserver(body = {}) {
 async function createDelegate(body = {}) {
   const nombre = String(body.nombre || "").trim();
   const apellido = String(body.apellido || "").trim();
+  const documento = String(body.documento || "").trim();
   const contacto = String(body.contacto || "").trim();
   const usuario = normalizeUsername(body.usuario);
   const password = String(body.password || "");
   const equipoId = String(body.equipo_id || "").trim();
 
-  if (!nombre || !apellido || !contacto || !usuario || !password || !equipoId) {
-    throw new Error("Campos requeridos: nombre, apellido, contacto, usuario, password y equipo_id");
+  if (!nombre || !apellido || !documento || !contacto || !usuario || !password || !equipoId) {
+    throw new Error("Campos requeridos: nombre, apellido, documento, contacto, usuario, password y equipo_id");
   }
 
   await ensureUniqueUsername(usuario);
 
   const { data: profile, error: profileError } = await getSupabaseClient()
     .from("usuarios_app")
-    .insert({ nombre, apellido, contacto, usuario, rol: "delegado", password_hash: password, activo: true })
-    .select("id,nombre,apellido,contacto,usuario,rol,activo")
+    .insert({ nombre, apellido, documento, contacto, usuario, rol: "delegado", password_hash: password, activo: true })
+    .select("id,nombre,apellido,documento,contacto,usuario,rol,activo")
     .single();
 
   if (profileError) throw profileError;
@@ -373,6 +376,7 @@ async function updateDelegate(id, body = {}) {
   const payload = cleanPayload({
     nombre: body.nombre === undefined ? undefined : String(body.nombre).trim(),
     apellido: body.apellido === undefined ? undefined : String(body.apellido).trim(),
+    documento: body.documento === undefined ? undefined : String(body.documento).trim(),
     contacto: body.contacto === undefined ? undefined : String(body.contacto).trim(),
     usuario,
     password_hash: body.password ? String(body.password) : undefined,
@@ -413,6 +417,7 @@ async function updateObserver(id, body = {}) {
   const payload = cleanPayload({
     nombre: body.nombre === undefined ? undefined : String(body.nombre).trim(),
     apellido: body.apellido === undefined ? undefined : String(body.apellido).trim(),
+    documento: body.documento === undefined ? undefined : String(body.documento).trim(),
     contacto: body.contacto === undefined ? undefined : String(body.contacto).trim(),
     usuario,
     password_hash: body.password ? String(body.password) : undefined,

@@ -13,6 +13,12 @@
       "skillPath": "skills/firecrawl-build-onboarding/SKILL.md",
       "computedHash": "3ce65712e870b37dc956930e01cd93f7a5c222dd1092433295e66d48bee15e84"
     },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-design/SKILL.md",
+      "computedHash": "93f53fd1c0352d3d7ec17b8f73d7351bf76f4821e55d123c9d2abc2c53ba48e4"
+    },
     "supabase-postgres-best-practices": {
       "source": "supabase/agent-skills",
       "sourceType": "github",
