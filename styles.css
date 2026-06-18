@@ -1871,6 +1871,15 @@ select {
   font-weight: 950;
 }
 
+.admin-observation-view:disabled,
+.admin-observation-view[aria-disabled="true"] {
+  border-color: rgba(122, 135, 148, 0.24);
+  background: rgba(226, 232, 240, 0.75);
+  color: #7a8794;
+  opacity: 0.72;
+  box-shadow: none;
+}
+
 .admin-observation-empty {
   color: #7a8794;
   font-size: 0.78rem;
@@ -4294,6 +4303,18 @@ body.dark-mode .modal-content.login-modal {
   font-weight: 800;
 }
 
+.required-marker {
+  color: #d1293a;
+  font-weight: 950;
+}
+
+.required-fields-note {
+  margin: 0.35rem 0 0;
+  color: #5f6f82;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .form-helper-text.is-error {
   color: #d1293a;
 }
@@ -4842,8 +4863,13 @@ body.dark-mode .login-brand .modal-title,
 body.dark-mode .login-modal .form-label,
 body.dark-mode .team-create-form .form-label,
 body.dark-mode .team-form-preview span,
-body.dark-mode .form-helper-text {
+body.dark-mode .form-helper-text,
+body.dark-mode .required-fields-note {
   color: #ffffff;
+}
+
+body.dark-mode .required-marker {
+  color: #ff8b96;
 }
 
 body.dark-mode .form-helper-text.is-error {
@@ -4969,6 +4995,13 @@ body.dark-mode .admin-save-row-btn {
   border-color: rgba(255, 255, 255, 0.16);
   background: #242830;
   color: #ffffff;
+}
+
+body.dark-mode .admin-observation-view:disabled,
+body.dark-mode .admin-observation-view[aria-disabled="true"] {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(36, 40, 48, 0.62);
+  color: #94a3b8;
 }
 
 body.dark-mode .table-actions button:hover,

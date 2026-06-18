@@ -142,6 +142,7 @@ const HELP_URLS = {
   observer: "https://sites.google.com/view/frame0-veedores/inicio",
   delegate: "https://sites.google.com/view/frame0-delegados/inicio"
 };
+const REQUIRED_FIELDS_NOTE_TEXT = "Los campos identificados con * son obligatorios";
 const publicSettings = {
   instagramUrl: "#",
   facebookUrl: "#",
@@ -170,6 +171,11 @@ let tournamentCatalog = [];
 let activeDivisionId = "";
 let adminTeamsForView = [];
 let adminMetricsState = null;
+const adminObservedSummaryState = {
+  loaded: false,
+  count: 0,
+  rows: []
+};
 const tournamentSettings = {
   playerRegistrationFrom: "2026-06-01",
   playerRegistrationTo: "2026-07-31",
@@ -985,6 +991,19 @@ function parsePlayerObservationKey(key) {
 }
 
 function getPlayerFromObservationKey(key) {
+  if (String(key || "").startsWith("sancion:")) {
+    const pools = [adminTeamsForView, teams];
+    for (const pool of pools) {
+      for (const team of pool || []) {
+        const player = (team.players || []).find((item) =>
+          (item.observations || []).some((observation) => observation.key === key)
+        );
+        if (player) return { ...player, team };
+      }
+    }
+    return null;
+  }
+
   const { teamId, number, playerName } = parsePlayerObservationKey(key);
   const team = getTeam(teamId);
   if (!team) return null;
@@ -1016,7 +1035,7 @@ async function loadMatchIncidences(matchIds = []) {
     return { goals: [], cards: [], sanctions: [] };
   }
 
-  const [{ data: goals, error: goalsError }, { data: cards, error: cardsError }, { data: sanctions, error: sanctionsError }] = await Promise.all([
+  const [{ data: goals, error: goalsError }, { data: cards, error: cardsError }, sanctionsResult] = await Promise.all([
     supabaseClient
       .from("goles")
       .select("id,partido_id,jugador_id,equipo_id,tipo")
@@ -1027,12 +1046,26 @@ async function loadMatchIncidences(matchIds = []) {
       .in("partido_id", matchIds),
     supabaseClient
       .from("sanciones")
-      .select("id,jugador_id,partido_id,motivo,fechas_suspension,cumplida")
+      .select("id,jugador_id,partido_id,motivo,fechas_suspension,cumplida,created_at,resolucion_detalle,estado_jugador,resuelta_por,resuelta_at,notificada_delegado,notificada_at")
       .in("partido_id", matchIds)
   ]);
 
   if (goalsError) throw goalsError;
   if (cardsError) throw cardsError;
+
+  let sanctions = sanctionsResult.data;
+  let sanctionsError = sanctionsResult.error;
+
+  if (sanctionsError) {
+    console.warn("No se pudieron leer columnas de resolución en sanciones. Se usa lectura base.", sanctionsError);
+    const fallback = await supabaseClient
+      .from("sanciones")
+      .select("id,jugador_id,partido_id,motivo,fechas_suspension,cumplida")
+      .in("partido_id", matchIds);
+    sanctions = fallback.data;
+    sanctionsError = fallback.error;
+  }
+
   if (sanctionsError) throw sanctionsError;
 
   return {
@@ -1052,6 +1085,8 @@ function applyPlayerStatsToTeams(teamList = [], incidences = {}) {
       player.red = 0;
       player.observations = [];
       player.suspensionMatches = 0;
+      player.resolvedStatus = "";
+      player.resolvedAt = "";
       player.matchStats = {};
       if (player.id) playerMap.set(String(player.id), { player, team });
     });
@@ -1098,24 +1133,59 @@ function applyPlayerStatsToTeams(teamList = [], incidences = {}) {
     if (suspensionMatches > 0 && sanction.cumplida !== true) {
       entry.player.suspensionMatches += suspensionMatches;
     }
+    if (sanction.estado_jugador) {
+      const resolvedAt = sanction.resuelta_at || sanction.created_at || "";
+      if (!entry.player.resolvedAt || String(resolvedAt) >= String(entry.player.resolvedAt)) {
+        entry.player.resolvedStatus = sanction.estado_jugador;
+        entry.player.resolvedAt = resolvedAt;
+      }
+    }
     if (!text) return;
 
     const matchStats = ensureMatchStats(entry.player, sanction.partido_id);
     matchStats.observation = text;
     entry.player.observations.push({
       id: sanction.id,
+      key: sanction.id ? `sancion:${sanction.id}` : "",
+      sanctionId: sanction.id,
       matchId: sanction.partido_id,
       text,
       suspensionMatches,
-      fulfilled: sanction.cumplida === true
+      fulfilled: sanction.cumplida === true,
+      createdAt: sanction.created_at || "",
+      resolutionDetail: sanction.resolucion_detalle || "",
+      resolvedStatus: sanction.estado_jugador || "",
+      resolvedAt: sanction.resuelta_at || "",
+      resolvedBy: sanction.resuelta_por || "",
+      notifiedDelegate: sanction.notificada_delegado === true,
+      notifiedAt: sanction.notificada_at || ""
     });
   });
 }
 
 function getPlayerObservationCount() {
-  return Object.entries(playerObservations)
-    .filter(([key, text]) => String(text || "").trim() && !playerObservationResolutions[key])
+  if (adminObservedSummaryState.loaded) {
+    return adminObservedSummaryState.count;
+  }
+
+  const pools = [adminTeamsForView, teams];
+  const persistedKeys = new Set();
+
+  pools.forEach((pool) => {
+    (pool || []).forEach((team) => {
+      (team.players || []).forEach((player) => {
+        getPendingPlayerObservationsForAdmin({ ...player, team }).forEach((observation) => {
+          persistedKeys.add(observation.key);
+        });
+      });
+    });
+  });
+
+  const memoryCount = Object.entries(playerObservations)
+    .filter(([key, text]) => String(text || "").trim() && !playerObservationResolutions[key] && !persistedKeys.has(key))
     .length;
+
+  return persistedKeys.size + memoryCount;
 }
 
 function getFixtureDateLabel(match) {
@@ -1162,6 +1232,8 @@ function getPlayerStatusKey(player) {
 }
 
 function getResolvedPlayerStatus(player) {
+  if (player?.resolvedStatus) return player.resolvedStatus;
+
   const resolution = Object.values(playerObservationResolutions).find((item) =>
     item.playerKey === getPlayerStatusKey(player) && item.status
   );
@@ -1174,16 +1246,57 @@ function getPlayerDisciplinaryNotifications(player) {
   );
 }
 
+function getPlayerUnreadResolutionNotifications(player) {
+  return getPlayerObservationsForAdmin(player).filter((observation) =>
+    observation.resolution && observation.resolution.notifiedDelegate !== true
+  );
+}
+
+function getDelegateUnreadNotificationCount(team = {}) {
+  return (team.players || [])
+    .filter((player) => player.active !== false)
+    .reduce((count, player) => count + getPlayerUnreadResolutionNotifications({ ...player, team }).length, 0);
+}
+
+function renderDelegatePlayersBadge(team = {}) {
+  const unreadCount = getDelegateUnreadNotificationCount(team);
+  return unreadCount > 0
+    ? `<span class="menu-alert-badge" data-delegate-player-notification-count>${unreadCount}</span>`
+    : "";
+}
+
+function updateDelegatePlayerNotificationBadge(team = {}) {
+  const playersButton = sidebarContent.querySelector("[data-delegate-players]");
+  if (!playersButton) return;
+
+  const unreadCount = getDelegateUnreadNotificationCount(team);
+  const currentBadge = playersButton.querySelector("[data-delegate-player-notification-count]");
+
+  if (!unreadCount) {
+    currentBadge?.remove();
+    return;
+  }
+
+  if (currentBadge) {
+    currentBadge.textContent = String(unreadCount);
+    return;
+  }
+
+  playersButton.insertAdjacentHTML("beforeend", renderDelegatePlayersBadge(team));
+}
+
 function renderObservationNotificationSummary(player) {
   const notifications = getPlayerDisciplinaryNotifications(player);
   if (!notifications.length) {
     return `<span class="admin-observation-empty">Sin novedades</span>`;
   }
 
+  const hasResolution = notifications.some((observation) => observation.resolution);
+
   return `
     <button class="admin-observation-view" type="button" data-player-history="${escapeHtml(getPlayerStatusKey(player))}">
       <i class="bi bi-bell-fill"></i>
-      Ver (${notifications.length})
+      ${hasResolution ? "Ver resolución" : "Ver"} (${notifications.length})
     </button>
   `;
 }
@@ -1199,16 +1312,29 @@ function getPlayerObservationsForAdmin(player) {
     .filter((observation) => String(observation.text || "").trim())
     .map((observation) => {
       const match = getObserverMatch(observation.matchId);
-      const key = getPlayerObservationKey(observation.matchId, player.team.id, player);
-      const resolution = playerObservationResolutions[key] || (observation.suspensionMatches > 0 ? {
-        detail: observation.text,
+      const key = observation.key || (observation.sanctionId
+        ? `sancion:${observation.sanctionId}`
+        : getPlayerObservationKey(observation.matchId, player.team.id, player));
+      const hasPersistedResolution = Boolean(
+        observation.resolvedAt
+        || observation.resolutionDetail
+        || observation.resolvedStatus
+        || observation.suspensionMatches > 0
+      );
+      const resolution = playerObservationResolutions[key] || (hasPersistedResolution ? {
+        detail: observation.resolutionDetail || "",
         suspensionMatches: observation.suspensionMatches,
-        status: observation.fulfilled ? "Habilitado" : "Suspendido",
-        playerKey: getPlayerStatusKey(player)
+        status: observation.resolvedStatus || (observation.fulfilled ? "Habilitado" : "Suspendido"),
+        playerKey: getPlayerStatusKey(player),
+        resolvedAt: observation.resolvedAt || "",
+        notifiedDelegate: observation.notifiedDelegate === true,
+        notifiedAt: observation.notifiedAt || ""
       } : null);
 
       return {
         key,
+        sanctionId: observation.sanctionId || observation.id || "",
+        matchId: observation.matchId || "",
         calendarDate: match?.date || "Sin fecha calendario",
         fixtureDate: getFixtureDateLabel(match),
         matchLabel: buildMatchLabel(match),
@@ -1227,6 +1353,7 @@ function getPlayerObservationsForAdmin(player) {
 
       return {
         key,
+        matchId,
         calendarDate: match?.date || "Sin fecha calendario",
         fixtureDate: getFixtureDateLabel(match),
         matchLabel: buildMatchLabel(match),
@@ -1238,7 +1365,7 @@ function getPlayerObservationsForAdmin(player) {
 
   const seen = new Set();
   return [...persistedObservations, ...memoryObservations].filter((observation) => {
-    const uniqueKey = `${observation.key}::${observation.text}`;
+    const uniqueKey = `${observation.matchId || observation.key}::${observation.text}`;
     if (seen.has(uniqueKey)) return false;
     seen.add(uniqueKey);
     return true;
@@ -1247,6 +1374,119 @@ function getPlayerObservationsForAdmin(player) {
 
 function getPendingPlayerObservationsForAdmin(player) {
   return getPlayerObservationsForAdmin(player).filter((observation) => !observation.resolution);
+}
+
+function getDivisionCatalogEntryById(divisionId = "") {
+  const normalizedDivisionId = String(divisionId || "");
+  for (const category of getAdminMetrics().categories) {
+    const division = category.divisions.find((item) => String(item.id) === normalizedDivisionId);
+    if (division) {
+      return {
+        category: category.name,
+        division: division.name
+      };
+    }
+  }
+  return {
+    category: "Sin categoría",
+    division: "Sin división"
+  };
+}
+
+function resetAdminObservedSummary() {
+  adminObservedSummaryState.loaded = false;
+  adminObservedSummaryState.count = 0;
+  adminObservedSummaryState.rows = [];
+}
+
+async function loadAdminObservedSummaryFromSupabase() {
+  if (typeof supabaseClient === "undefined") {
+    resetAdminObservedSummary();
+    return adminObservedSummaryState;
+  }
+
+  if (!tournamentCatalog.length) {
+    await cargarMenuCategorias();
+  }
+
+  let { data: sanctions, error: sanctionsError } = await supabaseClient
+    .from("sanciones")
+    .select("id,jugador_id,motivo,resuelta_at,resolucion_detalle,estado_jugador")
+    .is("resuelta_at", null);
+
+  if (sanctionsError) {
+    console.warn("No se pudieron leer columnas de resolución para el resumen de observados. Se usa lectura base.", sanctionsError);
+    const fallback = await supabaseClient
+      .from("sanciones")
+      .select("id,jugador_id,motivo,cumplida");
+    sanctions = fallback.data;
+    sanctionsError = fallback.error;
+  }
+
+  if (sanctionsError) throw sanctionsError;
+
+  const pendingSanctions = (sanctions || [])
+    .filter((sanction) => String(sanction.motivo || "").trim())
+    .filter((sanction) => !("resuelta_at" in sanction) || !sanction.resuelta_at)
+    .filter((sanction) => !("resolucion_detalle" in sanction) || !sanction.resolucion_detalle)
+    .filter((sanction) => !("estado_jugador" in sanction) || !sanction.estado_jugador);
+
+  const playerIds = [...new Set(pendingSanctions.map((sanction) => String(sanction.jugador_id || "")).filter(Boolean))];
+
+  if (!playerIds.length) {
+    adminObservedSummaryState.loaded = true;
+    adminObservedSummaryState.count = 0;
+    adminObservedSummaryState.rows = [];
+    updatePlayerObservationBadge();
+    return adminObservedSummaryState;
+  }
+
+  const { data: players, error: playersError } = await supabaseClient
+    .from("jugadores")
+    .select("id,equipo_id,activo")
+    .in("id", playerIds)
+    .eq("activo", true);
+
+  if (playersError) throw playersError;
+
+  const teamIds = [...new Set((players || []).map((player) => String(player.equipo_id || "")).filter(Boolean))];
+  const { data: teamsForSummary, error: teamsError } = teamIds.length
+    ? await supabaseClient
+      .from("equipos")
+      .select("id,division_id,activo")
+      .in("id", teamIds)
+      .eq("activo", true)
+    : { data: [], error: null };
+
+  if (teamsError) throw teamsError;
+
+  const playerTeamMap = new Map((players || []).map((player) => [String(player.id), String(player.equipo_id || "")]));
+  const teamDivisionMap = new Map((teamsForSummary || []).map((team) => [String(team.id), String(team.division_id || "")]));
+  const grouped = new Map();
+
+  pendingSanctions.forEach((sanction) => {
+    const teamId = playerTeamMap.get(String(sanction.jugador_id || ""));
+    const divisionId = teamDivisionMap.get(String(teamId || ""));
+    if (!divisionId) return;
+
+    const catalogEntry = getDivisionCatalogEntryById(divisionId);
+    const groupKey = `${catalogEntry.category}::${catalogEntry.division}`;
+    const current = grouped.get(groupKey) || {
+      category: catalogEntry.category,
+      division: catalogEntry.division,
+      observed: 0,
+      playerIds: new Set()
+    };
+    current.playerIds.add(String(sanction.jugador_id || ""));
+    current.observed = current.playerIds.size;
+    grouped.set(groupKey, current);
+  });
+
+  adminObservedSummaryState.loaded = true;
+  adminObservedSummaryState.rows = [...grouped.values()].map(({ playerIds, ...row }) => row);
+  adminObservedSummaryState.count = adminObservedSummaryState.rows.reduce((sum, row) => sum + row.observed, 0);
+  updatePlayerObservationBadge();
+  return adminObservedSummaryState;
 }
 
 function renderPlayerObservationSummary(observations) {
@@ -1274,17 +1514,27 @@ function getObservedPlayersCount(selectedTeamId = "") {
 
 function getAdminPlayerObservationMetricRows(selectedCategory = "", selectedDivision = "", selectedTeamId = "") {
   const observedCount = getObservedPlayersCount(selectedTeamId);
-  if (!observedCount) return [];
-
-  if (selectedCategory && selectedDivision) {
+  if (observedCount && selectedCategory && selectedDivision) {
     return [{ category: selectedCategory, division: selectedDivision, observed: observedCount }];
   }
 
+  if (adminObservedSummaryState.rows.length) {
+    if (selectedCategory && selectedDivision) {
+      return adminObservedSummaryState.rows.filter((row) =>
+        row.category === selectedCategory && row.division === selectedDivision
+      );
+    }
+
+    return adminObservedSummaryState.rows;
+  }
+
+  if (!observedCount) return [];
+
   const firstCategory = getAdminMetrics().categories[0];
   const firstDivision = firstCategory?.divisions[0];
-  if (!firstCategory || !firstDivision) return [];
-
-  return [{ category: firstCategory.name, division: firstDivision.name, observed: observedCount }];
+  return firstCategory && firstDivision
+    ? [{ category: firstCategory.name, division: firstDivision.name, observed: observedCount }]
+    : [];
 }
 
 function renderAdminPlayerObservationMetrics(selectedCategory = "", selectedDivision = "", selectedTeamId = "") {
@@ -1371,7 +1621,8 @@ function renderObservationReviewBody(observationKey, options = {}) {
   const selectedDivision = contentShell.querySelector("[data-admin-player-division]")?.value || getAdminMetrics().categories[0]?.divisions[0]?.name || "-";
   const resolution = observation.resolution || {};
 
-  setObservationModalHeading("Administrador", readOnlyResolution ? "Historial disciplinario" : "Resolución de observación");
+  const modalRoleLabel = readOnlyResolution && contentShell.querySelector(".delegate-players-table") ? "Delegado" : "Administrador";
+  setObservationModalHeading(modalRoleLabel, readOnlyResolution ? "Historial disciplinario" : "Resolución de observación");
   observationModalBody.innerHTML = `
     <div class="observation-review" data-observation-review="${escapeHtml(observationKey)}">
       <div class="observation-review-meta">
@@ -1431,14 +1682,15 @@ function renderObservationReviewBody(observationKey, options = {}) {
   autoResizeObservationTextareas();
 }
 
-function renderPlayerHistoryBody(playerKey) {
+function renderPlayerHistoryBody(playerKey, options = {}) {
+  const { readOnlyResolution = false } = options;
   const [teamId, number, ...nameParts] = String(playerKey || "").split("::");
   const team = getTeam(teamId);
   const player = team?.players.find((item) => item.number === Number(number) && item.name === nameParts.join("::"));
   const playerWithTeam = player && team ? { ...player, team } : null;
   const observations = playerWithTeam ? getPlayerObservationsForAdmin(playerWithTeam) : [];
 
-  setObservationModalHeading("Administrador", "Historial disciplinario");
+  setObservationModalHeading(readOnlyResolution ? "Delegado" : "Administrador", "Historial disciplinario");
 
   if (!playerWithTeam || !observations.length) {
     observationModalBody.innerHTML = `<div class="disciplinary-history-empty">No registra problemas disciplinarios</div>`;
@@ -1458,30 +1710,45 @@ function renderPlayerHistoryBody(playerKey) {
             <th>Fecha calendario</th>
             <th>Fecha fixture</th>
             <th>Ver</th>
-            <th>Editar resolución</th>
+            <th>${readOnlyResolution ? "Resolución" : "Editar resolución"}</th>
           </tr>
         </thead>
         <tbody>
-          ${observations.map((observation) => `
+          ${observations.map((observation) => {
+            const hasResolution = Boolean(observation.resolution);
+            return `
             <tr>
               <td>${escapeHtml(observation.calendarDate)}</td>
               <td>${escapeHtml(observation.fixtureDate)}</td>
               <td>
-                <button class="admin-observation-view" type="button" data-history-observation-view="${escapeHtml(observation.key)}">
-                  <i class="bi bi-eye-fill"></i>
-                  Ver
-                </button>
+                ${readOnlyResolution && hasResolution ? `
+                  <button class="admin-observation-view" type="button" disabled aria-disabled="true">
+                    <i class="bi bi-eye-slash-fill"></i>
+                    Ver
+                  </button>
+                ` : `
+                  <button class="admin-observation-view" type="button" data-history-observation-view="${escapeHtml(observation.key)}">
+                    <i class="bi bi-eye-fill"></i>
+                    Ver
+                  </button>
+                `}
               </td>
               <td>
-                ${observation.resolution ? `
-                  <button class="admin-observation-view" type="button" data-history-resolution-edit="${escapeHtml(observation.key)}">
-                    <i class="bi bi-pencil-fill"></i>
-                    Editar
+                ${hasResolution ? `
+                  <button class="admin-observation-view" type="button" data-history-${readOnlyResolution ? "resolution-view" : "resolution-edit"}="${escapeHtml(observation.key)}">
+                    <i class="bi ${readOnlyResolution ? "bi-eye-fill" : "bi-pencil-fill"}"></i>
+                    ${readOnlyResolution ? "Ver resolución" : "Editar"}
+                  </button>
+                ` : readOnlyResolution ? `
+                  <button class="admin-observation-view" type="button" disabled aria-disabled="true">
+                    <i class="bi bi-hourglass-split"></i>
+                    Ver resolución
                   </button>
                 ` : `<span class="admin-observation-empty">Sin resolución</span>`}
               </td>
             </tr>
-          `).join("")}
+          `;
+          }).join("")}
         </tbody>
       </table>
     </div>
@@ -1506,32 +1773,63 @@ function saveActiveObservationText() {
   }
 }
 
-function refreshCurrentPlayersTables() {
+async function refreshCurrentPlayersTables() {
   if (contentShell.querySelector("[data-admin-player-category]")) {
     const category = contentShell.querySelector("[data-admin-player-category]")?.value || "";
     const division = contentShell.querySelector("[data-admin-player-division]")?.value || "";
     const teamId = contentShell.querySelector("[data-admin-player-team]")?.value || "";
     const searchTerm = getEffectiveSearchTerm(contentShell.querySelector("[data-admin-player-search]")?.value || "");
     const onlyWithObservations = contentShell.querySelector("[data-admin-player-observations-only]")?.checked || false;
+    if (category && division) {
+      await loadAdminTeamsForFilters(category, division);
+    }
     contentShell.innerHTML = renderAdminPlayersView(category, division, teamId, searchTerm, 1, onlyWithObservations);
     return;
   }
 
   if (sidebarContent.dataset.currentDelegateTeam && contentShell.querySelector(".delegate-players-table")) {
+    const currentTeam = getTeam(sidebarContent.dataset.currentDelegateTeam);
+    if (currentTeam?.division_id) {
+      await loadDivisionDataFromSupabase(activeDivisionId || currentTeam.division_id);
+    }
     const team = getTeam(sidebarContent.dataset.currentDelegateTeam);
     if (team) contentShell.innerHTML = renderDelegatePlayers(team);
   }
 }
 
-function saveObservationResolution() {
+async function saveObservationResolution() {
   const review = observationModalBody.querySelector("[data-observation-review]");
   if (!review) return;
 
   const observationKey = review.dataset.observationReview;
   const player = getPlayerFromObservationKey(observationKey);
+  const observation = player ? getPlayerObservationsForAdmin(player).find((item) => item.key === observationKey) : null;
   const detail = observationModalBody.querySelector("[data-resolution-detail]")?.value.trim() || "";
   const suspensionMatches = Math.max(Number(observationModalBody.querySelector("[data-resolution-suspension]")?.value) || 0, 0);
   const status = observationModalBody.querySelector("[data-resolution-status]")?.value || "Habilitado";
+
+  if (typeof supabaseClient === "undefined") {
+    throw new Error("Supabase no está disponible.");
+  }
+
+  if (!adminSettingsSession?.usuario || !adminSettingsSession?.password) {
+    throw new Error("La sesión del administrador no está disponible. Cerrá sesión e ingresá nuevamente.");
+  }
+
+  if (!observation?.sanctionId) {
+    throw new Error("La observación todavía no está persistida en Supabase. Primero guardá el detalle del partido desde el perfil veedor.");
+  }
+
+  const { error } = await supabaseClient.rpc("resolver_observacion_jugador_admin", {
+    p_usuario: adminSettingsSession.usuario,
+    p_password: adminSettingsSession.password,
+    p_sancion_id: observation.sanctionId,
+    p_resolucion_detalle: detail,
+    p_fechas_suspension: suspensionMatches,
+    p_estado_jugador: status
+  });
+
+  if (error) throw error;
 
   playerObservationResolutions[observationKey] = {
     detail,
@@ -1545,7 +1843,37 @@ function saveObservationResolution() {
   if (observationModal) {
     observationModal.hide();
   }
-  refreshCurrentPlayersTables();
+  await refreshCurrentPlayersTables();
+}
+
+async function markDelegateResolutionNotificationAsRead(observationKey = "") {
+  const { observation } = getObservationContext(observationKey);
+
+  if (!observation?.sanctionId || !observation.resolution) return;
+  if (observation.resolution.notifiedDelegate === true) return;
+  if (typeof supabaseClient === "undefined") return;
+  if (!delegateSettingsSession?.usuario || !delegateSettingsSession?.password) return;
+
+  const { error } = await supabaseClient.rpc("marcar_resolucion_notificada_delegado", {
+    p_usuario: delegateSettingsSession.usuario,
+    p_password: delegateSettingsSession.password,
+    p_sancion_id: observation.sanctionId
+  });
+
+  if (error) throw error;
+
+  const currentTeam = getTeam(sidebarContent.dataset.currentDelegateTeam);
+  if (currentTeam?.division_id) {
+    await loadDivisionDataFromSupabase(activeDivisionId || currentTeam.division_id);
+  }
+
+  const updatedTeam = getTeam(sidebarContent.dataset.currentDelegateTeam);
+  if (updatedTeam) {
+    updateDelegatePlayerNotificationBadge(updatedTeam);
+    if (contentShell.querySelector(".delegate-players-table")) {
+      contentShell.innerHTML = renderDelegatePlayers(updatedTeam);
+    }
+  }
 }
 
 function getBadgeStyle(team) {
@@ -2414,6 +2742,81 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function getEscapedSelectorId(id = "") {
+  return window.CSS?.escape ? window.CSS.escape(id) : String(id).replace(/["\\]/g, "\\$&");
+}
+
+function getLabelForRequiredField(field, form) {
+  if (field.id) {
+    const labelByFor = form.querySelector(`label[for="${getEscapedSelectorId(field.id)}"]`)
+      || document.querySelector(`label[for="${getEscapedSelectorId(field.id)}"]`);
+    if (labelByFor) return labelByFor;
+  }
+
+  return field.closest("label");
+}
+
+function getFormSubmitButton(form) {
+  return [...form.querySelectorAll('button[type="submit"], .btn-login-submit')]
+    .filter((button) => button.offsetParent !== null || button.type === "submit")
+    .at(-1);
+}
+
+function addRequiredMarkerToLabel(label) {
+  const textTarget = label.classList.contains("admin-filter-field")
+    ? label.querySelector(":scope > span") || label
+    : label;
+  textTarget.insertAdjacentHTML("beforeend", ' <span class="required-marker" data-required-marker aria-hidden="true">*</span>');
+}
+
+function syncRequiredFieldIndicators(scope = document) {
+  const scopedForms = [];
+  if (scope.matches?.("form")) scopedForms.push(scope);
+  scopedForms.push(...(scope.querySelectorAll?.("form") || []));
+
+  const forms = scopedForms.filter((form) =>
+    !form.matches("#loginForm")
+    && (
+      form.closest(".frame-form-modal")
+      || form.matches(".team-create-form")
+      || form.matches(".admin-category-form")
+    )
+  );
+
+  forms.forEach((form) => {
+    form.querySelectorAll("[data-required-marker]").forEach((marker) => marker.remove());
+
+    const requiredFields = [...form.querySelectorAll("input[required], select[required], textarea[required]")]
+      .filter((field) => field.type !== "hidden");
+
+    requiredFields.forEach((field) => {
+      const label = getLabelForRequiredField(field, form);
+      if (!label) return;
+      addRequiredMarkerToLabel(label);
+    });
+
+    let note = form.querySelector("[data-required-fields-note]");
+    if (!requiredFields.length) {
+      note?.remove();
+      return;
+    }
+
+    if (!note) {
+      note = document.createElement("p");
+      note.className = "required-fields-note";
+      note.dataset.requiredFieldsNote = "true";
+    }
+
+    note.textContent = REQUIRED_FIELDS_NOTE_TEXT;
+    const submitButton = getFormSubmitButton(form);
+    if (submitButton) {
+      submitButton.before(note);
+    } else {
+      form.append(note);
+    }
+  });
+}
+
 function renderAboutContent() {
   const activeIndex = 0;
   const carouselItems = aboutMembers.map((member, index) => `
@@ -2720,6 +3123,7 @@ function getAdminMetrics() {
 
 function invalidateAdminMetrics() {
   adminMetricsState = null;
+  resetAdminObservedSummary();
 }
 
 async function loadAdminMetricsFromSupabase() {
@@ -6223,6 +6627,7 @@ async function enterDelegateView(team) {
           <button class="division-link" type="button" data-delegate-players>
             <i class="bi bi-people-fill"></i>
             Jugadores
+            ${renderDelegatePlayersBadge(team)}
           </button>
           <button class="division-link" type="button" data-help-role="delegate">
             <i class="bi bi-question-circle-fill"></i>
@@ -6245,6 +6650,7 @@ async function enterDelegateView(team) {
 async function enterAdminView() {
   try {
     await loadAdminMetricsFromSupabase();
+    await loadAdminObservedSummaryFromSupabase();
   } catch (error) {
     console.error("Error al cargar métricas del administrador:", error);
   }
@@ -6446,6 +6852,7 @@ sidebarContent.addEventListener("click", async (event) => {
     showContentLoader(actionName, async () => {
       if (actionName === "Dashboard") {
         await loadAdminMetricsFromSupabase();
+        await loadAdminObservedSummaryFromSupabase();
         contentShell.innerHTML = renderAdminHome();
         return;
       }
@@ -6462,6 +6869,7 @@ sidebarContent.addEventListener("click", async (event) => {
       }
 
       if (actionName === "Jugadores") {
+        await loadAdminObservedSummaryFromSupabase();
         contentShell.innerHTML = renderAdminPlayersView();
         return;
       }
@@ -7265,7 +7673,9 @@ contentShell.addEventListener("click", async (event) => {
 
   if (playerHistoryButton) {
     activeObservationButton = null;
-    renderPlayerHistoryBody(playerHistoryButton.dataset.playerHistory);
+    renderPlayerHistoryBody(playerHistoryButton.dataset.playerHistory, {
+      readOnlyResolution: Boolean(playerHistoryButton.closest(".delegate-players-table"))
+    });
     const observationModal = bootstrap.Modal.getOrCreateInstance(observationModalElement);
     observationModal.show();
     return;
@@ -7591,6 +8001,7 @@ observationModalBody?.addEventListener("click", async (event) => {
   const saveObservation = event.target.closest("#saveObservation");
   const saveResolution = event.target.closest("[data-save-observation-resolution]");
   const historyObservationView = event.target.closest("[data-history-observation-view]");
+  const historyResolutionView = event.target.closest("[data-history-resolution-view]");
   const historyResolutionEdit = event.target.closest("[data-history-resolution-edit]");
 
   if (saveObservation) {
@@ -7613,12 +8024,37 @@ observationModalBody?.addEventListener("click", async (event) => {
     });
     if (!confirmed) return;
 
-    saveObservationResolution();
+    saveResolution.disabled = true;
+    saveResolution.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando`;
+
+    try {
+      await saveObservationResolution();
+    } catch (error) {
+      console.error("Error al guardar la resolución disciplinaria:", error);
+      saveResolution.disabled = false;
+      saveResolution.innerHTML = `<i class="bi bi-check2-circle"></i> Guardar resolución`;
+      alert(`No se pudo guardar la resolución: ${error.message || "Error desconocido"}`);
+    }
     return;
   }
 
   if (historyObservationView) {
     renderObservationReviewBody(historyObservationView.dataset.historyObservationView, { readOnlyResolution: true });
+    return;
+  }
+
+  if (historyResolutionView) {
+    const observationKey = historyResolutionView.dataset.historyResolutionView;
+    historyResolutionView.disabled = true;
+    historyResolutionView.innerHTML = `<i class="bi bi-hourglass-split"></i> Abriendo`;
+
+    try {
+      await markDelegateResolutionNotificationAsRead(observationKey);
+    } catch (error) {
+      console.warn("No se pudo marcar la resolución como leída:", error);
+    }
+
+    renderObservationReviewBody(observationKey, { readOnlyResolution: true });
     return;
   }
 
@@ -8375,6 +8811,17 @@ loginForm.addEventListener("submit", async (event) => {
   }
   showLoginError("Usuario o contraseña incorrectos.");
 });
+
+syncRequiredFieldIndicators();
+document.querySelectorAll(".frame-form-modal").forEach((modal) => {
+  modal.addEventListener("show.bs.modal", () => syncRequiredFieldIndicators(modal));
+});
+
+if (contentShell) {
+  const requiredFieldsObserver = new MutationObserver(() => syncRequiredFieldIndicators(contentShell));
+  requiredFieldsObserver.observe(contentShell, { childList: true, subtree: true });
+}
+
 // ============================================================
 // FRAME0 - PRUEBA DE CONEXIÓN CON SUPABASE
 // Consulta la tabla "categorias" y muestra los datos en consola.
