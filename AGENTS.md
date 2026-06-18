@@ -100,10 +100,24 @@ Reglas del login:
 ## Equipos y home
 - No mostrar datos hardcodeados si ya existen datos de Supabase.
 - Los campos publicos de equipo persisten en `equipos`: `abreviatura`, `nombre_corto`, `descripcion`, `color_terciario`.
+- En vistas publicas, carruseles, tabla de posiciones y detalle de equipo, usar `nombre_corto` normalizado como `team.shortName` para el texto visible del equipo. Usar el nombre legal solo como dato secundario o fallback.
 - Si el delegado modifica `Mi equipo`, el cambio debe guardarse en Supabase y luego recargarse desde Supabase para impactar en home y otras vistas.
 - La migracion `013_add_team_public_profile_fields.sql` agrega esos campos.
 - La escritura del perfil de equipo delegado debe pasar por `guardar_equipo_delegado`.
 - Altas, ediciones, bajas y reactivaciones de jugadores desde delegado deben pasar por RPCs de delegado que validen la relacion `usuarios_app.id -> delegados.usuario_id -> delegados.equipo_id`.
+
+## Detalle publico de equipo
+- El titulo principal del detalle de equipo debe estar centrado y mostrar `team.shortName` (`equipos.nombre_corto` en Supabase), con fallback a nombre legal o `team.name`.
+- No mostrar el escudo junto al titulo principal ni textos auxiliares como "Datos cargados desde Supabase".
+- La tarjeta de informacion del equipo conserva el nombre legal, abreviatura, delegado y contacto cuando existan.
+- La remera del equipo debe mantenerse visualmente proporcionada, con mangas simetricas y colores tomados de `color_principal`, `color_secundario` y `color_terciario`.
+- Las metricas del detalle de equipo se muestran como una tarjeta informativa sobria y minimalista, con estilo de ficha/pasaporte:
+  - Hoja izquierda: titulo `Partidos`, subtitulo `Jugados` y valor de partidos disputados.
+  - Debajo, tres columnas alineadas: `Ganados`, `Empatados`, `Perdidos`, cada una con su valor.
+  - Hoja derecha: titulo `Detalle`, subtitulo `Ultimo partido`, rival por nombre corto y resultado coloreado segun victoria, empate o derrota.
+  - Luego `Proximo partido`, con rival por nombre corto de la proxima fecha a disputar.
+- Para `Ultimo partido`, usar el ultimo partido con resultado cargado. Para `Proximo partido`, usar el primer partido pendiente/programado por fecha; si no hay fecha valida, usar el primer pendiente del fixture.
+- Mantener este bloque sobrio: bordes finos, divisores discretos, fondo limpio, etiquetas pequenas y valores debajo. Evitar texturas, fondos cargados o iconografia dominante.
 
 ## Roles y navegacion
 - No romper los roles existentes: publico, administrador, delegado y veedor.
