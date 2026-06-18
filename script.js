@@ -2182,16 +2182,32 @@ function getTeamCarouselClass(index, activeIndex) {
 function renderTeamCarousel() {
   teamCarousel.dataset.teamCarouselActive = String(teamCarouselActiveIndex);
   if (!teams.length) {
+    teamCarousel.dataset.teamCarouselSignature = "";
     teamCarousel.innerHTML = `<div class="admin-empty-row">Sin equipos cargados en Supabase para esta división.</div>`;
     return;
   }
 
-  teamCarousel.innerHTML = teams.map((team, index) => `
-    <button class="team-card ${getTeamCarouselClass(index, teamCarouselActiveIndex)} ${team.id === selectedTeamId ? "selected" : ""}" type="button" data-team-id="${team.id}" data-team-carousel-index="${index}" aria-hidden="${getTeamCarouselClass(index, teamCarouselActiveIndex) === "hidden" ? "true" : "false"}">
-      ${renderTeamBadge(team)}
-      <span>${team.shortName}</span>
-    </button>
-  `).join("");
+  const carouselSignature = teams.map((team) => team.id).join("|");
+  const shouldRebuild = teamCarousel.dataset.teamCarouselSignature !== carouselSignature
+    || teamCarousel.querySelectorAll("[data-team-id]").length !== teams.length;
+
+  if (shouldRebuild) {
+    teamCarousel.dataset.teamCarouselSignature = carouselSignature;
+    teamCarousel.innerHTML = teams.map((team, index) => `
+      <button class="team-card" type="button" data-team-id="${team.id}" data-team-carousel-index="${index}">
+        ${renderTeamBadge(team)}
+        <span>${team.shortName}</span>
+      </button>
+    `).join("");
+  }
+
+  teamCarousel.querySelectorAll("[data-team-id]").forEach((button) => {
+    const index = Number(button.dataset.teamCarouselIndex || 0);
+    const team = teams[index];
+    const carouselClass = getTeamCarouselClass(index, teamCarouselActiveIndex);
+    button.className = `team-card ${carouselClass} ${team?.id === selectedTeamId ? "selected" : ""}`.trim();
+    button.setAttribute("aria-hidden", carouselClass === "hidden" ? "true" : "false");
+  });
 }
 
 function moveTeamCarousel(direction) {
@@ -2216,9 +2232,10 @@ function getTeamStanding(teamId) {
 
 function renderShirt(team) {
   const [primary, secondary, accent = "#ffffff"] = team.shirtColors;
+  const displayName = team.shortName || team.name;
 
   return `
-    <div class="shirt-preview" style="--shirt-primary: ${primary}; --shirt-secondary: ${secondary}; --shirt-accent: ${accent};" aria-label="Camiseta de ${team.name}">
+    <div class="shirt-preview" style="--shirt-primary: ${primary}; --shirt-secondary: ${secondary}; --shirt-accent: ${accent};" aria-label="Camiseta de ${escapeHtml(displayName)}">
       <div class="shirt-sleeve left"></div>
       <div class="shirt-body"></div>
       <div class="shirt-sleeve right"></div>
@@ -2327,6 +2344,43 @@ function getMatchResultClass(match, teamId) {
   return won ? "match-win" : "match-loss";
 }
 
+function getTeamMatchPassport(teamId) {
+  const matches = getSortedTeamMatches(teamId);
+  const finishedMatches = matches.filter((match) => match.homeGoals !== null && match.awayGoals !== null);
+  const lastMatch = finishedMatches.at(-1) || null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const nextScheduled = matches.find((match) => {
+    if (match.homeGoals !== null || match.awayGoals !== null || !match.fechaHora) return false;
+    const matchDate = new Date(match.fechaHora);
+    if (Number.isNaN(matchDate.getTime())) return false;
+    matchDate.setHours(0, 0, 0, 0);
+    return matchDate >= today;
+  });
+  const nextMatch = nextScheduled || matches.find((match) => match.homeGoals === null && match.awayGoals === null) || null;
+
+  const getRivalName = (match) => {
+    if (!match) return "Sin datos";
+    const rival = getTeam(match.home === teamId ? match.away : match.home);
+    return rival?.shortName || rival?.name || "Sin datos";
+  };
+
+  const getTeamScore = (match) => {
+    if (!match || match.homeGoals === null || match.awayGoals === null) return "-";
+    return match.home === teamId
+      ? `${match.homeGoals} - ${match.awayGoals}`
+      : `${match.awayGoals} - ${match.homeGoals}`;
+  };
+
+  return {
+    lastRival: getRivalName(lastMatch),
+    lastScore: getTeamScore(lastMatch),
+    lastResultClass: lastMatch ? getMatchResultClass(lastMatch, teamId) : "match-pending",
+    nextRival: getRivalName(nextMatch)
+  };
+}
+
 function renderTeamMatches(teamId, selectedRound = "") {
   const matches = getSortedTeamMatches(teamId)
     .filter((match) => !selectedRound || String(match.dateNumber) === String(selectedRound));
@@ -2378,8 +2432,7 @@ function renderTeamDetail() {
   }
 
   const standing = getTeamStanding(selectedTeamId);
-  const goalsAgainst = standing.gc || 0;
-  const goalsFor = standing.gf || 0;
+  const matchPassport = getTeamMatchPassport(team.id);
   const teamRounds = [...new Set(getSortedTeamMatches(team.id).map((match) => String(match.dateNumber)))];
   if (!teamRounds.includes(String(selectedTeamFixtureRound))) {
     selectedTeamFixtureRound = getDefaultTeamFixtureRound(team.id);
@@ -2391,11 +2444,8 @@ function renderTeamDetail() {
       Volver
     </button>
     <div class="team-detail-header">
-      ${renderTeamBadge(team)}
       <div>
-        <p class="section-kicker mb-1">Información del equipo</p>
-        <h2>${team.legalName}</h2>
-        <p>${team.description}</p>
+        <h2>${escapeHtml(team.shortName || team.legalName || team.name)}</h2>
       </div>
     </div>
 
@@ -2422,14 +2472,38 @@ function renderTeamDetail() {
       </div>
     </section>
 
-    <section class="team-metrics">
-      <div><span>Jugadores</span><strong>${getActivePlayers(team).length}</strong></div>
-      <div><span>PJ</span><strong>${standing.pj}</strong></div>
-      <div><span>PG</span><strong>${standing.g}</strong></div>
-      <div><span>PE</span><strong>${standing.e}</strong></div>
-      <div><span>PP</span><strong>${standing.p}</strong></div>
-      <div><span>GF</span><strong>${goalsFor}</strong></div>
-      <div><span>GC</span><strong>${goalsAgainst}</strong></div>
+    <section class="team-metrics team-detail-metrics team-passport-metrics" aria-label="Pasaporte de partidos del equipo">
+      <article class="team-passport-page team-passport-page-main">
+        <div class="team-passport-title-row">
+          <h3>Partidos</h3>
+          <i class="bi bi-passport" aria-hidden="true"></i>
+        </div>
+        <div class="team-passport-main-stat">
+          <span>Jugados</span>
+          <strong>${standing.pj}</strong>
+        </div>
+        <dl class="team-passport-results-grid">
+          <div><dt>Ganados</dt><dd>${standing.g}</dd></div>
+          <div><dt>Empatados</dt><dd>${standing.e}</dd></div>
+          <div><dt>Perdidos</dt><dd>${standing.p}</dd></div>
+        </dl>
+      </article>
+
+      <article class="team-passport-page team-passport-page-detail">
+        <div class="team-passport-title-row">
+          <h3>Detalle</h3>
+          <i class="bi bi-journal-text" aria-hidden="true"></i>
+        </div>
+        <div class="team-passport-detail-block">
+          <span>Último partido</span>
+          <strong>${escapeHtml(matchPassport.lastRival)}</strong>
+          <small class="team-match-result ${matchPassport.lastResultClass}">Resultado ${escapeHtml(matchPassport.lastScore)}</small>
+        </div>
+        <div class="team-passport-detail-block">
+          <span>Próximo partido</span>
+          <strong>${escapeHtml(matchPassport.nextRival)}</strong>
+        </div>
+      </article>
     </section>
 
     <div class="team-detail-grid">
@@ -2529,14 +2603,16 @@ function renderStandings() {
   standingsBody.innerHTML = standings.map((row, index) => {
     const team = getTeam(row.teamId);
     if (!team) return "";
+    const standingsTeamName = team.shortName || team.name;
+    const standingsTeamTitle = team.legalName || team.name;
 
     return `
       <tr class="${index === 0 ? "standing-leader" : ""} ${index === standings.length - 1 ? "standing-relegation" : ""}">
         <td class="standings-rank">${index + 1}</td>
         <td>
-          <a href="#" class="team-table-link" data-team-id="${team.id}" title="${team.name}" aria-label="Ver información de ${team.name}">
+          <a href="#" class="team-table-link" data-team-id="${team.id}" title="${escapeHtml(standingsTeamTitle)}" aria-label="Ver información de ${escapeHtml(standingsTeamName)}">
             ${renderTeamBadge(team, "small")}
-            ${truncateTeamName(team.name)}
+            ${escapeHtml(truncateTeamName(standingsTeamName))}
           </a>
         </td>
         <td>${row.pts}</td>
