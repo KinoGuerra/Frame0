@@ -2429,17 +2429,32 @@ select {
   gap: 0.45rem;
 }
 
+.event-actions {
+  padding: 0.22rem;
+  border: 1px solid rgba(110, 120, 132, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
 .event-btn,
 .observation-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(110, 120, 132, 0.26);
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(110, 120, 132, 0.24);
   border-radius: 6px;
   background: #ffffff;
   color: #687386;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.event-btn:hover,
+.event-btn:focus,
+.observation-btn:hover,
+.observation-btn:focus {
+  transform: translateY(-1px);
 }
 
 .event-btn.player-of-match {
@@ -2462,6 +2477,11 @@ select {
   box-shadow: 0 0 0 3px rgba(29, 183, 255, 0.18);
 }
 
+.event-btn.player-of-match.is-selected {
+  background: #0a66d8;
+  color: #ffffff;
+}
+
 .event-btn.yellow-card.is-selected {
   background: #f4c430;
   color: #111827;
@@ -2473,11 +2493,22 @@ select {
 
 .goal-counter {
   min-width: 136px;
+  padding: 0.22rem;
+  border: 1px solid rgba(110, 120, 132, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .goal-counter strong {
-  min-width: 20px;
+  display: inline-flex;
+  min-width: 26px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #eef4fb;
   color: #102033;
+  font-weight: 950;
 }
 
 .goal-ball-icon {
@@ -3370,6 +3401,12 @@ body.admin-view .floating-mascot {
   box-shadow: none;
 }
 
+.team-detail-metrics .team-passport-main-stat,
+.team-detail-metrics .team-passport-detail-block,
+.team-detail-metrics .team-passport-results-grid div {
+  padding-top: 0.92rem;
+}
+
 .team-passport-main-stat strong {
   display: block;
   margin-top: 0.34rem;
@@ -4066,6 +4103,20 @@ body.dark-mode .team-passport-detail-block,
 body.dark-mode .team-passport-results-grid div {
   border-color: rgba(255, 255, 255, 0.12);
   background: transparent;
+}
+
+body.dark-mode .team-detail-metrics .team-passport-title-row,
+body.dark-mode .team-detail-metrics .team-passport-main-stat,
+body.dark-mode .team-detail-metrics .team-passport-detail-block,
+body.dark-mode .team-detail-metrics .team-passport-results-grid,
+body.dark-mode .team-detail-metrics .team-passport-results-grid div {
+  background: transparent !important;
+  box-shadow: none;
+}
+
+body.dark-mode .team-detail-metrics .team-passport-results-grid div {
+  border-top-color: rgba(255, 255, 255, 0.12);
+  border-left-color: rgba(255, 255, 255, 0.12);
 }
 
 body.dark-mode .team-passport-results-grid {
@@ -5738,9 +5789,31 @@ body.dark-mode .score-control strong {
   color: #050505;
 }
 
-body.dark-mode .event-btn.player-of-match,
-body.dark-mode .event-btn.yellow-card,
+body.dark-mode .event-actions,
+body.dark-mode .goal-counter {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+body.dark-mode .goal-counter strong {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+body.dark-mode .event-btn.player-of-match {
+  color: #8fdcff;
+}
+
+body.dark-mode .event-btn.yellow-card {
+  color: #ffd84d;
+}
+
 body.dark-mode .event-btn.red-card {
+  color: #ff7b8a;
+}
+
+body.dark-mode .event-btn.player-of-match.is-selected {
+  background: #0a66d8;
   color: #ffffff;
 }
 
@@ -5757,6 +5830,12 @@ body.dark-mode .event-btn.red-card.is-selected {
 body.dark-mode .observation-btn.is-selected {
   background: #f4c430;
   color: #111317;
+}
+
+body.dark-mode .observation-btn.has-observation {
+  border-color: rgba(244, 196, 48, 0.55);
+  background: rgba(244, 196, 48, 0.2);
+  color: #ffe08a;
 }
 
 body.dark-mode .player-status.habilitado {
