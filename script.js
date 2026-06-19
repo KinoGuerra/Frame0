@@ -202,22 +202,26 @@ const aboutMembers = [
   {
     name: "Ignacio Cerutti",
     role: "Product Manager",
-    image: "assets/about-ignacio.png"
+    image: "assets/about-ignacio.png",
+    visual: "planning"
   },
   {
     name: "Jorge Guerra",
     role: "Data Analytics",
-    image: "assets/about-jorge.png"
+    image: "assets/about-jorge.png",
+    visual: "data"
   },
   {
     name: "Juan Pablo Valdivia",
     role: "Developer",
-    image: "assets/about-juan.png"
+    image: "assets/about-juan.png",
+    visual: "software"
   },
   {
     name: "Leonel Salguero",
     role: "Tester",
-    image: "assets/about-leonel.png"
+    image: "assets/about-leonel.png",
+    visual: "testing-infra"
   }
 ];
 
@@ -957,12 +961,18 @@ async function cargarMenuCategorias() {
 
 function getAboutCarouselClass(index, activeIndex) {
   const total = aboutMembers.length;
+  if (!total) return "hidden";
+  const offset = ((index - activeIndex + total + Math.floor(total / 2)) % total) - Math.floor(total / 2);
   const previousIndex = (activeIndex - 1 + total) % total;
   const nextIndex = (activeIndex + 1) % total;
 
   if (index === activeIndex) return "active";
   if (index === previousIndex) return "previous";
   if (index === nextIndex) return "next";
+  if (offset === -2) return "far-previous";
+  if (offset === 2) return "far-next";
+  if (offset === -3) return "edge-previous";
+  if (offset === 3) return "edge-next";
   return "hidden";
 }
 
@@ -3115,6 +3125,57 @@ async function generateLocalAiReportFallback(warning = "") {
   });
 }
 
+function renderAboutContextArt(member, index, activeIndex) {
+  const isActive = index === activeIndex;
+  const visual = member.visual || "software";
+  const contextClass = `about-context about-context-${visual} ${isActive ? "active" : ""}`.trim();
+
+  const templates = {
+    planning: `
+      <div class="about-context-label">Planificación</div>
+      <div class="about-plan-board">
+        <span></span><span></span><span></span>
+        <i class="bi bi-check2"></i>
+      </div>
+      <div class="about-plan-lines">
+        <span></span><span></span><span></span>
+      </div>
+    `,
+    data: `
+      <div class="about-context-label">Análisis de datos</div>
+      <div class="about-data-chart">
+        <span style="--bar-height: 42%;"></span>
+        <span style="--bar-height: 68%;"></span>
+        <span style="--bar-height: 54%;"></span>
+        <span style="--bar-height: 86%;"></span>
+      </div>
+      <div class="about-data-dots"><span></span><span></span><span></span></div>
+    `,
+    "testing-infra": `
+      <div class="about-context-label">Testing & infra</div>
+      <div class="about-pipeline">
+        <span><i class="bi bi-check2"></i></span>
+        <span><i class="bi bi-hdd-network"></i></span>
+        <span><i class="bi bi-shield-check"></i></span>
+      </div>
+      <div class="about-scan-line"></div>
+    `,
+    software: `
+      <div class="about-context-label">Desarrollo</div>
+      <div class="about-code-window">
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <div class="about-terminal-cursor"></div>
+    `
+  };
+
+  return `
+    <div class="${contextClass}" data-about-context-index="${index}" data-about-context-visual="${escapeHtml(visual)}" aria-hidden="true">
+      ${templates[visual] || templates.software}
+    </div>
+  `;
+}
+
 function renderAboutContent() {
   const activeIndex = 0;
   const carouselItems = aboutMembers.map((member, index) => `
@@ -3122,6 +3183,7 @@ function renderAboutContent() {
       <img src="${member.image}" alt="${member.name} - ${member.role}" loading="${index === activeIndex ? "eager" : "lazy"}">
     </article>
   `).join("");
+  const contextItems = aboutMembers.map((member, index) => renderAboutContextArt(member, index, activeIndex)).join("");
 
   return `
     <section class="public-info-panel about-panel" data-about-carousel data-about-active="0">
@@ -3129,6 +3191,9 @@ function renderAboutContent() {
         <p class="section-kicker mb-2">Nosotros</p>
       </div>
       <div class="about-hero">
+        <div class="about-context-layer">
+          ${contextItems}
+        </div>
         <h3>Somos TheBlackListSystem</h3>
       </div>
 
@@ -3160,6 +3225,11 @@ function updateAboutCarousel(direction) {
     const itemIndex = Number(item.dataset.aboutIndex);
     item.className = `about-member-card ${getAboutCarouselClass(itemIndex, nextIndex)}`;
     item.setAttribute("aria-hidden", itemIndex === nextIndex ? "false" : "true");
+  });
+  carousel.querySelectorAll("[data-about-context-index]").forEach((item) => {
+    const itemIndex = Number(item.dataset.aboutContextIndex);
+    const visual = item.dataset.aboutContextVisual || "software";
+    item.className = `about-context about-context-${visual} ${itemIndex === nextIndex ? "active" : ""}`.trim();
   });
 }
 
