@@ -22,6 +22,9 @@ const loginErrorMessage = document.querySelector("#loginErrorMessage");
 const loginRetryButton = document.querySelector("[data-login-retry]");
 const openLoginButton = document.querySelector("[data-bs-target='#loginModal']");
 const sidebarContent = document.querySelector("#sidebarContent");
+const sidebarPanel = document.querySelector("#sidebarPanel");
+const mobileMenuToggle = document.querySelector("[data-mobile-menu-toggle]");
+const mobileMenuBackdrop = document.querySelector("[data-mobile-menu-backdrop]");
 const contentShell = document.querySelector("#contentShell");
 const initialSidebarContent = sidebarContent.innerHTML;
 const initialTournamentCarouselContent = tournamentCarousel?.innerHTML || "";
@@ -111,6 +114,45 @@ const MAX_HOME_CAROUSEL_IMAGES = 3;
 const HOME_CAROUSEL_RECOMMENDED_SIZE = "1920 x 720 px";
 const HOME_CAROUSEL_MAX_WIDTH = 1920;
 const HOME_CAROUSEL_MAX_HEIGHT = 720;
+const mobileMenuMedia = window.matchMedia("(max-width: 991.98px)");
+
+function getMobileMenuFocusableElements() {
+  if (!sidebarPanel) return [];
+
+  return [...sidebarPanel.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")]
+    .filter((element) => element.getClientRects().length > 0);
+}
+
+function openMobileMenu() {
+  if (!mobileMenuMedia.matches || !mobileMenuToggle || !sidebarPanel) return;
+
+  document.body.classList.add("mobile-menu-open");
+  mobileMenuToggle.setAttribute("aria-expanded", "true");
+  mobileMenuToggle.setAttribute("aria-label", "Cerrar menú");
+  window.requestAnimationFrame(() => getMobileMenuFocusableElements()[0]?.focus());
+}
+
+function closeMobileMenu({ restoreFocus = true } = {}) {
+  if (!mobileMenuToggle) return;
+
+  const wasOpen = document.body.classList.contains("mobile-menu-open");
+  document.body.classList.remove("mobile-menu-open");
+  mobileMenuToggle.setAttribute("aria-expanded", "false");
+  mobileMenuToggle.setAttribute("aria-label", "Abrir menú");
+
+  if (wasOpen && restoreFocus && mobileMenuMedia.matches) {
+    mobileMenuToggle.focus();
+  }
+}
+
+function toggleMobileMenu() {
+  if (document.body.classList.contains("mobile-menu-open")) {
+    closeMobileMenu();
+    return;
+  }
+
+  openMobileMenu();
+}
 const adminCategoriesState = {
   includeInactive: false,
   items: [],
@@ -7406,6 +7448,42 @@ async function enterObserverView() {
 
 document.querySelector(".frame-logo").addEventListener("click", showHome);
 
+mobileMenuToggle?.addEventListener("click", toggleMobileMenu);
+mobileMenuBackdrop?.addEventListener("click", () => closeMobileMenu());
+
+document.addEventListener("keydown", (event) => {
+  if (!document.body.classList.contains("mobile-menu-open")) return;
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeMobileMenu();
+    return;
+  }
+
+  if (event.key !== "Tab") return;
+
+  const focusableElements = getMobileMenuFocusableElements();
+  if (!focusableElements.length) {
+    event.preventDefault();
+    return;
+  }
+
+  const firstElement = focusableElements[0];
+  const lastElement = focusableElements[focusableElements.length - 1];
+
+  if (event.shiftKey && document.activeElement === firstElement) {
+    event.preventDefault();
+    lastElement.focus();
+  } else if (!event.shiftKey && document.activeElement === lastElement) {
+    event.preventDefault();
+    firstElement.focus();
+  }
+});
+
+mobileMenuMedia.addEventListener("change", (event) => {
+  if (!event.matches) closeMobileMenu({ restoreFocus: false });
+});
+
 document.querySelector("#floatingMascotWhatsapp")?.addEventListener("click", (event) => {
   if (event.currentTarget.getAttribute("href") === "#") {
     event.preventDefault();
@@ -7431,6 +7509,11 @@ sidebarContent.addEventListener("click", async (event) => {
   const helpButton = event.target.closest("[data-help-role]");
   const divisionButton = event.target.closest("[data-division]");
   const categoryToggleButton = event.target.closest("[data-category-toggle]");
+  const mobileNavigationButton = event.target.closest("[data-division], [data-public-page], [data-delegate-home], [data-delegate-team], [data-delegate-players], [data-observer-matches], [data-admin-action], [data-help-role], [data-admin-logout], [data-bs-target='#loginModal']");
+
+  if (mobileNavigationButton && mobileMenuMedia.matches) {
+    closeMobileMenu();
+  }
 
   if (logoutButton) {
     event.preventDefault();
