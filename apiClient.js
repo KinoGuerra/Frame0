@@ -106,22 +106,6 @@ function getUsernameFromLogin(login) {
   return normalizedLogin.includes("@") ? normalizedLogin.split("@")[0] : normalizedLogin;
 }
 
-async function getCurrentSession() {
-  const { data, error } = await getSupabaseClient().auth.getSession();
-  if (error) throw error;
-  return data?.session || null;
-}
-
-async function requireAuthenticatedSession() {
-  const session = await getCurrentSession();
-
-  if (!session?.user?.id) {
-    throw new Error("Necesit?s iniciar sesi?n con Supabase para guardar cambios.");
-  }
-
-  return session;
-}
-
 async function resolveLoginProfile(username) {
   const login = normalizeUsername(username);
   const lookupUsername = getUsernameFromLogin(login);
@@ -160,87 +144,6 @@ async function resolveLoginProfile(username) {
     ...data,
     auth_email: getAuthEmail(data.usuario || lookupUsername)
   };
-}
-
-async function apiSignInWithRole(role, username, password) {
-  const profileForLogin = await resolveLoginProfile(username);
-  const authEmail = profileForLogin.auth_email || getAuthEmail(profileForLogin.usuario);
-
-  if (profileForLogin.activo === false) {
-    throw new Error(`El usuario "${profileForLogin.usuario}" esta inactivo.`);
-  }
-
-  const allowedRoles = Array.isArray(role) ? role : [role];
-  if (!allowedRoles.includes(profileForLogin.rol)) {
-    throw new Error(`El rol "${profileForLogin.rol}" no esta autorizado para este ingreso.`);
-  }
-
-  const { data, error } = await getSupabaseClient().auth.signInWithPassword({
-    email: authEmail,
-    password: String(password || "")
-  });
-
-  if (error) {
-    throw new Error(`Error de autenticaci?n en Supabase Auth: ${error.message}`);
-  }
-
-  const { data: profile, error: profileError } = await getSupabaseClient()
-    .from("usuarios_app")
-    .select("id,usuario,rol,activo")
-    .or(`id.eq.${data.user.id},usuario.eq.${profileForLogin.usuario}`)
-    .limit(1)
-    .single();
-
-  if (profileError) {
-    await getSupabaseClient().auth.signOut();
-    throw new Error("La autenticaci?n fue correcta, pero no se pudo validar el perfil en usuarios_app.");
-  }
-
-  if (!profile.activo) {
-    await getSupabaseClient().auth.signOut();
-    throw new Error(`El usuario "${profile.usuario}" esta inactivo.`);
-  }
-
-  if (!allowedRoles.includes(profile.rol)) {
-    await getSupabaseClient().auth.signOut();
-    throw new Error(`El rol "${profile.rol}" no esta autorizado para este ingreso.`);
-  }
-
-  return profile;
-}
-
-async function apiSignInWithPasswordHash(role, username, password) {
-  const usuarioLimpio = String(username || "").trim();
-  const allowedRoles = Array.isArray(role) ? role : [role];
-
-  const { data, error } = await getSupabaseClient()
-    .from("usuarios_app")
-    .select("*")
-    .ilike("usuario", usuarioLimpio)
-    .eq("activo", true)
-    .maybeSingle();
-
-  console.log("usuarioLimpio:", usuarioLimpio);
-  console.log("data usuarios_app:", data);
-  console.log("error usuarios_app:", error);
-
-  if (error) {
-    throw new Error(`Error consultando Supabase: ${error.message}`);
-  }
-
-  if (!data) {
-    throw new Error(`Usuario "${usuarioLimpio}" no encontrado en usuarios_app.`);
-  }
-
-  if (data.password_hash !== String(password || "").trim()) {
-    throw new Error("Contraseña incorrecta.");
-  }
-
-  if (!allowedRoles.includes(data.rol)) {
-    throw new Error(`El rol "${data.rol}" no esta autorizado para este ingreso.`);
-  }
-
-  return data;
 }
 
 async function ensureUniqueUsername(username, currentUserId = "") {
@@ -569,21 +472,4 @@ async function apiPatch(endpoint) {
   }
 
   return data;
-}
-
-async function apiDelete(endpoint) {
-  const { resource, id } = parseDataEndpoint(endpoint);
-  const config = getResourceConfig(resource);
-
-  if (!id) {
-    throw new Error("Falta el id del registro a eliminar.");
-  }
-
-  const { error } = await getSupabaseClient()
-    .from(config.table)
-    .delete()
-    .eq("id", id);
-
-  if (error) throw error;
-  return true;
 }

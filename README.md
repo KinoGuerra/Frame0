@@ -91,6 +91,16 @@ Si `006_enable_rls_policies.sql` ya estaba aplicada, aplicar tambien
 `supabase/migrations/007_fix_login_profile_resolution.sql`, que actualiza la resolucion
 `usuario -> auth_email` para el login con `admin`.
 
+## Diario Noticias IA
+
+El administrador usa el login propio de `usuarios_app` y la Edge Function valida esas credenciales internamente. Después de modificarla, desplegar sin verificación JWT del gateway:
+
+```powershell
+npx.cmd supabase functions deploy generate-sports-diary --no-verify-jwt
+```
+
+Secrets requeridos: `GROQ_API_KEY`, `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`. `GROQ_MODEL` es opcional. Ninguna clave privada debe incluirse en el frontend.
+
 ## Desarrollo local
 
 Abrir `index.html` directamente o publicar desde la raiz del repositorio en GitHub Pages. No hace falta iniciar un backend local.

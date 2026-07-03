@@ -114,6 +114,7 @@ const MAX_HOME_CAROUSEL_IMAGES = 3;
 const HOME_CAROUSEL_RECOMMENDED_SIZE = "1920 x 720 px";
 const HOME_CAROUSEL_MAX_WIDTH = 1920;
 const HOME_CAROUSEL_MAX_HEIGHT = 720;
+const LANDING_VIDEO_MAX_BYTES = 10 * 1024 * 1024;
 const mobileMenuMedia = window.matchMedia("(max-width: 991.98px)");
 
 function getMobileMenuFocusableElements() {
@@ -202,6 +203,7 @@ const publicSettings = {
   contactText: "Consultas por cupos, inscripción, documentación y calendario inicial. La atención se centraliza para mantener una comunicación clara con cada equipo.",
   sponsorImages: [],
   homeCarouselImages: [],
+  landingPopupVideo: { name: "video frame0.mp4", type: "video/mp4", src: "assets/video-frame0.mp4" },
   regulationText: `La competencia se disputa bajo principios de juego limpio, respeto entre participantes y cumplimiento de la programación oficial informada por la organización. Cada equipo deberá presentar su lista de buena fe, contar con jugadores habilitados y respetar los horarios asignados para cada fecha.
 
 Los partidos tendrán una duración definida por la organización según categoría y división. La tabla de posiciones se ordenará por puntos obtenidos, diferencia de gol, goles a favor y resultado entre equipos cuando corresponda. Las sanciones disciplinarias podrán incluir suspensión por acumulación de tarjetas, expulsiones directas o informes del veedor.
@@ -224,6 +226,14 @@ const adminObservedSummaryState = {
   rows: []
 };
 let currentAiReport = null;
+let publishedNewsEditions = [];
+let selectedNewsEditionId = "";
+let selectedNewsPageIndex = 0;
+let adminNewsEditions = [];
+let adminNewsSportsDates = [];
+let editingNewsEditionId = "";
+let editingNewsPageIndex = 0;
+let adminNewsDraft = null;
 const tournamentSettings = {
   playerRegistrationFrom: "2026-06-01",
   playerRegistrationTo: "2026-07-31",
@@ -346,6 +356,7 @@ function getPublicSettingsPayload() {
     contactText: publicSettings.contactText,
     sponsorImages: publicSettings.sponsorImages,
     homeCarouselImages: publicSettings.homeCarouselImages,
+    landingPopupVideo: publicSettings.landingPopupVideo,
     regulationText: publicSettings.regulationText
   };
 }
@@ -356,6 +367,8 @@ function mergePublicSettings(settings = {}) {
       if (Array.isArray(publicSettings[key])) {
         const maxItems = key === "homeCarouselImages" ? MAX_HOME_CAROUSEL_IMAGES : MAX_SPONSOR_IMAGES;
         publicSettings[key] = (Array.isArray(settings[key]) ? settings[key] : []).filter(Boolean).slice(0, maxItems);
+      } else if (key === "landingPopupVideo" && typeof settings[key] === "object") {
+        publicSettings[key] = settings[key];
       } else {
         publicSettings[key] = String(settings[key]);
       }
@@ -490,6 +503,21 @@ function renderHomeCarouselAdminImages() {
   `).join("");
 }
 
+function renderLandingVideoAdminPreview() {
+  const video = publicSettings.landingPopupVideo;
+  if (!video?.src) return `<div class="admin-empty-row sponsor-empty">Sin video cargado.</div>`;
+
+  return `
+    <div class="landing-video-admin-preview">
+      <video src="${escapeHtml(video.src)}" controls muted playsinline preload="metadata"></video>
+      <div>
+        <strong>${escapeHtml(video.name || "Video del emergente")}</strong>
+        <small>Este video se muestra al ingresar a la landing page.</small>
+      </div>
+    </div>
+  `;
+}
+
 function refreshSponsorAdminPreview() {
   const preview = contentShell.querySelector("[data-sponsor-preview]");
   const counter = contentShell.querySelector("[data-sponsor-count]");
@@ -497,6 +525,7 @@ function refreshSponsorAdminPreview() {
   const homeCarouselPreview = contentShell.querySelector("[data-home-carousel-preview]");
   const homeCarouselCounter = contentShell.querySelector("[data-home-carousel-count]");
   const homeCarouselInput = contentShell.querySelector("[data-home-carousel-upload]");
+  const landingVideoPreview = contentShell.querySelector("[data-landing-video-preview]");
 
   if (preview) preview.innerHTML = renderSponsorAdminImages();
   if (counter) counter.textContent = `${publicSettings.sponsorImages.length}/${MAX_SPONSOR_IMAGES}`;
@@ -504,6 +533,7 @@ function refreshSponsorAdminPreview() {
   if (homeCarouselPreview) homeCarouselPreview.innerHTML = renderHomeCarouselAdminImages();
   if (homeCarouselCounter) homeCarouselCounter.textContent = `${publicSettings.homeCarouselImages.length}/${MAX_HOME_CAROUSEL_IMAGES}`;
   if (homeCarouselInput) homeCarouselInput.disabled = publicSettings.homeCarouselImages.length >= MAX_HOME_CAROUSEL_IMAGES;
+  if (landingVideoPreview) landingVideoPreview.innerHTML = renderLandingVideoAdminPreview();
   renderSponsorCarousel();
   renderHomeCarouselImages();
 }
@@ -590,6 +620,68 @@ async function addHomeCarouselImages(files = []) {
   const images = await Promise.all(validFiles.map(readHomeCarouselFile));
   publicSettings.homeCarouselImages = [...publicSettings.homeCarouselImages, ...images].slice(0, MAX_HOME_CAROUSEL_IMAGES);
   refreshSponsorAdminPreview();
+}
+
+function readLandingVideoFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ name: file.name, type: file.type || "video/mp4", src: String(reader.result || "") });
+    reader.onerror = () => reject(reader.error || new Error("No se pudo leer el video."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function replaceLandingVideo(file) {
+  if (!file?.type.startsWith("video/")) throw new Error("Seleccioná un archivo de video válido.");
+  if (file.size > LANDING_VIDEO_MAX_BYTES) throw new Error("El video no puede superar los 10 MB.");
+  publicSettings.landingPopupVideo = await readLandingVideoFile(file);
+  refreshSponsorAdminPreview();
+}
+
+function showLandingVideoModal() {
+  const modalElement = document.querySelector("#landingVideoModal");
+  const videoElement = document.querySelector("#landingPopupVideo");
+  const miniPlayer = document.querySelector("[data-landing-video-mini]");
+  const miniVideo = document.querySelector("#landingMiniVideo");
+  const startButton = document.querySelector("[data-landing-video-start]");
+  const repeatButton = document.querySelector("[data-landing-video-repeat]");
+  const closeMiniButton = document.querySelector("[data-landing-video-close-mini]");
+  const video = publicSettings.landingPopupVideo;
+  if (!modalElement || !videoElement || !video?.src) return;
+
+  videoElement.src = video.src;
+  videoElement.muted = true;
+  if (miniVideo) miniVideo.src = video.src;
+  const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+  const playWithSound = () => {
+    videoElement.muted = false;
+    startButton?.classList.add("d-none");
+    videoElement.play().catch(() => startButton?.classList.remove("d-none"));
+  };
+  const playAutomatically = () => {
+    videoElement.muted = true;
+    startButton?.classList.remove("d-none");
+    videoElement.play().catch(() => {});
+  };
+
+  modalElement.addEventListener("shown.bs.modal", playAutomatically, { once: true });
+  modalElement.addEventListener("hidden.bs.modal", () => videoElement.pause());
+  videoElement.addEventListener("ended", () => {
+    modalElement.addEventListener("hidden.bs.modal", () => {
+      if (miniVideo?.duration) miniVideo.currentTime = Math.max(miniVideo.duration - 0.1, 0);
+      miniPlayer?.classList.remove("d-none");
+    }, { once: true });
+    modal.hide();
+  });
+  startButton?.addEventListener("click", playWithSound);
+  repeatButton?.addEventListener("click", () => {
+    miniPlayer?.classList.add("d-none");
+    videoElement.currentTime = 0;
+    modal.show();
+    playWithSound();
+  });
+  closeMiniButton?.addEventListener("click", () => miniPlayer?.classList.add("d-none"));
+  modal.show();
 }
 
 async function loadPublicSettingsFromSupabase() {
@@ -1675,8 +1767,7 @@ function renderObservationReviewBody(observationKey, options = {}) {
     return;
   }
 
-  const selectedCategory = contentShell.querySelector("[data-admin-player-category]")?.value || getAdminMetrics().categories[0]?.name || "-";
-  const selectedDivision = contentShell.querySelector("[data-admin-player-division]")?.value || getAdminMetrics().categories[0]?.divisions[0]?.name || "-";
+  const { category: selectedCategory, division: selectedDivision } = getDivisionCatalogEntryById(player.team.division_id);
   const resolution = observation.resolution || {};
 
   const modalRoleLabel = readOnlyResolution && contentShell.querySelector(".delegate-players-table") ? "Delegado" : "Administrador";
@@ -2466,12 +2557,6 @@ function getDemoPlayerDni(player, index) {
   return player.dni || String(30000000 + (index + 1) * 13729);
 }
 
-function formatDateInputToDisplay(value) {
-  if (!value) return "";
-  const [year, month, day] = value.split("-");
-  return `${day}/${month}/${year}`;
-}
-
 function renderTeamDetail() {
   const team = getTeam(selectedTeamId);
   if (!team) {
@@ -2834,6 +2919,95 @@ function renderRegulationContent() {
       <p class="section-kicker mb-2">Reglamento</p>
       <h2>Reglamento general de competencia amateur</h2>
       ${regulationParagraphs}
+    </section>
+  `;
+}
+
+function formatNewsDate(value = "") {
+  return value ? String(value).split("-").reverse().join("/") : "-";
+}
+
+async function loadPublishedNews() {
+  const { data, error } = await supabaseClient
+    .from("noticias_ediciones")
+    .select("id,titulo,slogan,fecha_publicacion,fecha:fechas_deportivas(id,numero_fecha,fecha_edicion),paginas:noticias_paginas(id,numero_pagina,titulo,resumen_general,contenido_texto,contenido_json,tabla_posiciones_snapshot,categoria:categorias(id,nombre),division:divisiones(id,nombre))")
+    .eq("estado", "publicado")
+    .order("fecha_publicacion", { ascending: false });
+  if (error) {
+    console.error("Error al cargar Diario Noticias:", error);
+    publishedNewsEditions = [];
+    return;
+  }
+  publishedNewsEditions = (data || []).map((edition) => ({
+    ...edition,
+    paginas: [...(edition.paginas || [])].sort((a, b) => a.numero_pagina - b.numero_pagina)
+  }));
+  if (!publishedNewsEditions.some((item) => String(item.id) === String(selectedNewsEditionId))) {
+    selectedNewsEditionId = publishedNewsEditions[0]?.id || "";
+    selectedNewsPageIndex = 0;
+  }
+}
+
+function renderNewsStandings(snapshot = []) {
+  if (!Array.isArray(snapshot) || !snapshot.length) {
+    return `<div class="news-empty">Tabla no disponible para esta fecha.</div>`;
+  }
+  return `
+    <table class="news-standings-table">
+      <thead><tr><th>#</th><th>Equipo</th><th>Pts</th><th>DG</th></tr></thead>
+      <tbody>${snapshot.map((row, index) => `
+        <tr><td>${index + 1}</td><td>${escapeHtml(row.equipo || row.nombre || "Equipo")}</td><td>${Number(row.puntos ?? row.points ?? 0)}</td><td>${Number(row.diferencia ?? row.goalDifference ?? 0)}</td></tr>
+      `).join("")}</tbody>
+    </table>
+  `;
+}
+
+function renderNewsContent() {
+  const edition = publishedNewsEditions.find((item) => String(item.id) === String(selectedNewsEditionId));
+  if (!edition) {
+    return `<section class="public-info-panel news-paper"><div class="news-empty">Aún no hay noticias publicadas.</div></section>`;
+  }
+  const pages = edition.paginas || [];
+  const page = pages[selectedNewsPageIndex] || pages[0];
+  const blocks = Array.isArray(page?.contenido_json?.bloques) ? page.contenido_json.bloques : [];
+  return `
+    <section class="news-shell">
+      <label class="news-date-header">
+        <span class="news-date-label">Edición deportiva</span>
+        <i class="bi bi-calendar-event" aria-hidden="true"></i>
+        <select data-news-edition aria-label="Elegir fecha publicada">
+          ${publishedNewsEditions.map((item) => `<option value="${item.id}" ${item.id === edition.id ? "selected" : ""}>Fecha ${item.fecha?.numero_fecha || "-"} · ${formatNewsDate(item.fecha?.fecha_edicion)}</option>`).join("")}
+        </select>
+      </label>
+      <article class="news-paper">
+        <header class="news-masthead">
+          <div class="news-rule">Diario deportivo inteligente</div>
+          <h2>${escapeHtml(edition.titulo || "Frame0")}</h2>
+          <p>${escapeHtml(edition.slogan || "Un fin de semana a puro fútbol")}</p>
+          <small>${escapeHtml(page?.categoria?.nombre || "Categoría")} / ${escapeHtml(page?.division?.nombre || "División")}</small>
+        </header>
+        <div class="news-edition-strip">
+          <span><i class="bi bi-calendar3"></i> Fecha ${edition.fecha?.numero_fecha || "-"}</span>
+          <strong>${formatNewsDate(edition.fecha?.fecha_edicion)}</strong>
+          <span>Edición oficial Frame0</span>
+        </div>
+        ${page ? `
+          <nav class="news-pagination" aria-label="Páginas por categoría y división">
+            ${pages.map((item, index) => `<button type="button" data-news-page="${index}" class="${index === selectedNewsPageIndex ? "active" : ""}">${escapeHtml(item.categoria?.nombre || "Categoría")} · ${escapeHtml(item.division?.nombre || "División")}</button>`).join("")}
+          </nav>
+          <div class="news-layout">
+            <main class="news-main-copy">
+              <h3>${escapeHtml(page.titulo || `${page.categoria?.nombre || ""} - ${page.division?.nombre || ""}`)}</h3>
+              <p class="news-lead">${escapeHtml(page.resumen_general || "Sin resumen general cargado.")}</p>
+              ${page.contenido_texto ? `<p>${escapeHtml(page.contenido_texto)}</p>` : ""}
+              <div class="news-block-grid">${blocks.map((block) => `
+                <section class="news-block"><span>${escapeHtml(block.tipo || "destacado")}</span><h4>${escapeHtml(block.titulo || "Destacado")}</h4><p>${escapeHtml(block.texto || "")}</p></section>
+              `).join("")}</div>
+            </main>
+            <aside class="news-standings"><h3>Tabla de posiciones</h3>${renderNewsStandings(page.tabla_posiciones_snapshot)}</aside>
+          </div>
+        ` : `<div class="news-empty">No hay contenido disponible para esta fecha.</div>`}
+      </article>
     </section>
   `;
 }
@@ -3275,7 +3449,7 @@ function updateAboutCarousel(direction) {
   });
 }
 
-function showPublicInfo(page) {
+async function showPublicInfo(page) {
   limpiarSeleccionDivisiones();
   selectedDivision.classList.add("d-none");
   homeContent.classList.add("d-none");
@@ -3284,7 +3458,10 @@ function showPublicInfo(page) {
   divisionView.classList.add("d-none");
   window.clearTimeout(divisionLoadTimer);
 
+  if (page === "noticias") await loadPublishedNews();
+
   const publicPages = {
+    noticias: renderNewsContent,
     fotos: renderPhotosContent,
     reglamento: renderRegulationContent,
     nosotros: renderAboutContent
@@ -3320,7 +3497,7 @@ function getConfirmationModalElement() {
   modal.setAttribute("aria-hidden", "true");
   modal.innerHTML = `
     <div class="modal-dialog modal-dialog-centered modal-sm">
-      <div class="modal-content login-modal">
+      <div class="modal-content login-modal frame-confirm-modal">
         <div class="modal-header">
           <div class="login-brand">
             <img src="assets/frame0-logo.png" alt="Logo Frame0">
@@ -3332,6 +3509,7 @@ function getConfirmationModalElement() {
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
         <div class="modal-body">
+          <div class="frame-confirm-symbol" aria-hidden="true"><i class="bi bi-question-lg"></i></div>
           <p class="mb-3" data-confirm-message>¿Querés continuar?</p>
           <div class="d-grid gap-2">
             <button class="btn btn-login-submit" type="button" data-confirm-accept>
@@ -3914,7 +4092,7 @@ function shuffleItems(items) {
   return shuffled;
 }
 
-function parseLocalDate(value = "") {
+function parseIsoLocalDate(value = "") {
   const [year, month, day] = String(value || "").split("-").map(Number);
   if (!year || !month || !day) return null;
   return new Date(year, month - 1, day);
@@ -3928,7 +4106,7 @@ function formatLocalDate(date) {
 }
 
 function getNextMatchDate(startDate = DEFAULT_FIXTURE_START_DATE, matchDay = DEFAULT_FIXTURE_MATCH_DAY) {
-  const date = parseLocalDate(startDate) || parseLocalDate(DEFAULT_FIXTURE_START_DATE);
+  const date = parseIsoLocalDate(startDate) || parseIsoLocalDate(DEFAULT_FIXTURE_START_DATE);
   const targetDay = Number(matchDay);
   const safeTargetDay = Number.isInteger(targetDay) && targetDay >= 0 && targetDay <= 6 ? targetDay : Number(DEFAULT_FIXTURE_MATCH_DAY);
   const dayOffset = (safeTargetDay - date.getDay() + 7) % 7;
@@ -4203,17 +4381,6 @@ function renderAdminSummaryList(items) {
   `).join("");
 }
 
-function getTeamFromUsername(username) {
-  const normalizedUsername = normalizeSearchText(username);
-
-  return teams.find((team) =>
-    normalizeSearchText(team.id) === normalizedUsername ||
-    normalizeSearchText(team.shortName) === normalizedUsername ||
-    normalizeSearchText(team.name).includes(normalizedUsername) ||
-    normalizeSearchText(team.legalName).includes(normalizedUsername)
-  );
-}
-
 async function getDelegateTeamFromSupabase(usuarioApp) {
   if (!usuarioApp?.id || typeof supabaseClient === "undefined") return null;
 
@@ -4273,7 +4440,7 @@ async function getDelegateTeamFromSupabase(usuarioApp) {
 
 function getTeamStatusCounts(team) {
   return getActivePlayers(team).reduce((counts, player) => {
-    const status = player.red > 0 ? "suspended" : player.yellow >= 4 ? "disabled" : "enabled";
+    const status = { Habilitado: "enabled", Suspendido: "suspended", Inhabilitado: "disabled" }[getPlayerStatus({ ...player, team })];
     counts[status] += 1;
     return counts;
   }, { enabled: 0, suspended: 0, disabled: 0 });
@@ -4546,7 +4713,7 @@ function getObserverMatch(matchId) {
   return observerMatches.find((match) => match.id === matchId) || matchDetailsById.get(String(matchId || ""));
 }
 
-function parseLocalDate(dateText) {
+function parseDisplayDate(dateText) {
   const [day, month, year] = dateText.split("/").map(Number);
   return new Date(year, month - 1, day);
 }
@@ -4556,18 +4723,18 @@ function normalizeDateOnly(date) {
 }
 
 function isFutureMatchDate(dateText) {
-  return parseLocalDate(dateText) > normalizeDateOnly(new Date());
+  return parseDisplayDate(dateText) > normalizeDateOnly(new Date());
 }
 
 function getObserverAvailableDates() {
   return [...new Set(observerMatches.map((match) => match.date))]
-    .sort((first, second) => parseLocalDate(second) - parseLocalDate(first));
+    .sort((first, second) => parseDisplayDate(second) - parseDisplayDate(first));
 }
 
 function getDefaultObserverDate() {
   const today = normalizeDateOnly(new Date());
   const availableDates = getObserverAvailableDates();
-  return availableDates.find((date) => parseLocalDate(date) <= today) || availableDates[0] || "";
+  return availableDates.find((date) => parseDisplayDate(date) <= today) || availableDates[0] || "";
 }
 
 function renderObserverDateOptions(selectedDate) {
@@ -5116,6 +5283,220 @@ function renderAdminAiReportView(report = currentAiReport) {
   `;
 }
 
+async function loadAdminNews() {
+  const { data, error } = await supabaseClient.rpc("listar_diarios_noticias_admin", {
+    p_usuario: adminSettingsSession?.usuario || "",
+    p_password: adminSettingsSession?.password || ""
+  });
+  if (error) throw error;
+  adminNewsEditions = Array.isArray(data) ? data : [];
+}
+
+async function loadCompletedNewsSportsDates() {
+  const { data, error } = await supabaseClient
+    .from("partidos")
+    .select("estado,observaciones,fecha_hora")
+    .not("observaciones", "is", null);
+  if (error) throw error;
+
+  const rounds = new Map();
+  (data || []).forEach((match) => {
+    const number = Number(String(match.observaciones || "").match(/fecha\s*(\d+)/i)?.[1]);
+    if (!number) return;
+    const round = rounds.get(number) || { numero_fecha: number, partidos: 0, finalizados: 0, fechas: [] };
+    round.partidos += 1;
+    if (match.estado === "finalizado") round.finalizados += 1;
+    if (match.fecha_hora) round.fechas.push(new Date(match.fecha_hora));
+    rounds.set(number, round);
+  });
+
+  adminNewsSportsDates = [...rounds.values()]
+    .filter((round) => round.partidos > 0 && round.finalizados === round.partidos && round.fechas.length)
+    .map((round) => {
+      const timestamps = round.fechas.map((date) => date.getTime()).filter(Number.isFinite);
+      const minDate = new Date(Math.min(...timestamps));
+      const maxDate = new Date(Math.max(...timestamps));
+      return {
+        numero_fecha: round.numero_fecha,
+        fecha_desde: minDate.toISOString().slice(0, 10),
+        fecha_hasta: maxDate.toISOString().slice(0, 10),
+        fecha_edicion: maxDate.toISOString().slice(0, 10),
+        partidos: round.finalizados
+      };
+    })
+    .sort((a, b) => b.numero_fecha - a.numero_fecha);
+}
+
+function getNewNewsPages() {
+  return tournamentCatalog.flatMap((category) => category.divisions.map((division) => ({
+    categoria_id: category.id,
+    division_id: division.id,
+    titulo: `${category.name} - ${division.name}`,
+    resumen_general: "",
+    contenido_texto: "",
+    contenido_json: { bloques: [] },
+    tabla_posiciones_snapshot: [],
+    categoria: { id: category.id, nombre: category.name },
+    division: { id: division.id, nombre: division.name }
+  }))).map((page, index) => ({ ...page, numero_pagina: index + 1 }));
+}
+
+function getEditingNewsEdition() {
+  return adminNewsDraft;
+}
+
+function syncAdminNewsDraftFromForm() {
+  if (!adminNewsDraft) return;
+  contentShell.querySelectorAll("[data-news-field]").forEach((field) => {
+    const key = field.dataset.newsField;
+    if (key === "numero_fecha") {
+      const selected = adminNewsSportsDates.find((item) => String(item.numero_fecha) === String(field.value));
+      adminNewsDraft.fecha = selected ? { ...adminNewsDraft.fecha, ...selected } : {};
+    }
+    else adminNewsDraft[key] = field.value;
+  });
+  const page = adminNewsDraft.paginas?.[editingNewsPageIndex];
+  contentShell.querySelectorAll("[data-news-page-field]").forEach((field) => {
+    if (!page) return;
+    if (field.dataset.newsPageField === "contenido_json") {
+      try { page.contenido_json = JSON.parse(field.value || "{}"); } catch (_error) { throw new Error("El JSON de segmentos no es válido."); }
+      return;
+    }
+    page[field.dataset.newsPageField] = field.value;
+  });
+}
+
+async function saveAdminNewsDraft() {
+  syncAdminNewsDraftFromForm();
+  if (!adminNewsDraft?.titulo?.trim()) throw new Error("El título es obligatorio.");
+  if (!adminNewsDraft.fecha?.numero_fecha || !adminNewsDraft.fecha?.fecha_desde || !adminNewsDraft.fecha?.fecha_hasta || !adminNewsDraft.fecha?.fecha_edicion) {
+    throw new Error("Seleccioná una fecha deportiva realizada.");
+  }
+  const estado = adminNewsDraft.estado === "publicado" ? "publicado" : "borrador";
+  const editionPayload = {
+    id: adminNewsDraft.id || "",
+    titulo: adminNewsDraft.titulo,
+    slogan: adminNewsDraft.slogan,
+    estado,
+    generado_por_ia: adminNewsDraft.generado_por_ia === true,
+    ...adminNewsDraft.fecha
+  };
+  console.log("Diario Noticias - guardado:", { ...editionPayload, paginas: adminNewsDraft.paginas.length });
+  const { data, error } = await supabaseClient.rpc("guardar_diario_noticias", {
+    p_usuario: adminSettingsSession?.usuario || "",
+    p_password: adminSettingsSession?.password || "",
+    p_edicion: editionPayload,
+    p_paginas: adminNewsDraft.paginas
+  });
+  if (error) {
+    console.error("Diario Noticias - error al guardar:", error);
+    throw new Error(error.message || "No se pudo guardar el diario.");
+  }
+  adminNewsDraft.estado = estado;
+  adminNewsDraft.id = String(data || adminNewsDraft.id || "");
+  return data;
+}
+
+async function publishAdminNewsDraft() {
+  const editionId = await saveAdminNewsDraft();
+  const { error } = await supabaseClient.rpc("publicar_diario_noticias", {
+    p_usuario: adminSettingsSession?.usuario || "",
+    p_password: adminSettingsSession?.password || "",
+    p_edicion_id: editionId
+  });
+  if (error) throw new Error(error.message || "No se pudo publicar el diario.");
+}
+
+async function saveAdminNewsAndCloseEditor() {
+  await saveAdminNewsDraft();
+  await loadAdminNews();
+  editingNewsEditionId = "";
+  adminNewsDraft = null;
+  contentShell.innerHTML = renderAdminNewsView();
+}
+
+async function generateAdminNewsDraft() {
+  syncAdminNewsDraftFromForm();
+  if (!adminNewsDraft.fecha?.numero_fecha) throw new Error("Seleccioná una fecha deportiva realizada.");
+  const payload = {
+    usuario: adminSettingsSession?.usuario || "",
+    password: adminSettingsSession?.password || "",
+    numero_fecha: adminNewsDraft.fecha.numero_fecha
+  };
+  console.log("Payload enviado a generate-sports-diary:", { ...payload, password: "[oculta]" });
+  const { data, error } = await supabaseClient.functions.invoke("generate-sports-diary", {
+    body: payload
+  });
+  console.log("Respuesta Edge Function:", data);
+  if (error) {
+    console.error("Error completo Edge Function:", error);
+    let message = data?.error || "";
+    try {
+      const errorBody = await error.context?.json?.();
+      message = errorBody?.error || message;
+    } catch (_contextError) {
+      // La respuesta no siempre expone un body JSON (por ejemplo, rechazo JWT del gateway).
+    }
+    if (!message && error.context?.status === 401) message = "No se pudo autorizar la generación IA. Redesplegá la función con --no-verify-jwt.";
+    throw new Error(message || "La IA no pudo generar el diario. Revisá los logs de la función en Supabase.");
+  }
+  if (data?.success !== true) throw new Error(data?.error || "La función no devolvió un diario válido.");
+  adminNewsDraft = {
+    ...adminNewsDraft,
+    ...(data.edicion || {}),
+    id: adminNewsDraft.id || "",
+    fecha: data.edicion?.fecha || adminNewsDraft.fecha,
+    paginas: Array.isArray(data.paginas) ? data.paginas : [],
+    estado: "borrador",
+    generado_por_ia: true
+  };
+}
+
+function renderAdminNewsEditor(edition) {
+  if (!edition) return "";
+  const pages = edition.paginas || [];
+  const page = pages[editingNewsPageIndex] || pages[0];
+  return `
+    <section class="division-table-panel news-admin-editor" data-news-editing-id="${escapeHtml(edition.id || "")}">
+      <div class="division-section-heading"><p class="section-kicker mb-1">Edición</p><h2>${edition.id ? "Editar diario" : "Nuevo borrador"}</h2></div>
+      <div data-admin-news-generation-status>${edition.generado_por_ia ? `<div class="delegate-edit-window is-open"><i class="bi bi-stars"></i> Borrador generado por IA. Revisalo antes de publicar.</div>` : ""}</div>
+      <div class="admin-filter-grid settings-grid">
+        <label class="admin-filter-field settings-wide"><span>Fecha deportiva realizada</span><select class="form-select" data-news-field="numero_fecha" required><option value="">Seleccionar fecha</option>${adminNewsSportsDates.map((item) => `<option value="${item.numero_fecha}" ${String(item.numero_fecha) === String(edition.fecha?.numero_fecha) ? "selected" : ""}>Fecha ${item.numero_fecha} · ${item.partidos} partidos finalizados</option>`).join("")}</select><small>El diario incluirá automáticamente todos los partidos de la fecha elegida.</small></label>
+        <label class="admin-filter-field settings-wide"><span>Título</span><input class="form-control" type="text" maxlength="150" value="${escapeHtml(edition.titulo || "")}" data-news-field="titulo" required></label>
+        <label class="admin-filter-field settings-wide"><span>Slogan</span><input class="form-control" type="text" maxlength="200" value="${escapeHtml(edition.slogan || "")}" data-news-field="slogan"></label>
+        <label class="admin-filter-field"><span>Estado</span><input class="form-control" type="text" value="${escapeHtml(edition.estado || "borrador")}" readonly></label>
+      </div>
+      <div class="news-admin-tabs">${pages.map((item, index) => `<button type="button" data-admin-news-page-tab="${index}" class="${index === editingNewsPageIndex ? "active" : ""}">${escapeHtml(item.categoria?.nombre || "Categoría")} · ${escapeHtml(item.division?.nombre || "División")}</button>`).join("")}</div>
+      ${page ? `<div class="news-page-editor" data-news-page-index="${editingNewsPageIndex}">
+        <label class="admin-filter-field"><span>Título de página</span><input class="form-control" type="text" value="${escapeHtml(page.titulo || "")}" data-news-page-field="titulo"></label>
+        <label class="admin-filter-field"><span>Resumen general</span><textarea class="form-control" rows="4" data-news-page-field="resumen_general">${escapeHtml(page.resumen_general || "")}</textarea></label>
+        <label class="admin-filter-field"><span>Contenido editorial</span><textarea class="form-control" rows="8" data-news-page-field="contenido_texto">${escapeHtml(page.contenido_texto || "")}</textarea></label>
+        <label class="admin-filter-field"><span>Segmentos destacados (JSON)</span><textarea class="form-control" rows="8" data-news-page-field="contenido_json">${escapeHtml(JSON.stringify(page.contenido_json || { bloques: [] }, null, 2))}</textarea></label>
+      </div>` : `<div class="admin-empty-row">No hay páginas disponibles. Cargá categorías y divisiones activas antes de crear el diario.</div>`}
+      <div class="news-admin-actions">
+        <button class="btn btn-outline-light admin-secondary-btn" type="button" data-admin-news-cancel>Cancelar</button>
+        <button class="btn btn-outline-light admin-secondary-btn" type="button" data-admin-news-generate><i class="bi bi-stars"></i> Generar con IA</button>
+        <button class="btn btn-outline-light admin-secondary-btn" type="button" data-admin-news-save ${pages.length ? "" : "disabled"}><i class="bi bi-save-fill"></i> ${edition.estado === "publicado" ? "Guardar cambios" : "Guardar borrador"}</button>
+        ${edition.estado !== "publicado" ? `<button class="btn btn-ingreso" type="button" data-admin-news-publish ${pages.length ? "" : "disabled"}><i class="bi bi-megaphone-fill"></i> Publicar en landing</button>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function renderAdminNewsView() {
+  const editingEdition = getEditingNewsEdition();
+  return `
+    <div class="section-toolbar admin-toolbar"><div><p class="section-kicker section-brand mb-1">Frame0</p><h2 class="section-title mb-0">Diario Noticias</h2></div>
+      <button class="btn btn-ingreso" type="button" data-admin-news-new><i class="bi bi-plus-lg"></i> Nuevo diario</button>
+    </div>
+    <section class="division-table-panel">
+      <div class="table-responsive"><table class="table frame-table mb-0"><thead><tr><th>Fecha deportiva</th><th>Edición</th><th>Título</th><th>Slogan</th><th>Estado</th><th>IA</th><th>Publicación</th><th>Acciones</th></tr></thead>
+      <tbody>${adminNewsEditions.length ? adminNewsEditions.map((item) => `<tr><td>Fecha ${item.fecha?.numero_fecha || "-"}</td><td>${formatNewsDate(item.fecha?.fecha_edicion)}</td><td>${escapeHtml(item.titulo)}</td><td>${escapeHtml(item.slogan || "-")}</td><td><span class="admin-status-pill ${item.estado === "publicado" ? "active" : "inactive"}">${escapeHtml(item.estado)}</span></td><td>${item.generado_por_ia ? "Sí" : "No"}</td><td>${item.fecha_publicacion ? new Date(item.fecha_publicacion).toLocaleDateString("es-AR") : "-"}</td><td><div class="table-actions"><button type="button" data-admin-news-edit="${item.id}" aria-label="Editar diario Fecha ${item.fecha?.numero_fecha}"><i class="bi bi-pencil-fill"></i></button>${item.estado !== "baja" ? `<button type="button" data-admin-news-deactivate="${item.id}" aria-label="Dar de baja diario Fecha ${item.fecha?.numero_fecha}"><i class="bi bi-trash-fill"></i></button>` : ""}</div></td></tr>`).join("") : `<tr><td colspan="8" class="admin-empty-row">No hay diarios generados.</td></tr>`}</tbody></table></div>
+    </section>
+    ${renderAdminNewsEditor(editingEdition)}
+  `;
+}
+
 function renderAiReportPrintDocument(report) {
   const safeReport = normalizeAiReport(report);
 
@@ -5495,9 +5876,26 @@ function renderAdminSettingsView() {
               ${renderHomeCarouselAdminImages()}
             </div>
 
+            <div class="sponsor-section-divider" aria-hidden="true"></div>
+
+            <div class="division-section-heading sponsor-section-heading">
+              <p class="section-kicker mb-1">Emergente de bienvenida</p>
+              <h2>Video de ingreso</h2>
+            </div>
+
+            <label class="admin-filter-field sponsor-upload-field">
+              <span>Reemplazar video</span>
+              <input class="form-control" type="file" accept="video/mp4,video/webm,video/ogg" data-landing-video-upload>
+              <small class="form-helper-text">Formatos MP4, WebM u OGG. Tamaño máximo: 10 MB.</small>
+            </label>
+
+            <div data-landing-video-preview>
+              ${renderLandingVideoAdminPreview()}
+            </div>
+
             <button class="btn btn-ingreso settings-save-btn" type="button" data-save-public-settings>
               <i class="bi bi-save-fill"></i>
-              Guardar auspiciantes
+              Guardar auspiciantes y video
             </button>
           </form>
         </div>
@@ -5523,64 +5921,6 @@ function getTournamentCategories() {
   return getAdminMetrics().categories.map((category) => ({ name: category.name }));
 }
 
-function getTournamentDivisions(selectedCategory = "") {
-  return getAdminMetrics().categories
-    .filter((category) => !selectedCategory || category.name === selectedCategory)
-    .flatMap((category) => category.divisions.map((division) => ({
-      name: division.name,
-      category: category.name
-    })));
-}
-
-function renderAdminCategoryRows() {
-  return getTournamentCategories().map((category, index) => `
-    <tr>
-      <td>${index + 1}</td>
-      <td>${category.name}</td>
-      <td>
-        <div class="table-actions">
-          <button type="button" aria-label="Editar categoría ${category.name}">
-            <i class="bi bi-pencil-fill"></i>
-          </button>
-          <button type="button" aria-label="Eliminar categoría ${category.name}">
-            <i class="bi bi-trash-fill"></i>
-          </button>
-        </div>
-      </td>
-    </tr>
-  `).join("");
-}
-
-function renderAdminCategoriesView() {
-  return `
-    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
-      <div class="division-section-heading">
-        <p class="section-kicker mb-1">Torneo</p>
-        <h2>Categorías</h2>
-      </div>
-      <button class="btn btn-ingreso delegate-add-player" type="button">
-        <i class="bi bi-plus-lg"></i>
-        Crear nueva categoría
-      </button>
-    </div>
-
-    <section class="division-table-panel admin-teams-panel">
-      <div class="table-responsive">
-        <table class="table frame-table admin-categories-table mb-0">
-          <thead>
-            <tr>
-              <th>N&deg;</th>
-              <th>Nombre</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>${renderAdminCategoryRows()}</tbody>
-        </table>
-      </div>
-    </section>
-  `;
-}
-
 function getApiData(response) {
   return response?.data ?? response ?? [];
 }
@@ -5598,247 +5938,6 @@ async function fetchAdminCategories(includeInactive = false) {
 
 function getAdminCategoryStatus(category) {
   return category.activa === false ? "Dado de baja" : "Activa";
-}
-
-function renderAdminCategoryRows(categories = adminCategoriesState.items) {
-  if (!categories.length) {
-    return `
-      <tr>
-        <td colspan="5" class="admin-empty-row">No se encontraron categorías.</td>
-      </tr>
-    `;
-  }
-
-  return categories.map((category, index) => `
-    <tr>
-      <td>${index + 1}</td>
-      <td>${escapeHtml(category.nombre || "")}</td>
-      <td>${escapeHtml(category.descripcion || "-")}</td>
-      <td>
-        <span class="admin-status-pill ${category.activa === false ? "inactive" : "active"}">
-          ${getAdminCategoryStatus(category)}
-        </span>
-      </td>
-      <td>
-        <div class="table-actions">
-          <button type="button" aria-label="Editar categoría ${escapeHtml(category.nombre || "")}" data-admin-category-edit="${category.id}">
-            <i class="bi bi-pencil-fill"></i>
-          </button>
-          ${category.activa === false
-            ? `<button type="button" aria-label="Reactivar categoría ${escapeHtml(category.nombre || "")}" data-admin-category-activate="${category.id}">
-                <i class="bi bi-arrow-counterclockwise"></i>
-              </button>`
-            : `<button type="button" aria-label="Dar de baja categoría ${escapeHtml(category.nombre || "")}" data-admin-category-deactivate="${category.id}">
-                <i class="bi bi-trash-fill"></i>
-              </button>`
-          }
-        </div>
-      </td>
-    </tr>
-  `).join("");
-}
-
-function renderAdminCategoryForm(editingCategory = null) {
-  const isEditing = Boolean(editingCategory);
-  const nombre = editingCategory?.nombre || "";
-  const descripcion = editingCategory?.descripcion || "";
-
-  return `
-    <form class="admin-category-form" data-admin-category-form data-editing-id="${editingCategory?.id || ""}">
-      <label class="admin-filter-field">
-        <span>Nombre</span>
-        <input class="form-control" type="text" name="nombre" value="${escapeHtml(nombre)}" autocomplete="off" required>
-      </label>
-      <label class="admin-filter-field admin-category-description">
-        <span>Descripción</span>
-        <input class="form-control" type="text" name="descripcion" value="${escapeHtml(descripcion)}" autocomplete="off">
-      </label>
-      <div class="admin-category-form-actions">
-        <button class="btn btn-ingreso" type="submit" data-admin-category-save ${nombre.trim() ? "" : "disabled"}>
-          <i class="bi ${isEditing ? "bi-save-fill" : "bi-plus-circle-fill"}"></i>
-          ${isEditing ? "Guardar cambios" : "Crear categoría"}
-        </button>
-        ${isEditing
-          ? `<button class="btn btn-outline-light admin-secondary-btn" type="button" data-admin-category-cancel>
-              Cancelar
-            </button>`
-          : ""
-        }
-      </div>
-    </form>
-  `;
-}
-
-async function renderAdminCategoriesView(options = {}) {
-  adminCategoriesState.includeInactive = options.includeInactive ?? adminCategoriesState.includeInactive;
-  adminCategoriesState.editingId = options.editingId ?? adminCategoriesState.editingId;
-
-  try {
-    adminCategoriesState.items = await fetchAdminCategories(adminCategoriesState.includeInactive);
-  } catch (error) {
-    console.error("Error al cargar categorias desde Supabase:", error);
-    adminCategoriesState.items = [];
-  }
-
-  const editingCategory = adminCategoriesState.items.find((category) => String(category.id) === String(adminCategoriesState.editingId));
-
-  return `
-    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
-      <div class="division-section-heading">
-        <p class="section-kicker mb-1">Torneo</p>
-        <h2>Categorías</h2>
-      </div>
-      <button class="btn btn-ingreso delegate-add-player" type="button" data-admin-categories-toggle-bajas>
-        <i class="bi ${adminCategoriesState.includeInactive ? "bi-eye-slash-fill" : "bi-eye-fill"}"></i>
-        ${adminCategoriesState.includeInactive ? "Ocultar bajas" : "Ver bajas"}
-      </button>
-    </div>
-
-    <section class="admin-filter-panel admin-category-editor">
-      ${renderAdminCategoryForm(editingCategory)}
-    </section>
-
-    <section class="division-table-panel admin-teams-panel">
-      <div class="table-responsive">
-        <table class="table frame-table admin-categories-table mb-0">
-          <thead>
-            <tr>
-              <th>N&deg;</th>
-              <th>Nombre</th>
-              <th>Descripción</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody data-admin-category-rows>${renderAdminCategoryRows()}</tbody>
-        </table>
-      </div>
-    </section>
-  `;
-}
-
-function renderAdminCategoryRows(categories = adminCategoriesState.items) {
-  if (!categories.length) {
-    return `
-      <tr>
-        <td colspan="5" class="admin-empty-row">No se encontraron categorías.</td>
-      </tr>
-    `;
-  }
-
-  return categories.map((category, index) => `
-    <tr>
-      <td>${index + 1}</td>
-      <td>${escapeHtml(category.nombre || "")}</td>
-      <td>${escapeHtml(category.descripcion || "-")}</td>
-      <td>
-        <span class="admin-status-pill ${category.activa === false ? "inactive" : "active"}">
-          ${getAdminCategoryStatus(category)}
-        </span>
-      </td>
-      <td>
-        <div class="table-actions">
-          <button type="button" aria-label="Editar categoría ${escapeHtml(category.nombre || "")}" data-admin-category-edit="${category.id}">
-            <i class="bi bi-pencil-fill"></i>
-          </button>
-          ${category.activa === false
-            ? `<button type="button" aria-label="Reactivar categoría ${escapeHtml(category.nombre || "")}" data-admin-category-activate="${category.id}">
-                <i class="bi bi-arrow-counterclockwise"></i>
-              </button>`
-            : `<button type="button" aria-label="Dar de baja categoría ${escapeHtml(category.nombre || "")}" data-admin-category-deactivate="${category.id}">
-                <i class="bi bi-trash-fill"></i>
-              </button>`
-          }
-        </div>
-      </td>
-    </tr>
-  `).join("");
-}
-
-function renderAdminCategoryForm(editingCategory = null) {
-  const isEditing = Boolean(editingCategory);
-  const nombre = editingCategory?.nombre || "";
-  const descripcion = editingCategory?.descripcion || "";
-
-  return `
-    <form class="admin-category-form" data-admin-category-form data-editing-id="${editingCategory?.id || ""}">
-      <label class="admin-filter-field">
-        <span>Nombre</span>
-        <input class="form-control" type="text" name="nombre" value="${escapeHtml(nombre)}" autocomplete="off" required>
-      </label>
-      <label class="admin-filter-field admin-category-description">
-        <span>Descripción</span>
-        <input class="form-control" type="text" name="descripcion" value="${escapeHtml(descripcion)}" autocomplete="off">
-      </label>
-      <div class="admin-category-form-actions">
-        <button class="btn btn-ingreso" type="submit" data-admin-category-save ${nombre.trim() ? "" : "disabled"}>
-          <i class="bi ${isEditing ? "bi-save-fill" : "bi-plus-circle-fill"}"></i>
-          ${isEditing ? "Guardar cambios" : "Crear categoría"}
-        </button>
-        ${isEditing
-          ? `<button class="btn btn-outline-light admin-secondary-btn" type="button" data-admin-category-cancel>
-              Cancelar
-            </button>`
-          : ""
-        }
-      </div>
-    </form>
-  `;
-}
-
-async function renderAdminCategoriesView(options = {}) {
-  adminCategoriesState.includeInactive = options.includeInactive ?? adminCategoriesState.includeInactive;
-  adminCategoriesState.editingId = options.editingId ?? adminCategoriesState.editingId;
-
-  try {
-    adminCategoriesState.items = await fetchAdminCategories(adminCategoriesState.includeInactive);
-  } catch (error) {
-    console.error("Error al cargar categorias desde Supabase:", error);
-    adminCategoriesState.items = [];
-  }
-
-  const editingCategory = adminCategoriesState.items.find((category) => String(category.id) === String(adminCategoriesState.editingId));
-
-  return `
-    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
-      <div class="division-section-heading">
-        <p class="section-kicker mb-1">Torneo</p>
-        <h2>Categorías</h2>
-      </div>
-      <button class="btn btn-ingreso delegate-add-player" type="button" data-admin-category-new>
-        <i class="bi bi-plus-lg"></i>
-        Cargar categoría
-      </button>
-    </div>
-
-    <section class="admin-filter-panel admin-category-editor">
-      ${renderAdminCategoryForm(editingCategory)}
-    </section>
-
-    <section class="division-table-panel admin-teams-panel">
-      <div class="table-responsive">
-        <table class="table frame-table admin-categories-table mb-0">
-          <thead>
-            <tr>
-              <th>N&deg;</th>
-              <th>Nombre</th>
-              <th>Descripción</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody data-admin-category-rows>${renderAdminCategoryRows()}</tbody>
-        </table>
-      </div>
-    </section>
-
-    <div class="admin-category-footer-actions">
-      <button class="btn btn-ingreso admin-view-inactive-btn" type="button" data-admin-categories-toggle-bajas>
-        <i class="bi ${adminCategoriesState.includeInactive ? "bi-eye-slash-fill" : "bi-eye-fill"}"></i>
-        ${adminCategoriesState.includeInactive ? "Ocultar bajas" : "Ver bajas"}
-      </button>
-    </div>
-  `;
 }
 
 function renderAdminCategoryRows(categories = adminCategoriesState.items) {
@@ -5933,85 +6032,6 @@ async function renderAdminCategoriesView(options = {}) {
         ${adminCategoriesState.includeInactive ? "Ocultar bajas" : "Ver bajas"}
       </button>
     </div>
-  `;
-}
-
-function renderAdminDivisionRows(selectedCategory = "", page = 1) {
-  const divisions = getTournamentDivisions(selectedCategory);
-
-  if (!divisions.length) {
-    return `
-      <tr>
-        <td colspan="4" class="admin-empty-row">No se encontraron divisiones.</td>
-      </tr>
-    `;
-  }
-
-  const pageInfo = paginateItems(divisions, page, 30);
-
-  return pageInfo.items.map((division, index) => `
-    <tr>
-      <td>${(pageInfo.page - 1) * pageInfo.pageSize + index + 1}</td>
-      <td>${division.name}</td>
-      <td>${division.category}</td>
-      <td>
-        <div class="table-actions">
-          <button type="button" aria-label="Editar división ${division.name}">
-            <i class="bi bi-pencil-fill"></i>
-          </button>
-          <button type="button" aria-label="Eliminar división ${division.name}">
-            <i class="bi bi-trash-fill"></i>
-          </button>
-        </div>
-      </td>
-    </tr>
-  `).join("");
-}
-
-function renderAdminDivisionsView(selectedCategory = "", page = 1) {
-  const categories = getTournamentCategories();
-  const divisionsPageInfo = paginateItems(getTournamentDivisions(selectedCategory), page, 30);
-
-  return `
-    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
-      <div class="division-section-heading">
-        <p class="section-kicker mb-1">Torneo</p>
-        <h2>Divisiones</h2>
-      </div>
-      <button class="btn btn-ingreso delegate-add-player" type="button">
-        <i class="bi bi-plus-lg"></i>
-        Crear nueva división
-      </button>
-    </div>
-
-    <section class="division-table-panel admin-teams-panel">
-      <div class="admin-filter-grid admin-single-filter-grid" aria-label="Filtro de divisiones">
-        <label class="admin-filter-field admin-search-field">
-          <span>Categoría</span>
-          <select class="form-select" data-admin-division-category>
-            <option value="">Todas las categorías</option>
-            ${categories.map((category) => `
-              <option value="${category.name}" ${category.name === selectedCategory ? "selected" : ""}>${category.name}</option>
-            `).join("")}
-          </select>
-        </label>
-      </div>
-
-      <div class="table-responsive">
-        <table class="table frame-table admin-divisions-table mb-0">
-          <thead>
-            <tr>
-              <th>N&deg;</th>
-              <th>Nombre</th>
-              <th>Categoría</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>${renderAdminDivisionRows(selectedCategory, divisionsPageInfo.page)}</tbody>
-        </table>
-      </div>
-      ${renderAdminPagination("tournament-divisions", divisionsPageInfo)}
-    </section>
   `;
 }
 
@@ -6787,88 +6807,6 @@ async function renderAdminDelegatesView(selectedCategory = "", selectedDivision 
   `;
 }
 
-function getAdminFilteredObservers(searchTerm = "") {
-  const normalizedSearch = normalizeSearchText(searchTerm);
-  return observers
-    .filter((observer) => observer.name.toLowerCase().includes(normalizedSearch))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function renderAdminObserverRows(searchTerm = "", page = 1) {
-  const filteredObservers = getAdminFilteredObservers(searchTerm);
-
-  if (!filteredObservers.length) {
-    return `
-      <tr>
-        <td colspan="5" class="admin-empty-row">No se encontraron veedores para la búsqueda indicada.</td>
-      </tr>
-    `;
-  }
-
-  const pageInfo = paginateItems(filteredObservers, page);
-
-  return pageInfo.items.map((observer, index) => `
-    <tr>
-      <td>${(pageInfo.page - 1) * ADMIN_PAGE_SIZE + index + 1}</td>
-      <td>${observer.name}</td>
-      <td>${observer.contact}</td>
-      <td>${observer.username}</td>
-      <td>
-        <div class="table-actions">
-          <button type="button" aria-label="Editar veedor ${observer.name}">
-            <i class="bi bi-pencil-fill"></i>
-          </button>
-          <button type="button" aria-label="Eliminar veedor ${observer.name}">
-            <i class="bi bi-trash-fill"></i>
-          </button>
-        </div>
-      </td>
-    </tr>
-  `).join("");
-}
-
-function renderAdminObserversView(searchTerm = "", page = 1) {
-  const observerPageInfo = paginateItems(getAdminFilteredObservers(searchTerm), page);
-
-  return `
-    <div class="fixture-toolbar delegate-players-toolbar admin-teams-toolbar">
-      <div class="division-section-heading">
-        <p class="section-kicker mb-1">Administrador</p>
-        <h2>Veedores</h2>
-      </div>
-      <button class="btn btn-ingreso delegate-add-player" type="button" data-open-new-observer-modal>
-        <i class="bi bi-plus-lg"></i>
-        Cargar nuevo veedor
-      </button>
-    </div>
-
-    <section class="division-table-panel admin-teams-panel">
-      <div class="admin-filter-grid admin-single-filter-grid" aria-label="Filtro de veedores">
-        <label class="admin-filter-field admin-search-field">
-          <span>Buscar veedor</span>
-          <input class="form-control" type="search" value="${searchTerm}" placeholder="Apellido y nombre" data-admin-observer-search>
-        </label>
-      </div>
-
-      <div class="table-responsive">
-        <table class="table frame-table admin-observers-table mb-0">
-          <thead>
-            <tr>
-              <th>N&deg;</th>
-              <th>Apellido y nombre</th>
-              <th>Contacto</th>
-              <th>Usuario</th>
-              <th>Editar</th>
-            </tr>
-          </thead>
-          <tbody data-admin-observer-rows>${renderAdminObserverRows(searchTerm, observerPageInfo.page)}</tbody>
-        </table>
-      </div>
-      ${renderAdminPagination("observers", observerPageInfo)}
-    </section>
-  `;
-}
-
 async function fetchAdminDivisions(includeInactive = false) {
   const endpoint = includeInactive ? "/divisiones?verBajas=true" : "/divisiones";
   const response = await apiGet(endpoint);
@@ -6883,11 +6821,6 @@ async function fetchActiveAdminCategories() {
 async function fetchAdminObservers(includeInactive = false) {
   const endpoint = includeInactive ? "/veedores?verBajas=true" : "/veedores";
   const response = await apiGet(endpoint);
-  return getApiData(response);
-}
-
-async function fetchAdminUsers() {
-  const response = await apiGet("/usuarios");
   return getApiData(response);
 }
 
@@ -7378,6 +7311,10 @@ async function enterAdminView() {
             <i class="bi bi-robot"></i>
             Reportería IA
           </button>
+          <button class="division-link" type="button" data-admin-action="Diario Noticias">
+            <i class="bi bi-newspaper"></i>
+            Diario Noticias
+          </button>
           <div class="admin-menu-accordion">
             <button class="division-link admin-menu-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#adminTournamentMenu" aria-expanded="false" aria-controls="adminTournamentMenu">
               <i class="bi bi-trophy-fill"></i>
@@ -7545,7 +7482,7 @@ sidebarContent.addEventListener("click", async (event) => {
   }
 
   if (publicPageButton) {
-    showPublicInfo(publicPageButton.dataset.publicPage);
+    await showPublicInfo(publicPageButton.dataset.publicPage);
     return;
   }
 
@@ -7615,6 +7552,15 @@ sidebarContent.addEventListener("click", async (event) => {
 
       if (actionName === "Reportería IA") {
         contentShell.innerHTML = renderAdminAiReportView();
+        return;
+      }
+
+      if (actionName === "Diario Noticias") {
+        await Promise.all([loadAdminNews(), loadCompletedNewsSportsDates()]);
+        editingNewsEditionId = "";
+        editingNewsPageIndex = 0;
+        adminNewsDraft = null;
+        contentShell.innerHTML = renderAdminNewsView();
         return;
       }
 
@@ -7707,6 +7653,124 @@ contentShell.addEventListener("click", async (event) => {
   const deactivateAdminObserverButton = event.target.closest("[data-admin-observer-deactivate]");
   const activateAdminObserverButton = event.target.closest("[data-admin-observer-activate]");
   const toggleObserversBajasButton = event.target.closest("[data-admin-observers-toggle-bajas]");
+  const newsPageButton = event.target.closest("[data-news-page]");
+  const newNewsButton = event.target.closest("[data-admin-news-new]");
+  const editNewsButton = event.target.closest("[data-admin-news-edit]");
+  const deactivateNewsButton = event.target.closest("[data-admin-news-deactivate]");
+  const cancelNewsButton = event.target.closest("[data-admin-news-cancel]");
+  const newsPageTabButton = event.target.closest("[data-admin-news-page-tab]");
+  const saveNewsButton = event.target.closest("[data-admin-news-save]");
+  const publishNewsButton = event.target.closest("[data-admin-news-publish]");
+  const generateNewsButton = event.target.closest("[data-admin-news-generate]");
+
+  if (newsPageButton) {
+    selectedNewsPageIndex = Number(newsPageButton.dataset.newsPage) || 0;
+    publicInfoContent.innerHTML = renderNewsContent();
+    return;
+  }
+
+  if (newNewsButton) {
+    editingNewsEditionId = "new";
+    editingNewsPageIndex = 0;
+    adminNewsDraft = { id: "", titulo: "Frame0", slogan: "Un fin de semana a puro fútbol", estado: "borrador", generado_por_ia: false, fecha: {}, paginas: getNewNewsPages() };
+    contentShell.innerHTML = renderAdminNewsView();
+    return;
+  }
+
+  if (editNewsButton) {
+    editingNewsEditionId = editNewsButton.dataset.adminNewsEdit;
+    editingNewsPageIndex = 0;
+    adminNewsDraft = JSON.parse(JSON.stringify(adminNewsEditions.find((item) => String(item.id) === String(editingNewsEditionId)) || null));
+    contentShell.innerHTML = renderAdminNewsView();
+    return;
+  }
+
+  if (cancelNewsButton) {
+    editingNewsEditionId = "";
+    adminNewsDraft = null;
+    contentShell.innerHTML = renderAdminNewsView();
+    return;
+  }
+
+  if (newsPageTabButton) {
+    try {
+      syncAdminNewsDraftFromForm();
+    } catch (error) {
+      alert(error.message);
+      return;
+    }
+    editingNewsPageIndex = Number(newsPageTabButton.dataset.adminNewsPageTab) || 0;
+    contentShell.innerHTML = renderAdminNewsView();
+    return;
+  }
+
+  if (saveNewsButton) {
+    const isPublished = adminNewsDraft?.estado === "publicado";
+    const confirmed = await requestConfirmation({
+      title: isPublished ? "Guardar cambios" : "Guardar borrador",
+      message: isPublished ? "Se actualizará el diario que ya está visible en la landing. ¿Confirmás?" : "Se guardarán los cambios sin publicar el diario en la landing. ¿Confirmás?",
+      confirmLabel: isPublished ? "Guardar cambios" : "Guardar borrador"
+    });
+    if (!confirmed) return;
+    if (adminNewsDraft.estado !== "publicado") adminNewsDraft.estado = "borrador";
+    saveNewsButton.disabled = true;
+    try {
+      await saveAdminNewsAndCloseEditor();
+    } catch (error) {
+      saveNewsButton.disabled = false;
+      alert(error.message || "No se pudo guardar el diario.");
+    }
+    return;
+  }
+
+  if (publishNewsButton) {
+    const confirmed = await requestConfirmation({ title: "Publicar diario", message: "El diario quedará visible inmediatamente en Noticias de la landing. ¿Confirmás la publicación?", confirmLabel: "Publicar" });
+    if (!confirmed) return;
+    publishNewsButton.disabled = true;
+    try {
+      await publishAdminNewsDraft();
+      await loadAdminNews();
+      await loadPublishedNews();
+      editingNewsEditionId = "";
+      adminNewsDraft = null;
+      contentShell.innerHTML = renderAdminNewsView();
+    } catch (error) {
+      publishNewsButton.disabled = false;
+      alert(error.message || "No se pudo publicar el diario.");
+    }
+    return;
+  }
+
+  if (generateNewsButton) {
+    const originalLabel = generateNewsButton.innerHTML;
+    const generationStatus = contentShell.querySelector("[data-admin-news-generation-status]");
+    generateNewsButton.disabled = true;
+    generateNewsButton.innerHTML = `<i class="bi bi-hourglass-split"></i> Generando`;
+    if (generationStatus) generationStatus.innerHTML = `<div class="delegate-edit-window is-open"><i class="bi bi-hourglass-split"></i> Consultando datos reales y generando el borrador...</div>`;
+    try {
+      await generateAdminNewsDraft();
+      editingNewsPageIndex = 0;
+      contentShell.innerHTML = renderAdminNewsView();
+    } catch (error) {
+      generateNewsButton.disabled = false;
+      generateNewsButton.innerHTML = originalLabel;
+      if (generationStatus) generationStatus.innerHTML = `<div class="delegate-edit-window is-closed"><i class="bi bi-exclamation-triangle-fill"></i> ${escapeHtml(error.message || "No se pudo generar el diario.")}</div>`;
+    }
+    return;
+  }
+
+  if (deactivateNewsButton) {
+    const confirmed = await requestConfirmation({ title: "Dar de baja diario", message: "¿Seguro que deseas dar de baja este diario? El diario dejará de mostrarse en la landing, pero no será eliminado.", confirmLabel: "Dar de baja" });
+    if (!confirmed) return;
+    const { error } = await supabaseClient.rpc("dar_baja_diario_noticias", { p_usuario: adminSettingsSession?.usuario || "", p_password: adminSettingsSession?.password || "", p_edicion_id: deactivateNewsButton.dataset.adminNewsDeactivate });
+    if (error) {
+      alert(error.message || "No se pudo dar de baja el diario.");
+      return;
+    }
+    await loadAdminNews();
+    contentShell.innerHTML = renderAdminNewsView();
+    return;
+  }
 
   if (generateAiReportButton) {
     const status = contentShell.querySelector("[data-ai-report-status]");
@@ -8482,6 +8546,15 @@ contentShell.addEventListener("change", async (event) => {
   const tournamentPlayoffTeamsInput = event.target.closest("[data-tournament-playoff-teams]");
   const sponsorUploadInput = event.target.closest("[data-sponsor-upload]");
   const homeCarouselUploadInput = event.target.closest("[data-home-carousel-upload]");
+  const landingVideoUploadInput = event.target.closest("[data-landing-video-upload]");
+  const newsEditionSelect = event.target.closest("[data-news-edition]");
+
+  if (newsEditionSelect) {
+    selectedNewsEditionId = newsEditionSelect.value;
+    selectedNewsPageIndex = 0;
+    publicInfoContent.innerHTML = renderNewsContent();
+    return;
+  }
 
   if (sponsorUploadInput) {
     await addSponsorImages(sponsorUploadInput.files || []);
@@ -8492,6 +8565,24 @@ contentShell.addEventListener("change", async (event) => {
   if (homeCarouselUploadInput) {
     await addHomeCarouselImages(homeCarouselUploadInput.files || []);
     homeCarouselUploadInput.value = "";
+    return;
+  }
+
+  if (landingVideoUploadInput) {
+    const file = landingVideoUploadInput.files?.[0];
+    landingVideoUploadInput.value = "";
+    if (!file) return;
+    const confirmed = await requestConfirmation({
+      title: "Reemplazar video",
+      message: "El video seleccionado reemplazará al actual cuando guardes la configuración. ¿Confirmás el cambio?",
+      confirmLabel: "Reemplazar"
+    });
+    if (!confirmed) return;
+    try {
+      await replaceLandingVideo(file);
+    } catch (error) {
+      window.alert(error.message || "No se pudo procesar el video.");
+    }
     return;
   }
 
@@ -9466,7 +9557,7 @@ if (darkModeToggle) {
 }
 
 applyPublicSettings();
-loadPublicSettingsFromSupabase();
+loadPublicSettingsFromSupabase().finally(showLandingVideoModal);
 loadTournamentSettingsFromSupabase();
 cargarResumenDashboard();
 cargarMenuCategorias();
@@ -9604,25 +9695,4 @@ if (contentShell) {
   const requiredFieldsObserver = new MutationObserver(() => syncRequiredFieldIndicators(contentShell));
   requiredFieldsObserver.observe(contentShell, { childList: true, subtree: true });
 }
-
-// ============================================================
-// FRAME0 - PRUEBA DE CONEXIÓN CON SUPABASE
-// Consulta la tabla "categorias" y muestra los datos en consola.
-// ============================================================
-
-async function cargarCategorias() {
-  const { data, error } = await supabaseClient
-    .from('categorias')
-    .select('*')
-    .order('nombre', { ascending: true });
-
-  if (error) {
-    console.error('Error al cargar categorías:', error);
-    return;
-  }
-
-  console.log('Categorías cargadas desde Supabase:', data);
-}
-
-// cargarCategorias();
 

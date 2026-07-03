@@ -54,6 +54,10 @@
 
                 <div class="sidebar-info-group">
                   <div class="sidebar-mini-title">Más información</div>
+                  <button class="division-link" type="button" data-public-page="noticias">
+                    <i class="bi bi-newspaper"></i>
+                    Noticias
+                  </button>
                   <button class="division-link" type="button" data-public-page="fotos">
                     <i class="bi bi-camera-fill"></i>
                     Fotos
@@ -798,6 +802,37 @@
         </div>
       </div>
     </div>
+
+    <div class="modal fade landing-video-modal" id="landingVideoModal" tabindex="-1" aria-label="Video destacado de Frame0" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+          <button class="landing-video-close" type="button" data-bs-dismiss="modal" aria-label="Cerrar video">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+          </button>
+          <div class="modal-body">
+            <video id="landingPopupVideo" controls autoplay muted playsinline preload="auto"></video>
+            <button class="landing-video-sound-start d-none" type="button" data-landing-video-start>
+              <i class="bi bi-volume-up-fill" aria-hidden="true"></i>
+              Activar sonido
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="landing-video-mini d-none" data-landing-video-mini aria-label="Video destacado finalizado">
+      <video id="landingMiniVideo" muted playsinline preload="metadata"></video>
+      <div class="landing-video-mini-actions">
+        <button type="button" data-landing-video-repeat>
+          <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+          Repetir
+        </button>
+        <button type="button" data-landing-video-close-mini>
+          <i class="bi bi-x-lg" aria-hidden="true"></i>
+          Cerrar
+        </button>
+      </div>
+    </aside>
 
     <a class="floating-mascot" id="floatingMascotWhatsapp" href="#" aria-label="Abrir chat de WhatsApp de Frame0">
       <span class="floating-mascot-bubble" aria-hidden="true">
