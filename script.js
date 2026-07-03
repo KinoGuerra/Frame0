@@ -5374,12 +5374,12 @@ async function saveAdminNewsDraft() {
   }
   const estado = adminNewsDraft.estado === "publicado" ? "publicado" : "borrador";
   const editionPayload = {
+    ...adminNewsDraft.fecha,
     id: adminNewsDraft.id || "",
     titulo: adminNewsDraft.titulo,
     slogan: adminNewsDraft.slogan,
     estado,
-    generado_por_ia: adminNewsDraft.generado_por_ia === true,
-    ...adminNewsDraft.fecha
+    generado_por_ia: adminNewsDraft.generado_por_ia === true
   };
   console.log("Diario Noticias - guardado:", { ...editionPayload, paginas: adminNewsDraft.paginas.length });
   const { data, error } = await supabaseClient.rpc("guardar_diario_noticias", {
@@ -7742,6 +7742,14 @@ contentShell.addEventListener("click", async (event) => {
   }
 
   if (generateNewsButton) {
+    if (!contentShell.querySelector('[data-news-field="numero_fecha"]')?.value) {
+      await requestConfirmation({
+        title: "Seleccioná una fecha",
+        message: "Elegí una fecha deportiva realizada antes de generar el diario.",
+        confirmLabel: "Entendido"
+      });
+      return;
+    }
     const originalLabel = generateNewsButton.innerHTML;
     const generationStatus = contentShell.querySelector("[data-admin-news-generation-status]");
     generateNewsButton.disabled = true;

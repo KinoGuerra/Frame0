@@ -47,7 +47,11 @@ function standings(teams: Row[], matches: Row[]) {
   return [...rows.values()].sort((a, b) => b.puntos - a.puntos || b.diferencia - a.diferencia || b.gf - a.gf);
 }
 
-function fallbackPage(category: Row, division: Row, matches: Row[], teams: Row[], cards: Row[]) {
+function matchRound(match: Row) {
+  return Number(String(match.observaciones || "").match(/fecha\s*(\d+)/i)?.[1] || 0);
+}
+
+function fallbackPage(category: Row, division: Row, matches: Row[], teams: Row[], cards: Row[], standingsMatches = matches) {
   const teamNames = new Map(teams.map((team) => [String(team.id), String(team.nombre)]));
   const sortedByGoals = [...matches].sort((a, b) => Number(b.goles_local) + Number(b.goles_visitante) - Number(a.goles_local) - Number(a.goles_visitante));
   const featured = sortedByGoals[0];
@@ -68,7 +72,7 @@ function fallbackPage(category: Row, division: Row, matches: Row[], teams: Row[]
       { tipo: "mas_goles", titulo: "Lluvia de goles", texto: describe(featured) },
       { tipo: "mas_sanciones", titulo: "Partido caliente", texto: heated && (matchCards.get(String(heated.id)) || 0) ? `${describe(heated)} registró ${matchCards.get(String(heated.id))} tarjetas.` : "No se registraron incidencias disciplinarias destacadas." }
     ] },
-    tabla_posiciones_snapshot: standings(teams, matches)
+    tabla_posiciones_snapshot: standings(teams, standingsMatches)
   };
 }
 
@@ -92,7 +96,7 @@ async function polishWithAi(diary: Row) {
   const raw = String(payload?.choices?.[0]?.message?.content || "").replace(/^```json\s*|```$/gi, "").trim();
   try {
     const parsed = JSON.parse(raw);
-    return { ...diary, ...parsed, paginas: (diary.paginas as Row[]).map((page, index) => ({ ...page, ...(parsed.paginas?.[index] || {}), categoria_id: page.categoria_id, division_id: page.division_id, tabla_posiciones_snapshot: page.tabla_posiciones_snapshot })) };
+    return { ...diary, ...parsed, titulo: "Frame0", paginas: (diary.paginas as Row[]).map((page, index) => ({ ...page, ...(parsed.paginas?.[index] || {}), categoria_id: page.categoria_id, division_id: page.division_id, tabla_posiciones_snapshot: page.tabla_posiciones_snapshot })) };
   } catch (_error) {
     throw new Error("Groq devolvió una respuesta que no contiene JSON válido.");
   }
@@ -115,7 +119,12 @@ Deno.serve(async (request) => {
     const numeroFecha = Number(body.numero_fecha);
     if (!Number.isInteger(numeroFecha) || numeroFecha < 1) throw new Error("Seleccioná una fecha deportiva realizada.");
 
-    const matches = await db(`partidos?select=id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones&estado=eq.finalizado&observaciones=ilike.${encodeURIComponent(`Fecha ${numeroFecha}`)}`);
+    const allMatches = await db("partidos?select=id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones&estado=eq.finalizado&observaciones=not.is.null");
+    const matches = allMatches.filter((match: Row) => matchRound(match) === numeroFecha);
+    const cumulativeMatches = allMatches.filter((match: Row) => {
+      const round = matchRound(match);
+      return round > 0 && round <= numeroFecha;
+    });
     if (!matches.length) throw new Error("La fecha deportiva seleccionada no tiene partidos finalizados.");
     const matchDates = matches.map((match: Row) => new Date(String(match.fecha_hora || ""))).filter((date: Date) => !Number.isNaN(date.getTime()));
     if (!matchDates.length) throw new Error("Los partidos de la fecha no tienen fecha y hora cargadas.");
@@ -133,7 +142,8 @@ Deno.serve(async (request) => {
       const category = categories.find((item: Row) => String(item.id) === String(division.categoria_id)) || { id: division.categoria_id, nombre: "Categoría" };
       const divisionTeams = teams.filter((item: Row) => String(item.division_id) === String(division.id));
       const divisionMatches = matches.filter((item: Row) => String(item.division_id) === String(division.id));
-      return { ...fallbackPage(category, division, divisionMatches, divisionTeams, cards), numero_pagina: index + 1, categoria: category, division };
+      const divisionCumulativeMatches = cumulativeMatches.filter((item: Row) => String(item.division_id) === String(division.id));
+      return { ...fallbackPage(category, division, divisionMatches, divisionTeams, cards, divisionCumulativeMatches), numero_pagina: index + 1, categoria: category, division };
     });
     const diary = await polishWithAi({ titulo: "Frame0", slogan: "Un fin de semana a puro fútbol", estado: "borrador", generado_por_ia: true, fecha, paginas: pages });
     const { paginas, ...edicion } = diary;
