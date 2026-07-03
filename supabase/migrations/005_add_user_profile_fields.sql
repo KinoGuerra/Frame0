@@ -24,8 +24,18 @@ end $$;
 alter table public.usuarios_app
 alter column id set default gen_random_uuid();
 
-alter table public.usuarios_app
-alter column email drop not null;
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'usuarios_app'
+      and column_name = 'email'
+  ) then
+    alter table public.usuarios_app alter column email drop not null;
+  end if;
+end $$;
 
 drop index if exists public.usuarios_app_usuario_unique;
 
