@@ -1,0 +1,79 @@
+name: Deploy static site to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Prepare static site
+        run: |
+          mkdir -p _site
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='_site/' \
+            --exclude='node_modules/' \
+            --exclude='supabase/' \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='.agents/' \
+            --exclude='.vs/' \
+            --exclude='deprecated-backend/' \
+            --exclude='.gitignore' \
+            --exclude='AGENTS.md' \
+            --exclude='README.md' \
+            --exclude='skills-lock.json' \
+            --exclude='Thumbs.db' \
+            --exclude='Desktop.ini' \
+            --exclude='.DS_Store' \
+            ./ _site/
+
+      - name: Validate static site
+        run: |
+          test -f _site/index.html
+          test -f _site/styles.css
+          test -f _site/script.js
+          test -f _site/apiClient.js
+          test -f _site/supabaseClient.js
+          test -f _site/.nojekyll
+          test -d _site/assets
+          test ! -e _site/supabase
+          test ! -e _site/AGENTS.md
+          test ! -e _site/README.md
+          ! find _site -type f \( -name '.env' -o -name '.env.*' \) -print -quit | grep -q .
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
