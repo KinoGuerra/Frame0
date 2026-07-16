@@ -50,6 +50,17 @@ Si la pantalla muestra `Failed to send a request to the Edge Function`, revisar:
 - que los secretos esten cargados;
 - que la funcion responda a `OPTIONS` y `POST`.
 
+## Chatbot Fulbito con Gemini
+
+Fulbito usa Gemini exclusivamente desde la Edge Function `fulbito-chat`; la API key nunca se incluye en el frontend.
+
+```powershell
+npx.cmd supabase secrets set GEMINI_API_KEY=tu_gemini_api_key GEMINI_MODEL=gemini-3.1-flash-lite
+npx.cmd supabase functions deploy fulbito-chat
+```
+
+La consulta pública recibe únicamente datos públicos del torneo. La consulta del delegado valida sus credenciales de Frame0 y limita el contexto al equipo que tiene asignado.
+
 ## Datos y autenticacion
 
 Las pantallas administrativas usan consultas directas a Supabase:

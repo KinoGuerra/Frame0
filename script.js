@@ -183,6 +183,7 @@ const adminDelegatesState = {
 const ADMIN_PAGE_SIZE = 20;
 const DEFAULT_DRIVE_PHOTOS_LINK = "https://drive.google.com/drive/folders/1Rc5iI61AXuY-DjYL11cVGb7Wg3JTPLEj";
 const THEME_STORAGE_KEY = "frame0-dark-mode";
+const LANDING_VIDEO_SEEN_KEY = "frame0-landing-video-seen";
 const HELP_URLS = {
   admin: "https://sites.google.com/view/frame0-principal/inicio",
   observer: "https://sites.google.com/view/frame0-veedores/inicio",
@@ -203,7 +204,7 @@ const publicSettings = {
   contactText: "Consultas por cupos, inscripción, documentación y calendario inicial. La atención se centraliza para mantener una comunicación clara con cada equipo.",
   sponsorImages: [],
   homeCarouselImages: [],
-  landingPopupVideo: { name: "video frame0.mp4", type: "video/mp4", src: "assets/video-frame0.mp4" },
+  landingPopupVideo: null,
   regulationText: `La competencia se disputa bajo principios de juego limpio, respeto entre participantes y cumplimiento de la programación oficial informada por la organización. Cada equipo deberá presentar su lista de buena fe, contar con jugadores habilitados y respetar los horarios asignados para cada fecha.
 
 Los partidos tendrán una duración definida por la organización según categoría y división. La tabla de posiciones se ordenará por puntos obtenidos, diferencia de gol, goles a favor y resultado entre equipos cuando corresponda. Las sanciones disciplinarias podrán incluir suspensión por acumulación de tarjetas, expulsiones directas o informes del veedor.
@@ -342,6 +343,98 @@ function applyPublicSettings() {
   renderSponsorCarousel();
   renderHomeCarouselImages();
 }
+
+const fulbitoAssistant = document.querySelector("[data-fulbito-assistant]");
+const fulbitoChat = document.querySelector("[data-fulbito-chat]");
+const fulbitoMessages = document.querySelector("[data-fulbito-messages]");
+const fulbitoSuggestions = document.querySelector("[data-fulbito-suggestions]");
+const fulbitoForm = document.querySelector("[data-fulbito-form]");
+const fulbitoInput = document.querySelector("[data-fulbito-input]");
+
+function getFulbitoContext() {
+  const isDelegate = document.body.classList.contains("delegate-view");
+  const team = isDelegate ? getTeam(sidebarContent.dataset.currentDelegateTeam) : null;
+  return {
+    profile: isDelegate ? "delegate" : "public",
+    teamId: team?.id || null,
+    teamName: team?.shortName || team?.name || null
+  };
+}
+
+function renderFulbitoWelcome() {
+  const { profile, teamName } = getFulbitoContext();
+  const welcome = profile === "delegate"
+    ? `¡Hola! Soy Fulbito. Puedo ayudarte a usar el sistema y responder consultas sobre ${teamName || "tu equipo"}.`
+    : "¡Hola! Soy Fulbito. Preguntame sobre el reglamento, torneos, categorías, fixture o posiciones.";
+  const prompts = profile === "delegate"
+    ? ["¿Cómo cargo un jugador?", "¿Cuándo cierra la inscripción?", "Resumen de mi equipo"]
+    : ["¿Qué torneos están disponibles?", "¿Quién va primero?", "Consultar el reglamento"];
+  fulbitoMessages.innerHTML = `<div class="fulbito-message">${escapeHtml(welcome)}</div>`;
+  fulbitoSuggestions.innerHTML = prompts.map((prompt) => `<button type="button" data-fulbito-prompt="${escapeHtml(prompt)}">${escapeHtml(prompt)}</button>`).join("");
+}
+
+function openFulbitoChat() {
+  fulbitoAssistant.classList.remove("is-open");
+  fulbitoAssistant.querySelector("[data-fulbito-toggle]").setAttribute("aria-expanded", "false");
+  renderFulbitoWelcome();
+  fulbitoChat.classList.add("is-open");
+  fulbitoChat.setAttribute("aria-hidden", "false");
+  window.setTimeout(() => fulbitoInput.focus(), 100);
+}
+
+function closeFulbitoChat() {
+  fulbitoChat.classList.remove("is-open");
+  fulbitoChat.setAttribute("aria-hidden", "true");
+}
+
+async function requestFulbitoAnswer(question, context) {
+  const body = { question, profile: context.profile };
+  if (context.profile === "delegate") {
+    body.usuario = delegateSettingsSession?.usuario || "";
+    body.password = delegateSettingsSession?.password || "";
+  }
+  const { data, error } = await supabaseClient.functions.invoke("fulbito-chat", { body });
+  if (error || !data?.answer) throw new Error(data?.error || error?.message || "Fulbito no pudo responder.");
+  return data.answer;
+}
+
+fulbitoAssistant?.addEventListener("click", (event) => {
+  if (event.target.closest("[data-fulbito-open]")) return openFulbitoChat();
+  if (!event.target.closest("[data-fulbito-toggle]")) return;
+  if (document.body.classList.contains("delegate-view")) return openFulbitoChat();
+  const isOpen = fulbitoAssistant.classList.toggle("is-open");
+  event.currentTarget.querySelector("[data-fulbito-toggle]").setAttribute("aria-expanded", String(isOpen));
+});
+
+fulbitoChat?.addEventListener("click", (event) => {
+  if (event.target.closest("[data-fulbito-close]")) return closeFulbitoChat();
+  const prompt = event.target.closest("[data-fulbito-prompt]")?.dataset.fulbitoPrompt;
+  if (prompt) { fulbitoInput.value = prompt; fulbitoForm.requestSubmit(); }
+});
+
+fulbitoInput?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+  event.preventDefault();
+  fulbitoForm.requestSubmit();
+});
+
+fulbitoForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const question = fulbitoInput.value.trim();
+  if (!question) return;
+  fulbitoInput.value = "";
+  fulbitoMessages.insertAdjacentHTML("beforeend", `<div class="fulbito-message is-user">${escapeHtml(question)}</div><div class="fulbito-message" data-fulbito-thinking>Fulbito está pensando…</div>`);
+  fulbitoMessages.scrollTop = fulbitoMessages.scrollHeight;
+  try {
+    const answer = await requestFulbitoAnswer(question, getFulbitoContext());
+    fulbitoMessages.querySelector("[data-fulbito-thinking]")?.remove();
+    fulbitoMessages.insertAdjacentHTML("beforeend", `<div class="fulbito-message">${escapeHtml(answer)}</div>`);
+  } catch (error) {
+    fulbitoMessages.querySelector("[data-fulbito-thinking]")?.remove();
+    fulbitoMessages.insertAdjacentHTML("beforeend", `<div class="fulbito-message">No pude responder ahora. ${escapeHtml(error.message || "Intentá nuevamente.")}</div>`);
+  }
+  fulbitoMessages.scrollTop = fulbitoMessages.scrollHeight;
+});
 
 function getPublicSettingsPayload() {
   return {
@@ -647,7 +740,8 @@ function showLandingVideoModal() {
   const repeatButton = document.querySelector("[data-landing-video-repeat]");
   const closeMiniButton = document.querySelector("[data-landing-video-close-mini]");
   const video = publicSettings.landingPopupVideo;
-  if (!modalElement || !videoElement || !video?.src) return;
+  if (!modalElement || !videoElement || !video?.src || sessionStorage.getItem(LANDING_VIDEO_SEEN_KEY)) return;
+  sessionStorage.setItem(LANDING_VIDEO_SEEN_KEY, "true");
 
   videoElement.src = video.src;
   videoElement.muted = true;
@@ -2895,6 +2989,8 @@ async function exitProfileToPublicHome() {
   delegateSettingsSession = null;
   currentAppUser = null;
   currentAiReport = null;
+  document.body.classList.remove("delegate-view");
+  closeFulbitoChat();
 
   supabaseClient?.auth?.signOut?.().catch((error) => {
     console.error("Error al cerrar sesión de Supabase:", error);
@@ -7267,9 +7363,11 @@ async function enterDelegateView(team) {
   sidebarContent.dataset.currentDelegateTeam = team.id;
   contentShell.innerHTML = renderDelegateHome(team);
   document.body.classList.add("admin-view");
+  document.body.classList.add("delegate-view");
 }
 
 async function enterAdminView() {
+  document.body.classList.remove("delegate-view");
   try {
     await loadAdminMetricsFromSupabase();
     await loadAdminObservedSummaryFromSupabase();
@@ -7352,6 +7450,7 @@ async function enterAdminView() {
 }
 
 async function enterObserverView() {
+  document.body.classList.remove("delegate-view");
   await loadObserverDataFromSupabase();
   sidebarContent.innerHTML = `
     <div class="sidebar-main admin-sidebar-main">

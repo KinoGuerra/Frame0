@@ -834,15 +834,40 @@
       </div>
     </aside>
 
-    <a class="floating-mascot" id="floatingMascotWhatsapp" href="#" aria-label="Abrir chat de WhatsApp de Frame0">
-      <span class="floating-mascot-bubble" aria-hidden="true">
-        ¿Querés jugar nuestro torneo? Contactanos!
-        <i class="bi bi-whatsapp"></i>
-      </span>
-      <span class="floating-mascot-image-wrap" aria-hidden="true">
+    <aside class="floating-mascot" data-fulbito-assistant aria-label="Asistente virtual Fulbito">
+      <div class="floating-mascot-menu" data-fulbito-menu>
+        <strong>¡Hola! Soy Fulbito</strong>
+        <a class="fulbito-choice" id="floatingMascotWhatsapp" href="#">
+          <i class="bi bi-whatsapp" aria-hidden="true"></i>
+          ¿Querés participar? Contactanos
+        </a>
+        <button class="fulbito-choice" type="button" data-fulbito-open>
+          <i class="bi bi-chat-dots-fill" aria-hidden="true"></i>
+          ¿Tenés alguna pregunta? ¡Estoy para ayudarte!
+        </button>
+      </div>
+      <button class="floating-mascot-trigger" type="button" aria-label="Abrir opciones de Fulbito" aria-expanded="false" data-fulbito-toggle>
+        <span class="floating-mascot-bubble" aria-hidden="true">¿En qué te ayudo?</span>
+        <span class="floating-mascot-image-wrap" aria-hidden="true">
         <img src="assets/frame0_mascot.svg" alt="" class="floating-mascot-image">
-      </span>
-    </a>
+        </span>
+      </button>
+    </aside>
+
+    <section class="fulbito-chat" data-fulbito-chat aria-label="Chat con Fulbito" aria-hidden="true">
+      <header class="fulbito-chat-header">
+        <span class="fulbito-chat-avatar" aria-hidden="true"><img src="assets/frame0_mascot.svg" alt=""></span>
+        <div><strong>¡Estoy para ayudarte!</strong><small>Asistente virtual de Frame0</small></div>
+        <button type="button" aria-label="Cerrar chat" data-fulbito-close><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+      </header>
+      <div class="fulbito-messages" data-fulbito-messages aria-live="polite"></div>
+      <div class="fulbito-suggestions" data-fulbito-suggestions></div>
+      <form class="fulbito-form" data-fulbito-form>
+        <label class="visually-hidden" for="fulbitoQuestion">Escribí tu pregunta</label>
+        <textarea id="fulbitoQuestion" rows="1" maxlength="500" placeholder="Escribí tu pregunta..." required data-fulbito-input></textarea>
+        <button type="submit" aria-label="Enviar pregunta"><i class="bi bi-send-fill" aria-hidden="true"></i></button>
+      </form>
+    </section>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./supabaseClient.js"></script>
