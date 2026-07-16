@@ -2802,6 +2802,7 @@ body.admin-view:not(.delegate-view) .floating-mascot {
   transform: translate(0, 0) scale(1);
 }
 
+.floating-mascot.is-open .floating-mascot-bubble,
 body:has(.fulbito-chat.is-open) .floating-mascot-bubble {
   opacity: 0;
   visibility: hidden;
