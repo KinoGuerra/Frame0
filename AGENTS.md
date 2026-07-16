@@ -34,7 +34,9 @@ El sitio se publica desde la raiz del repositorio en GitHub Pages. Debe funciona
 - Las escrituras iniciadas por roles con login propio de Frame0 (`usuarios_app.usuario` + `password_hash`) deben usar RPC `security definer` con `p_usuario` y `p_password`; no depender de politicas `authenticated` salvo que ese rol use Supabase Auth real.
 
 ## Login actual
-El login admin/delegado/veedor usa la tabla `public.usuarios_app`, no debe buscar usuarios por email.
+El login admin/delegado/veedor valida la tabla `public.usuarios_app` mediante la RPC
+`iniciar_sesion_frame0`. El navegador no debe consultar `usuarios_app` directamente ni
+recibir `password_hash`.
 
 Consulta obligatoria para login:
 
@@ -42,11 +44,10 @@ Consulta obligatoria para login:
 const usuarioLimpio = usuarioIngresado.trim();
 
 const { data, error } = await supabaseClient
-  .from("usuarios_app")
-  .select("*")
-  .ilike("usuario", usuarioLimpio)
-  .eq("activo", true)
-  .maybeSingle();
+  .rpc("iniciar_sesion_frame0", {
+    p_usuario: usuarioLimpio,
+    p_password: passwordIngresada.trim()
+  });
 ```
 
 Reglas del login:
@@ -54,16 +55,16 @@ Reglas del login:
 - No buscar por `nombre`.
 - No buscar por email.
 - No buscar en otra tabla para autenticar credenciales.
-- Comparar la contrasena ingresada contra `data.password_hash`.
-- Usar `data.rol`, `data.nombre` y `data.id` para continuar el flujo.
+- Validar la contrasena exclusivamente dentro de la RPC.
+- Usar `data[0].rol`, `data[0].nombre` y `data[0].id` para continuar el flujo.
 - Admin acepta `rol = admin` o `rol = superadmin`.
 - Delegado acepta `rol = delegado`.
 - Veedor acepta `rol = veedor`.
-- Mantener logs temporales mientras se depura: `usuarioLimpio`, `data usuarios_app`, `error usuarios_app`, y URL de Supabase si ayuda.
-- Si el usuario existe pero `data` llega `null`, revisar que esten aplicados los grants/RLS de login, especialmente `supabase/migrations/009_grant_login_lookup_select.sql`.
+- Los logs de depuracion nunca deben incluir `password_hash` ni la contrasena ingresada.
+- Si `data` llega vacio, revisar que este aplicada `supabase/migrations/028_secure_frame0_login.sql`.
 
 ## Delegados
-- Los delegados se autentican por `usuarios_app.usuario` y `usuarios_app.password_hash`.
+- Los delegados se autentican por `usuarios_app.usuario` y contrasena mediante `iniciar_sesion_frame0`.
 - El equipo del delegado debe resolverse por relacion real:
   `usuarios_app.id -> delegados.usuario_id -> delegados.equipo_id -> equipos.id`.
 - No resolver el equipo delegado por coincidencia de texto salvo como fallback temporal.
@@ -72,7 +73,7 @@ Reglas del login:
 - El atributo interno para guardar el equipo actual del delegado en el sidebar es `data-current-delegate-team`; no reutilizar `data-delegate-team`, porque ese selector pertenece al boton `Mi equipo`.
 
 ## Veedores
-- Los veedores se autentican por `usuarios_app.usuario` y `usuarios_app.password_hash`.
+- Los veedores se autentican por `usuarios_app.usuario` y contrasena mediante `iniciar_sesion_frame0`.
 - La carga inicial del perfil veedor depende de `loadObserverDataFromSupabase()`.
 - Si se agregan columnas nuevas en `equipos`, mantener fallback de lectura base para no romper el perfil veedor.
 
@@ -136,7 +137,7 @@ Reglas del login:
 - `006_enable_rls_policies.sql`: politicas base para datos publicos y escritura admin.
 - `007_fix_login_profile_resolution.sql`: legado de resolucion usuario/email; no usar para el login actual salvo que una tarea lo pida.
 - `008_allow_password_hash_login_lookup.sql`: legado de login con RPC; no es el flujo principal actual.
-- `009_grant_login_lookup_select.sql`: permisos necesarios para que la consulta directa de login lea usuarios activos con anon key.
+- `009_grant_login_lookup_select.sql`: legado; sus permisos anonimos son revocados por la migracion 028.
 - `010_save_public_settings_rpc.sql`: RPC para guardar `public_settings`.
 - `011_authenticated_role_write_policies.sql`: politicas de escritura por rol con Supabase Auth; revisar antes de tocar RLS.
 - `012_unique_player_dni.sql`: unicidad de DNI de jugadores.
@@ -145,6 +146,7 @@ Reglas del login:
 - `015_allow_delegate_admin_status_management.sql`: baja/reactivacion de delegados desde admin.
 - `016_save_tournament_settings_rpc.sql`: RPC para guardar `tournament_settings`.
 - `022_delegate_profile_write_rpcs.sql`: RPCs para guardar equipo y jugadores desde perfil delegado con login propio.
+- `028_secure_frame0_login.sql`: login por RPC sin exponer `usuarios_app`, retiro de permisos anonimos y datos publicos minimos de delegados.
 
 ## Limpieza
 - Buscar referencias obsoletas con `localhost`, `127.0.0.1`, `/api`, `fetch(` y `axios` cuando se toque la capa de datos.

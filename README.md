@@ -69,16 +69,17 @@ Las pantallas administrativas usan consultas directas a Supabase:
 - `supabase.from("divisiones").select/insert/update`
 - `supabase.from("usuarios_app").select/insert/update`
 - `supabase.from("veedores").select/insert/update`
-- `supabase.auth.signUp` y `supabase.auth.signInWithPassword` para veedores nuevos.
 
 Las bajas siguen siendo logicas mediante columnas `activa` o `activo`.
 
-Para ingresar como administrador, el usuario visible puede ser `admin` o
-`admin@frame0.local`, sin importar mayusculas o minusculas. El frontend primero resuelve
-el perfil por `usuarios_app.usuario = 'admin'` y luego autentica contra Supabase Auth con
-`admin@frame0.local`, porque Supabase Auth requiere formato email. Debe existir ese
-usuario en Auth y un perfil activo en `usuarios_app` con rol `admin` o `superadmin`.
-No se valida manualmente contra `password_hash` cuando el login usa Supabase Auth.
+El login de Frame0 llama a la RPC `iniciar_sesion_frame0`, que valida
+`usuarios_app.usuario` y la contrasena dentro de Postgres y devuelve solo los datos
+minimos del perfil. La anon key no tiene permiso de lectura sobre `usuarios_app` y el
+frontend nunca recibe `password_hash`.
+
+Administrador mantiene una sesion de Supabase Auth para las escrituras protegidas por
+RLS. Delegado y veedor usan exclusivamente el login propio de Frame0 y las RPCs que
+validan `p_usuario` y `p_password`; no intentan crear cuentas `@frame0.local`.
 
 ## Seguridad y RLS
 
@@ -88,6 +89,7 @@ El frontend esta preparado para trabajar con RLS usando solo la anon key. En Sup
 - Escritura administrativa solo para usuarios autenticados con rol permitido.
 - Acciones de delegado limitadas al usuario autenticado y a su equipo asociado.
 - Acciones de veedor limitadas a partidos y registros que pueda gestionar.
+- Ninguna lectura anonima directa de `usuarios_app`.
 
 Para operaciones administrativas sensibles, como cambiar contrasenas de otros usuarios, usar el panel de Supabase Auth o una Edge Function segura. Esa operacion no debe hacerse con `service_role_key` desde el navegador.
 
@@ -98,9 +100,9 @@ La migracion `supabase/migrations/006_enable_rls_policies.sql` agrega una base d
 - lectura del perfil propio para usuarios autenticados.
 - una RPC `resolve_login_profile(login_usuario)` para resolver usuario visible a email interno sin exponer lectura anonima completa de `usuarios_app`.
 
-Si `006_enable_rls_policies.sql` ya estaba aplicada, aplicar tambien
-`supabase/migrations/007_fix_login_profile_resolution.sql`, que actualiza la resolucion
-`usuario -> auth_email` para el login con `admin`.
+La migracion `supabase/migrations/028_secure_frame0_login.sql` revoca los permisos
+anonimos heredados, deshabilita el login legado que devolvia `password_hash` y agrega
+las RPCs seguras usadas por el frontend. Debe aplicarse antes de publicar esta version.
 
 ## Diario Noticias IA
 

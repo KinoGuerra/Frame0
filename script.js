@@ -315,9 +315,40 @@ function setLinkIfExists(selector, href) {
   const link = document.querySelector(selector);
   if (!link) return;
 
-  link.href = href || "#";
-  link.target = href && href !== "#" ? "_blank" : "";
-  link.rel = href && href !== "#" ? "noopener noreferrer" : "";
+  const cleanHref = String(href || "").trim();
+  const hasLinkedPage = Boolean(cleanHref && cleanHref !== "#");
+  link.href = hasLinkedPage ? cleanHref : "#";
+  link.target = hasLinkedPage ? "_blank" : "";
+  link.rel = hasLinkedPage ? "noopener noreferrer" : "";
+  link.title = hasLinkedPage ? "" : "No hay una página vinculada";
+  link.onclick = hasLinkedPage ? null : (event) => {
+    event.preventDefault();
+    void showMissingLinkModal(link);
+  };
+}
+
+async function showMissingLinkModal(link) {
+  const sourceModalElement = link.closest(".modal.show");
+
+  if (sourceModalElement) {
+    await new Promise((resolve) => {
+      sourceModalElement.addEventListener("hidden.bs.modal", resolve, { once: true });
+      bootstrap.Modal.getOrCreateInstance(sourceModalElement).hide();
+    });
+  }
+
+  await requestConfirmation({
+    kicker: "Enlace no configurado",
+    title: "Página no disponible",
+    message: "No existe una página vinculada para esta opción.",
+    confirmLabel: "Entendido",
+    icon: "bi-link-45deg",
+    showCancel: false
+  });
+
+  if (sourceModalElement) {
+    bootstrap.Modal.getOrCreateInstance(sourceModalElement).show();
+  }
 }
 
 function applyPublicSettings() {
@@ -2220,10 +2251,7 @@ async function loadTeamDelegatesByTeam(teamIds = []) {
   if (!teamIds.length || typeof supabaseClient === "undefined") return new Map();
 
   const { data, error } = await supabaseClient
-    .from("delegados")
-    .select("equipo_id,activo,usuario:usuarios_app(nombre,apellido,contacto,usuario,activo)")
-    .in("equipo_id", teamIds)
-    .eq("activo", true);
+    .rpc("obtener_delegados_publicos", { p_equipo_ids: teamIds });
 
   if (error) {
     console.warn("No se pudieron cargar delegados para el detalle público de equipos:", error);
@@ -2231,12 +2259,10 @@ async function loadTeamDelegatesByTeam(teamIds = []) {
   }
 
   return new Map((data || [])
-    .filter((item) => item.usuario?.activo !== false)
     .map((item) => {
-      const fullName = `${item.usuario?.nombre || ""} ${item.usuario?.apellido || ""}`.trim() || item.usuario?.usuario || "-";
       return [item.equipo_id, {
-        name: fullName,
-        contact: item.usuario?.contacto || "-"
+        name: item.nombre || "-",
+        contact: item.contacto || "-"
       }];
     }));
 }
@@ -3598,20 +3624,20 @@ function getConfirmationModalElement() {
           <div class="login-brand">
             <img src="assets/frame0-logo.png" alt="Logo Frame0">
             <div>
-              <p class="section-kicker mb-1">Confirmación</p>
+              <p class="section-kicker mb-1" data-confirm-kicker>Confirmación</p>
               <h2 class="modal-title fs-5" id="frameConfirmModalLabel">Confirmar acción</h2>
             </div>
           </div>
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
         <div class="modal-body">
-          <div class="frame-confirm-symbol" aria-hidden="true"><i class="bi bi-question-lg"></i></div>
+          <div class="frame-confirm-symbol" aria-hidden="true"><i class="bi bi-question-lg" data-confirm-icon></i></div>
           <p class="mb-3" data-confirm-message>¿Querés continuar?</p>
           <div class="d-grid gap-2">
             <button class="btn btn-login-submit" type="button" data-confirm-accept>
               Confirmar
             </button>
-            <button class="btn btn-outline-light admin-secondary-btn" type="button" data-bs-dismiss="modal">
+            <button class="btn btn-outline-light admin-secondary-btn" type="button" data-bs-dismiss="modal" data-confirm-cancel>
               Cancelar
             </button>
           </div>
@@ -3623,18 +3649,24 @@ function getConfirmationModalElement() {
   return modal;
 }
 
-function requestConfirmation({ title = "Confirmar acción", message = "¿Querés continuar?", confirmLabel = "Confirmar" } = {}) {
+function requestConfirmation({ kicker = "Confirmación", title = "Confirmar acción", message = "¿Querés continuar?", confirmLabel = "Confirmar", icon = "bi-question-lg", showCancel = true } = {}) {
   return new Promise((resolve) => {
     const modalElement = getConfirmationModalElement();
     const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+    const kickerElement = modalElement.querySelector("[data-confirm-kicker]");
     const titleElement = modalElement.querySelector("#frameConfirmModalLabel");
     const messageElement = modalElement.querySelector("[data-confirm-message]");
+    const iconElement = modalElement.querySelector("[data-confirm-icon]");
     const acceptButton = modalElement.querySelector("[data-confirm-accept]");
+    const cancelButton = modalElement.querySelector("[data-confirm-cancel]");
     let resolved = false;
 
+    kickerElement.textContent = kicker;
     titleElement.textContent = title;
     messageElement.textContent = message;
+    iconElement.className = `bi ${icon}`;
     acceptButton.textContent = confirmLabel;
+    cancelButton.classList.toggle("d-none", !showCancel);
 
     const cleanup = () => {
       acceptButton.removeEventListener("click", acceptHandler);
@@ -3660,19 +3692,18 @@ function requestConfirmation({ title = "Confirmar acción", message = "¿Querés
 
 async function loginUsuariosApp(usuarioIngresado, passwordIngresada) {
   const usuarioLimpio = usuarioIngresado.trim();
-  const usuarioLookup = usuarioLimpio.includes("@") ? usuarioLimpio.split("@")[0] : usuarioLimpio;
 
   const { data, error } = await supabaseClient
-    .from("usuarios_app")
-    .select("*")
-    .ilike("usuario", usuarioLookup)
-    .eq("activo", true)
-    .maybeSingle();
+    .rpc("iniciar_sesion_frame0", {
+      p_usuario: usuarioLimpio,
+      p_password: passwordIngresada.trim()
+    });
+
+  const usuarioApp = data?.[0] || null;
 
   console.log("usuarioLimpio:", usuarioLimpio);
-  console.log("usuarioLookup:", usuarioLookup);
-  console.log("data usuarios_app:", data);
-  console.log("error usuarios_app:", error);
+  console.log("data login Frame0:", usuarioApp);
+  console.log("error login Frame0:", error);
   console.log("Supabase URL:", typeof SUPABASE_URL !== "undefined" ? SUPABASE_URL : "SUPABASE_URL no disponible");
 
   if (error) {
@@ -3680,27 +3711,24 @@ async function loginUsuariosApp(usuarioIngresado, passwordIngresada) {
     return null;
   }
 
-  if (!data) {
-    showLoginError(`Usuario "${usuarioLookup}" no encontrado en usuarios_app.`);
+  if (!usuarioApp) {
+    showLoginError("Usuario o contraseña incorrectos.");
     return null;
   }
 
-  if (data.password_hash && data.password_hash !== passwordIngresada.trim()) {
-    showLoginError("Contraseña incorrecta.");
-    return null;
+  if (["admin", "superadmin"].includes(usuarioApp.rol)) {
+    const authReady = await ensureSupabaseAuthSessionForProfile(usuarioApp, passwordIngresada);
+    if (!authReady) {
+      showLoginError("No se pudo iniciar la sesión administrativa en Supabase Auth.");
+      return null;
+    }
   }
 
-  const authReady = await ensureSupabaseAuthSessionForProfile(data, passwordIngresada);
-  if (!data.password_hash && !authReady) {
-    showLoginError("No hay contraseña configurada para este usuario en usuarios_app y no se pudo validar con Supabase Auth.");
-    return null;
-  }
-
-  return data;
+  return usuarioApp;
 }
 
 async function ensureSupabaseAuthSessionForProfile(usuarioApp, passwordIngresada) {
-  if (!usuarioApp?.usuario || typeof supabaseClient === "undefined") return false;
+  if (!usuarioApp?.usuario || !["admin", "superadmin"].includes(usuarioApp.rol) || typeof supabaseClient === "undefined") return false;
 
   const email = `${String(usuarioApp.usuario).trim().toLowerCase()}@frame0.local`;
   const password = String(passwordIngresada || "").trim();
@@ -3708,13 +3736,6 @@ async function ensureSupabaseAuthSessionForProfile(usuarioApp, passwordIngresada
 
   const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
   if (!error) return true;
-
-  if (usuarioApp.rol === "delegado" || usuarioApp.rol === "veedor") {
-    const { error: signUpError } = await supabaseClient.auth.signUp({ email, password });
-    if (!signUpError) return true;
-    console.warn("No se pudo crear sesión Supabase Auth para RLS:", signUpError.message);
-    return false;
-  }
 
   console.warn("No se pudo iniciar sesión Supabase Auth para RLS:", error.message);
   return false;

@@ -91,61 +91,6 @@ function normalizeUsername(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function getObserverAuthEmail(username) {
-  const normalizedUsername = normalizeUsername(username);
-  return normalizedUsername.includes("@") ? normalizedUsername : `${normalizedUsername}@frame0.local`;
-}
-
-function getAuthEmail(username) {
-  const normalizedUsername = normalizeUsername(username);
-  return normalizedUsername.includes("@") ? normalizedUsername : `${normalizedUsername}@frame0.local`;
-}
-
-function getUsernameFromLogin(login) {
-  const normalizedLogin = normalizeUsername(login);
-  return normalizedLogin.includes("@") ? normalizedLogin.split("@")[0] : normalizedLogin;
-}
-
-async function resolveLoginProfile(username) {
-  const login = normalizeUsername(username);
-  const lookupUsername = getUsernameFromLogin(login);
-
-  if (!lookupUsername) {
-    throw new Error("Ingresá un usuario.");
-  }
-
-  const { data: resolvedProfile, error: rpcError } = await getSupabaseClient()
-    .rpc("resolve_login_profile", { login_usuario: login });
-
-  if (!rpcError) {
-    if (resolvedProfile?.length) {
-      return resolvedProfile[0];
-    }
-
-    throw new Error(`Usuario "${lookupUsername}" no encontrado en usuarios_app.`);
-  }
-
-  const { data, error } = await getSupabaseClient()
-    .from("usuarios_app")
-    .select("id,usuario,rol,activo")
-    .ilike("usuario", lookupUsername)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error("No se pudo consultar usuarios_app. Revisá las políticas RLS para resolver el usuario antes del login.");
-  }
-
-  if (!data) {
-    throw new Error(`Usuario "${lookupUsername}" no encontrado en usuarios_app.`);
-  }
-
-  return {
-    ...data,
-    auth_email: getAuthEmail(data.usuario || lookupUsername)
-  };
-}
-
 async function ensureUniqueUsername(username, currentUserId = "") {
   const normalizedUsername = normalizeUsername(username);
   if (!normalizedUsername) return;
@@ -345,51 +290,35 @@ async function updateObserver(id, body = {}) {
 }
 
 async function loginObserver(body = {}) {
-  const profileForLogin = await resolveLoginProfile(body.usuario);
-  const email = profileForLogin.auth_email || getObserverAuthEmail(profileForLogin.usuario);
+  const usuario = normalizeUsername(body.usuario);
   const password = String(body.password || "");
 
-  if (!email || !password) {
+  if (!usuario || !password) {
     throw new Error("Usuario y contraseña son requeridos.");
   }
 
-  if (profileForLogin.activo === false) {
-    throw new Error(`El usuario "${profileForLogin.usuario}" esta inactivo.`);
-  }
-
-  if (profileForLogin.rol !== "veedor") {
-    throw new Error(`El rol "${profileForLogin.rol}" no esta autorizado para ingresar como veedor.`);
-  }
-
-  const { error: authError } = await getSupabaseClient().auth.signInWithPassword({
-    email,
-    password
+  const { data: profiles, error: loginError } = await getSupabaseClient().rpc("iniciar_sesion_frame0", {
+    p_usuario: usuario,
+    p_password: password.trim()
   });
+  if (loginError) throw loginError;
 
-  if (authError) {
-    throw new Error(`Error de autenticaci?n en Supabase Auth: ${authError.message}`);
-  }
+  const profile = profiles?.[0];
+  if (!profile) throw new Error("Usuario o contraseña incorrectos.");
 
-  const { data: profile, error: profileError } = await getSupabaseClient()
-    .from("usuarios_app")
-    .select("id,rol,activo")
-    .or(`id.eq.${profileForLogin.id},usuario.eq.${profileForLogin.usuario}`)
-    .single();
-
-  if (profileError) throw profileError;
   if (!profile.activo || profile.rol !== "veedor") {
     throw new Error("El usuario no tiene perfil de veedor activo.");
   }
 
   const { data, error } = await getSupabaseClient()
     .from("veedores")
-    .select(FRAME0_TABLES.veedores.select)
+    .select("id,usuario_id,activo,created_at")
     .eq("usuario_id", profile.id)
     .eq("activo", true)
     .single();
 
   if (error) throw error;
-  return data;
+  return { ...data, usuario: profile };
 }
 
 async function apiPost(endpoint, body) {
