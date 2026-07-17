@@ -1,3 +1,5 @@
+import { ensureAiResponse, getFunctionFailure, missingAiKeyError } from "../_shared/ai-errors.ts";
+
 type Row = Record<string, unknown>;
 
 const corsHeaders = {
@@ -55,7 +57,7 @@ async function delegateContext(usuario: string, password: string) {
 }
 
 async function askGemini(question: string, profile: string, context: Row) {
-  if (!geminiApiKey) throw new Error("Falta configurar GEMINI_API_KEY en Supabase secrets.");
+  if (!geminiApiKey) throw missingAiKeyError("Gemini", "GEMINI_API_KEY");
   const scope = profile === "delegate"
     ? "Respondé únicamente sobre el uso de Frame0 y los datos del equipo asignado incluidos en el contexto. No reveles contraseñas, DNI ni datos de otros equipos."
     : "Respondé únicamente sobre el reglamento, torneos, categorías, equipos, fixture, resultados y posiciones públicas incluidos en el contexto.";
@@ -68,7 +70,11 @@ async function askGemini(question: string, profile: string, context: Row) {
       generationConfig: { temperature: 0.2, maxOutputTokens: 600 }
     })
   });
-  if (!response.ok) throw new Error(`Gemini respondió error: ${await response.text()}`);
+  await ensureAiResponse(response, {
+    provider: "Gemini",
+    apiKeyName: "GEMINI_API_KEY",
+    modelName: "GEMINI_MODEL"
+  });
   const payload = await response.json();
   const answer = payload?.candidates?.[0]?.content?.parts?.map((part: Row) => part.text || "").join("").trim();
   if (!answer) throw new Error("Gemini no devolvió una respuesta.");
@@ -88,6 +94,7 @@ Deno.serve(async (request) => {
       : await publicContext();
     return respond({ answer: await askGemini(question, profile, context) });
   } catch (error) {
-    return respond({ error: error instanceof Error ? error.message : "No se pudo consultar a Fulbito." }, 400);
+    const failure = getFunctionFailure(error, "No se pudo consultar a Fulbito.");
+    return respond({ error: failure.message, code: failure.code }, failure.status);
   }
 });

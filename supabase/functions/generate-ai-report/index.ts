@@ -1,3 +1,5 @@
+import { ensureAiResponse, getFunctionFailure, missingAiKeyError } from "../_shared/ai-errors.ts";
+
 type Dataset = {
   categorias: Record<string, unknown>[];
   divisiones: Record<string, unknown>[];
@@ -250,7 +252,7 @@ function parseModelJson(content: string) {
 
 async function generateWithGroq(dataset: Dataset) {
   if (!groqApiKey) {
-    throw new Error("Falta configurar GROQ_API_KEY.");
+    throw missingAiKeyError("Groq", "GROQ_API_KEY");
   }
 
   const fallbackReport = buildFallbackReport(dataset);
@@ -271,9 +273,11 @@ async function generateWithGroq(dataset: Dataset) {
     })
   });
 
-  if (!response.ok) {
-    throw new Error(`Groq respondio error: ${await response.text()}`);
-  }
+  await ensureAiResponse(response, {
+    provider: "Groq",
+    apiKeyName: "GROQ_API_KEY",
+    modelName: "GROQ_MODEL"
+  });
 
   const payload = await response.json();
   const content = payload?.choices?.[0]?.message?.content || "";
@@ -319,7 +323,7 @@ Deno.serve(async (request) => {
       return jsonResponse({ report });
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error desconocido.";
-    return jsonResponse({ error: message }, 400);
+    const failure = getFunctionFailure(error, "No se pudo generar el reporte.");
+    return jsonResponse({ error: failure.message, code: failure.code }, failure.status);
   }
 });

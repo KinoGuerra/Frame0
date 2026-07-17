@@ -418,6 +418,22 @@ function closeFulbitoChat() {
   fulbitoChat.setAttribute("aria-hidden", "true");
 }
 
+async function getEdgeFunctionErrorMessage(error, data, fallback) {
+  let message = String(data?.error || "").trim();
+  if (!message) {
+    try {
+      const errorBody = await error?.context?.json?.();
+      message = String(errorBody?.error || "").trim();
+    } catch (_contextError) {
+      // El cliente no siempre expone un body JSON.
+    }
+  }
+
+  const rawMessage = String(error?.message || "").trim();
+  if (!message && rawMessage && !rawMessage.toLowerCase().includes("non-2xx")) message = rawMessage;
+  return message || fallback;
+}
+
 async function requestFulbitoAnswer(question, context) {
   const body = { question, profile: context.profile };
   if (context.profile === "delegate") {
@@ -425,7 +441,8 @@ async function requestFulbitoAnswer(question, context) {
     body.password = delegateSettingsSession?.password || "";
   }
   const { data, error } = await supabaseClient.functions.invoke("fulbito-chat", { body });
-  if (error || !data?.answer) throw new Error(data?.error || error?.message || "Fulbito no pudo responder.");
+  if (error) throw new Error(await getEdgeFunctionErrorMessage(error, data, "Fulbito no pudo responder en este momento."));
+  if (!data?.answer) throw new Error(data?.error || "Fulbito no devolvió una respuesta.");
   return data.answer;
 }
 
@@ -5547,15 +5564,10 @@ async function generateAdminNewsDraft() {
   console.log("Respuesta Edge Function:", data);
   if (error) {
     console.error("Error completo Edge Function:", error);
-    let message = data?.error || "";
-    try {
-      const errorBody = await error.context?.json?.();
-      message = errorBody?.error || message;
-    } catch (_contextError) {
-      // La respuesta no siempre expone un body JSON (por ejemplo, rechazo JWT del gateway).
-    }
-    if (!message && error.context?.status === 401) message = "No se pudo autorizar la generación IA. Redesplegá la función con --no-verify-jwt.";
-    throw new Error(message || "La IA no pudo generar el diario. Revisá los logs de la función en Supabase.");
+    const fallback = error.context?.status === 401
+      ? "No se pudo autorizar la generación IA. Revisá la configuración de la función en Supabase."
+      : "La IA no pudo generar el diario en este momento.";
+    throw new Error(await getEdgeFunctionErrorMessage(error, data, fallback));
   }
   if (data?.success !== true) throw new Error(data?.error || "La función no devolvió un diario válido.");
   adminNewsDraft = {
@@ -5688,7 +5700,7 @@ async function requestAiReportFromEdgeFunction() {
     }
   });
 
-  if (error) throw error;
+  if (error) throw new Error(await getEdgeFunctionErrorMessage(error, data, "No se pudo generar el reporte con IA en este momento."));
   if (data?.error) throw new Error(data.error);
   return normalizeAiReport(data?.report || data);
 }
@@ -5706,7 +5718,14 @@ function getAiReportFallbackWarning(error) {
     return "No se pudo conectar con la Edge Function generate-ai-report. Verificá que esté desplegada en Supabase y que los secretos GROQ_API_KEY, GROQ_MODEL y SUPABASE_SERVICE_ROLE_KEY estén configurados. Mientras tanto se generó un reporte básico por reglas locales.";
   }
 
-  if (normalizedMessage.includes("groq") || normalizedMessage.includes("api_key") || normalizedMessage.includes("rate") || normalizedMessage.includes("limit")) {
+  if (
+    normalizedMessage.includes("groq")
+    || normalizedMessage.includes("api_key")
+    || normalizedMessage.includes("rate")
+    || normalizedMessage.includes("limit")
+    || normalizedMessage.includes("cuota")
+    || normalizedMessage.includes("credito")
+  ) {
     return `La Edge Function respondió, pero Groq no pudo generar el reporte (${rawMessage}). Se generó un reporte básico por reglas locales.`;
   }
 

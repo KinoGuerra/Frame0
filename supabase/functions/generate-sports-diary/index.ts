@@ -1,3 +1,5 @@
+import { ensureAiResponse, getFunctionFailure, missingAiKeyError } from "../_shared/ai-errors.ts";
+
 type Row = Record<string, unknown>;
 
 const corsHeaders = {
@@ -77,7 +79,7 @@ function fallbackPage(category: Row, division: Row, matches: Row[], teams: Row[]
 }
 
 async function polishWithAi(diary: Row) {
-  if (!groqApiKey) throw new Error("Falta configurar GROQ_API_KEY en Supabase secrets.");
+  if (!groqApiKey) throw missingAiKeyError("Groq", "GROQ_API_KEY");
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { authorization: `Bearer ${groqApiKey}`, "Content-Type": "application/json" },
@@ -91,7 +93,11 @@ async function polishWithAi(diary: Row) {
       ]
     })
   });
-  if (!response.ok) throw new Error(`Groq no pudo generar el diario: ${await response.text()}`);
+  await ensureAiResponse(response, {
+    provider: "Groq",
+    apiKeyName: "GROQ_API_KEY",
+    modelName: "GROQ_MODEL"
+  });
   const payload = await response.json();
   const raw = String(payload?.choices?.[0]?.message?.content || "").replace(/^```json\s*|```$/gi, "").trim();
   try {
@@ -149,6 +155,7 @@ Deno.serve(async (request) => {
     const { paginas, ...edicion } = diary;
     return respond({ success: true, edicion, paginas });
   } catch (error) {
-    return respond({ success: false, error: error instanceof Error ? error.message : "No se pudo generar el diario." }, 400);
+    const failure = getFunctionFailure(error, "No se pudo generar el diario.");
+    return respond({ success: false, error: failure.message, code: failure.code }, failure.status);
   }
 });
