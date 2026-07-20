@@ -614,6 +614,18 @@ select {
   margin-bottom: 0.7rem;
 }
 
+.sidebar-version {
+  display: block;
+  margin-top: 0.48rem;
+  color: #596b7c;
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.075em;
+  line-height: 1;
+  text-align: center;
+}
+
 .theme-switch {
   position: relative;
   flex: 0 0 auto;
@@ -5190,6 +5202,10 @@ body.dark-mode .delegate-add-player {
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: 0 12px 22px rgba(0, 0, 0, 0.32);
+}
+
+body.dark-mode .sidebar-version {
+  color: rgba(226, 232, 240, 0.62);
 }
 
 body.dark-mode .btn-ingreso:hover,
