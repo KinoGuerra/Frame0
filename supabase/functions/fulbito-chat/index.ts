@@ -12,6 +12,14 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const geminiApiKey = Deno.env.get("GEMINI_API_KEY") || "";
 const geminiModel = Deno.env.get("GEMINI_MODEL") || "gemini-3.1-flash-lite";
 
+export function compactSettings(settings: Row[]) {
+  return settings.map((setting) => {
+    if (setting.clave !== "public_settings" || !setting.valor || typeof setting.valor !== "object") return setting;
+    const { landingPopupVideo: _video, sponsorImages: _sponsors, homeCarouselImages: _carousel, ...valor } = setting.valor as Row;
+    return { ...setting, valor };
+  });
+}
+
 function respond(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
@@ -33,7 +41,7 @@ async function publicContext() {
     db("equipos?select=id,division_id,nombre,nombre_corto,abreviatura&activo=eq.true&order=nombre"),
     db("partidos?select=division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones&order=fecha_hora.desc&limit=300")
   ]);
-  return { settings, categories, divisions, teams, matches };
+  return { settings: compactSettings(settings), categories, divisions, teams, matches };
 }
 
 async function delegateContext(usuario: string, password: string) {
@@ -81,7 +89,7 @@ async function askGemini(question: string, profile: string, context: Row) {
   return answer.replaceAll("**", "");
 }
 
-Deno.serve(async (request) => {
+if (import.meta.main) Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return respond({ error: "Método no permitido." }, 405);
   try {
