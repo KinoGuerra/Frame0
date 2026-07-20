@@ -6662,6 +6662,13 @@ body.dark-mode .about-carousel-control:focus {
     overflow: hidden;
   }
 
+  body.mobile-menu-open .floating-mascot,
+  body.mobile-menu-open .fulbito-chat {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   body.mobile-menu-open .mobile-menu-backdrop {
     opacity: 1;
     visibility: visible;
@@ -6676,11 +6683,16 @@ body.dark-mode .about-carousel-control:focus {
     inset: 0 auto 0 0;
     z-index: 1045;
     width: min(86vw, 340px);
+    height: 100vh;
     max-height: 100vh;
     min-height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 100dvh;
     overflow-y: auto;
+    scroll-padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
     border-radius: 0 10px 10px 0;
-    padding: 1rem;
+    padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
     transform: translateX(-105%);
     visibility: hidden;
     transition: transform 240ms ease, visibility 0s linear 240ms;
@@ -7176,7 +7188,7 @@ body.dark-mode .about-carousel-control:focus {
 @media (max-width: 575.98px) {
   .floating-mascot {
     right: 0.72rem;
-    bottom: 0.72rem;
+    bottom: calc(0.72rem + env(safe-area-inset-bottom, 0px));
     gap: 0.48rem;
   }
 
@@ -7962,7 +7974,7 @@ body.dark-mode .fulbito-form, body.dark-mode .fulbito-suggestions { background: 
 body.dark-mode .fulbito-form textarea { background: #102a40; border-color: #36536b; color: #fff; }
 
 @media (max-width: 575.98px) {
-  .fulbito-chat { right: 0.5rem; bottom: 5.8rem; width: calc(100vw - 1rem); height: min(610px, calc(100dvh - 6.5rem)); }
+  .fulbito-chat { right: 0.5rem; bottom: calc(5.8rem + env(safe-area-inset-bottom, 0px)); width: calc(100vw - 1rem); height: min(610px, calc(100dvh - 6.5rem - env(safe-area-inset-bottom, 0px))); }
 }
 
 @media (prefers-reduced-motion: reduce) {

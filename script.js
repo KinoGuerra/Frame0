@@ -127,6 +127,9 @@ function getMobileMenuFocusableElements() {
 function openMobileMenu() {
   if (!mobileMenuMedia.matches || !mobileMenuToggle || !sidebarPanel) return;
 
+  fulbitoAssistant?.classList.remove("is-open");
+  fulbitoAssistant?.querySelector("[data-fulbito-toggle]")?.setAttribute("aria-expanded", "false");
+  closeFulbitoChat();
   document.body.classList.add("mobile-menu-open");
   mobileMenuToggle.setAttribute("aria-expanded", "true");
   mobileMenuToggle.setAttribute("aria-label", "Cerrar menú");
