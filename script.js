@@ -4420,8 +4420,8 @@ function renderMatchSheetPlayerRows(team) {
       <td class="shirt">${escapeHtml(String(player.number || "-"))}</td>
       <td class="status">${escapeHtml(getPlayerStatus({ ...player, team }) || "-")}</td>
       <td><span class="signature-line"></span></td>
-      <td class="mark">TA <span class="radio-circle"></span></td>
-      <td class="mark">TR <span class="radio-circle"></span></td>
+      <td class="mark">TA <span class="mark-box"></span></td>
+      <td class="mark">TR <span class="mark-box"></span></td>
       <td class="goals">G <span class="goals-line"></span></td>
     </tr>
   `).join("");
@@ -4470,6 +4470,11 @@ function renderObserverMatchSheetDocument(match, homeTeam, awayTeam) {
           h2 { margin: 14px 0 8px; font-size: 16px; color: #111827; }
           .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; margin-bottom: 10px; font-size: 12px; }
           .meta span { border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
+          .score-sheet { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 12px; margin: 12px 0 14px; padding: 10px; border: 2px solid #0f2742; }
+          .score-team { display: grid; gap: 5px; font-size: 11px; font-weight: 700; text-align: center; }
+          .score-box { display: inline-block; min-width: 52px; height: 38px; border: 2px solid #111827; background: #fff; }
+          .score-separator { padding-bottom: 8px; font-size: 18px; font-weight: 700; }
+          .instructions { margin: 0 0 8px; font-size: 9px; color: #334155; }
           .divider { height: 1px; margin: 16px 0 10px; background: #94a3b8; }
           table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; }
           th, td { border: 1px solid #cbd5e1; padding: 5px 4px; vertical-align: middle; }
@@ -4486,9 +4491,11 @@ function renderObserverMatchSheetDocument(match, homeTeam, awayTeam) {
           .status { font-size: 9px; }
           .signature-line, .goals-line { display: inline-block; width: 100%; border-bottom: 1px solid #111827; height: 12px; }
           .goals-line { width: 28px; }
-          .radio-circle { display: inline-block; width: 10px; height: 10px; margin-left: 4px; border: 1.5px solid #111827; border-radius: 50%; vertical-align: middle; }
+          .mark-box { display: inline-block; width: 11px; height: 11px; margin-left: 4px; border: 1.5px solid #111827; vertical-align: middle; }
           .mark, .goals { white-space: nowrap; }
           .team-sheet { page-break-inside: avoid; }
+          .notes-sheet { page-break-inside: avoid; margin-top: 14px; }
+          .notes-sheet td { height: 26px; }
         </style>
       </head>
       <body>
@@ -4496,10 +4503,25 @@ function renderObserverMatchSheetDocument(match, homeTeam, awayTeam) {
         <div class="meta">
           <span><strong>Veedor:</strong> ${escapeHtml(observerName)}</span>
           <span><strong>Fecha:</strong> ${escapeHtml(match?.date || "-")}</span>
+          <span><strong>Código de partido:</strong> ${escapeHtml(String(match?.id || "").slice(0, 8).toUpperCase())}</span>
+          <span><strong>Estado:</strong> Resultado pendiente de confirmación</span>
         </div>
+        <div class="score-sheet" aria-label="Resultado final">
+          <div class="score-team"><span>${escapeHtml(homeTeam?.shortName || homeTeam?.name || "Equipo A")}</span><span class="score-box"></span></div>
+          <span class="score-separator">—</span>
+          <div class="score-team"><span>${escapeHtml(awayTeam?.shortName || awayTeam?.name || "Equipo B")}</span><span class="score-box"></span></div>
+        </div>
+        <p class="instructions">Marcá TA o TR con una X y escribí la cantidad de goles con números claros. No escribas fuera de los casilleros.</p>
         ${renderMatchSheetTeam(homeTeam, "Nombre del equipo A")}
         <div class="divider"></div>
         ${renderMatchSheetTeam(awayTeam, "Nombre del equipo B")}
+        <section class="notes-sheet">
+          <h2>Observaciones disciplinarias</h2>
+          <table>
+            <thead><tr><th>Equipo</th><th>Jugador / DNI</th><th>Detalle</th></tr></thead>
+            <tbody>${Array.from({ length: 4 }, () => "<tr><td></td><td></td><td></td></tr>").join("")}</tbody>
+          </table>
+        </section>
         <script>window.setTimeout(() => window.print(), 250);</script>
       </body>
     </html>
@@ -5122,11 +5144,23 @@ function renderObserverEditMatch(matchId) {
         <i class="bi bi-file-earmark-pdf-fill"></i>
         Descargar planilla
       </button>
+      <button class="btn btn-outline-light admin-secondary-btn observer-scan-btn" type="button" data-observer-sheet-trigger="camera">
+        <i class="bi bi-camera-fill"></i>
+        Tomar foto
+      </button>
+      <input class="observer-file-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" data-observer-sheet-input="camera" data-observer-sheet-file="${escapeHtml(match.id)}">
+      <button class="btn btn-outline-light admin-secondary-btn observer-scan-btn" type="button" data-observer-sheet-trigger="file">
+        <i class="bi bi-upload"></i>
+        Elegir archivo
+      </button>
+      <input class="observer-file-input" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-observer-sheet-input="file" data-observer-sheet-file="${escapeHtml(match.id)}">
       <button class="btn btn-ingreso observer-save-btn" type="button" data-observer-save="${escapeHtml(match.id)}">
         <i class="bi bi-save-fill"></i>
         Guardar
       </button>
     </div>
+
+    <section class="observer-ocr-panel" data-observer-ocr-panel aria-live="polite" hidden></section>
 
     <section class="observer-scoreboard">
       <div class="score-team">
@@ -5148,6 +5182,85 @@ function renderObserverEditMatch(matchId) {
       ${renderObserverPlayersTable(awayTeam, "Equipo 2", match.id)}
     </div>
   `;
+}
+
+function renderObserverOcrMessage(state, icon, title, message, warnings = []) {
+  const warningsHtml = warnings.length
+    ? `<ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`
+    : "";
+  return `
+    <div class="observer-ocr-state is-${state}">
+      <i class="bi ${icon}" aria-hidden="true"></i>
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <p>${escapeHtml(message)}</p>
+        ${warningsHtml}
+      </div>
+    </div>
+  `;
+}
+
+function setObserverOcrPanel(state, icon, title, message, warnings = []) {
+  const panel = contentShell.querySelector("[data-observer-ocr-panel]");
+  if (!panel) return;
+  panel.hidden = false;
+  panel.innerHTML = renderObserverOcrMessage(state, icon, title, message, warnings);
+}
+
+function applyObserverOcrDraft(result) {
+  const rows = [...contentShell.querySelectorAll("[data-observer-player-row]")];
+  rows.forEach((row) => {
+    row.classList.remove("ocr-filled", "ocr-review");
+    row.querySelector("[data-goal-value]").textContent = "0";
+    row.querySelector(".yellow-card")?.classList.remove("is-selected");
+    row.querySelector(".red-card")?.classList.remove("is-selected");
+    const observationButton = row.querySelector("[data-observation]");
+    if (observationButton) {
+      observationButton.dataset.observationText = "";
+      observationButton.classList.remove("has-observation");
+    }
+    delete playerObservations[row.dataset.observationKey || ""];
+  });
+
+  const score = result?.score || {};
+  contentShell.querySelector('[data-score-value="home"]').textContent = String(Math.max(Number(score.home) || 0, 0));
+  contentShell.querySelector('[data-score-value="away"]').textContent = String(Math.max(Number(score.away) || 0, 0));
+  contentShell.querySelector(".observer-scoreboard")?.classList.toggle("ocr-review", Number(score.confidence) < 0.8);
+
+  (result?.incidences || []).forEach((incidence) => {
+    const row = rows.find((candidate) => candidate.dataset.playerId === String(incidence.jugador_id || ""));
+    if (!row) return;
+    row.classList.add(Number(incidence.confianza) < 0.8 ? "ocr-review" : "ocr-filled");
+    row.querySelector("[data-goal-value]").textContent = String(Math.max(Number(incidence.goles) || 0, 0));
+    row.querySelector(".yellow-card")?.classList.toggle("is-selected", Number(incidence.amarillas) > 0);
+    row.querySelector(".red-card")?.classList.toggle("is-selected", Number(incidence.rojas) > 0);
+    const observation = String(incidence.observacion || "").trim();
+    const observationButton = row.querySelector("[data-observation]");
+    if (observationButton) {
+      observationButton.dataset.observationText = observation;
+      observationButton.classList.toggle("has-observation", Boolean(observation));
+    }
+    if (observation) playerObservations[row.dataset.observationKey || ""] = observation;
+  });
+}
+
+async function analyzeObserverMatchSheet(matchId, file) {
+  const allowedTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+  if (!allowedTypes.includes(file.type)) throw new Error("Usá una imagen JPG, PNG, WebP o un PDF.");
+  if (file.size > 8 * 1024 * 1024) throw new Error("El archivo supera el máximo de 8 MB.");
+  if (!observerSettingsSession?.usuario || !observerSettingsSession?.password) {
+    throw new Error("La sesión del veedor no está disponible. Cerrá sesión e ingresá nuevamente.");
+  }
+
+  const formData = new FormData();
+  formData.append("usuario", observerSettingsSession.usuario);
+  formData.append("password", observerSettingsSession.password);
+  formData.append("partido_id", matchId);
+  formData.append("archivo", file, file.name);
+  const { data, error } = await supabaseClient.functions.invoke("analyze-match-sheet", { body: formData });
+  if (error) throw new Error(await getEdgeFunctionErrorMessage(error, data, "No se pudo analizar la planilla."));
+  if (!data?.score || !Array.isArray(data?.incidences)) throw new Error("La IA no devolvió una planilla válida.");
+  return data;
 }
 
 function collectObserverMatchIncidences() {
@@ -7739,6 +7852,7 @@ sidebarContent.addEventListener("change", (event) => {
 });
 
 contentShell.addEventListener("click", async (event) => {
+  const observerSheetTrigger = event.target.closest("[data-observer-sheet-trigger]");
   const editButton = event.target.closest("[data-observer-edit-match]");
   const observerBackButton = event.target.closest("[data-observer-back]");
   const observerDownloadSheetButton = event.target.closest("[data-observer-download-sheet]");
@@ -7801,6 +7915,12 @@ contentShell.addEventListener("click", async (event) => {
   const saveNewsButton = event.target.closest("[data-admin-news-save]");
   const publishNewsButton = event.target.closest("[data-admin-news-publish]");
   const generateNewsButton = event.target.closest("[data-admin-news-generate]");
+
+  if (observerSheetTrigger) {
+    const mode = observerSheetTrigger.dataset.observerSheetTrigger;
+    contentShell.querySelector(`[data-observer-sheet-input="${mode}"]`)?.click();
+    return;
+  }
 
   if (newsPageButton) {
     selectedNewsPageIndex = Number(newsPageButton.dataset.newsPage) || 0;
@@ -8672,6 +8792,7 @@ contentShell.addEventListener("click", async (event) => {
 });
 
 contentShell.addEventListener("change", async (event) => {
+  const observerSheetInput = event.target.closest("[data-observer-sheet-file]");
   const categorySelect = event.target.closest("[data-admin-team-category]");
   const divisionSelect = event.target.closest("[data-admin-team-division]");
   const delegateCategorySelect = event.target.closest("[data-admin-delegate-category]");
@@ -8695,6 +8816,42 @@ contentShell.addEventListener("change", async (event) => {
   const homeCarouselUploadInput = event.target.closest("[data-home-carousel-upload]");
   const landingVideoUploadInput = event.target.closest("[data-landing-video-upload]");
   const newsEditionSelect = event.target.closest("[data-news-edition]");
+
+  if (observerSheetInput) {
+    const file = observerSheetInput.files?.[0];
+    if (!file) return;
+    const matchId = observerSheetInput.dataset.observerSheetFile || "";
+    const confirmed = await requestConfirmation({
+      title: "Analizar planilla",
+      message: "La imagen o el PDF se enviará al servicio de IA para preparar un borrador. Revisá todos los datos antes de guardar. ¿Querés continuar?",
+      confirmLabel: "Analizar"
+    });
+    if (!confirmed) {
+      observerSheetInput.value = "";
+      return;
+    }
+
+    const uploadControls = [...contentShell.querySelectorAll("[data-observer-sheet-file], [data-observer-sheet-trigger]")];
+    uploadControls.forEach((control) => { control.disabled = true; });
+    setObserverOcrPanel("processing", "bi-stars", "Leyendo planilla", `Procesando ${file.name}. Puede demorar unos segundos.`);
+    try {
+      const result = await analyzeObserverMatchSheet(matchId, file);
+      applyObserverOcrDraft(result);
+      setObserverOcrPanel(
+        result.needs_review ? "review" : "ready",
+        result.needs_review ? "bi-exclamation-triangle-fill" : "bi-check-circle-fill",
+        result.needs_review ? "Borrador para revisar" : "Borrador aplicado",
+        "Compará el resultado con la planilla y, cuando esté correcto, presioná Guardar.",
+        Array.isArray(result.warnings) ? result.warnings : []
+      );
+    } catch (error) {
+      setObserverOcrPanel("error", "bi-x-circle-fill", "No se pudo leer la planilla", error.message || "Intentá nuevamente con una foto más nítida.");
+    } finally {
+      uploadControls.forEach((control) => { control.disabled = false; });
+      observerSheetInput.value = "";
+    }
+    return;
+  }
 
   if (newsEditionSelect) {
     selectedNewsEditionId = newsEditionSelect.value;
