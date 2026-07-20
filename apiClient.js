@@ -91,25 +91,13 @@ function normalizeUsername(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-async function ensureUniqueUsername(username, currentUserId = "") {
-  const normalizedUsername = normalizeUsername(username);
-  if (!normalizedUsername) return;
-
-  const { data, error } = await getSupabaseClient()
-    .from("usuarios_app")
-    .select("id,usuario")
-    .not("usuario", "is", null);
-
-  if (error) throw error;
-
-  const duplicatedUser = (data || []).find((user) =>
-    normalizeUsername(user.usuario) === normalizedUsername &&
-    String(user.id) !== String(currentUserId)
-  );
-
-  if (duplicatedUser) {
-    throw new Error("El usuario ya existe. Ingresá otro nombre de usuario.");
+function getAdminCredentials(body = {}) {
+  const usuario = String(body.admin_usuario || "").trim();
+  const password = String(body.admin_password || "").trim();
+  if (!usuario || !password) {
+    throw new Error("La sesión de administrador expiró. Volvé a ingresar.");
   }
+  return { usuario, password };
 }
 
 async function apiGet(endpoint) {
@@ -147,30 +135,18 @@ async function createObserver(body = {}) {
     throw new Error("Campos requeridos: nombre, apellido, documento, contacto, usuario, password");
   }
 
-  await ensureUniqueUsername(usuario);
-
-  const { data: profile, error: profileError } = await getSupabaseClient()
-    .from("usuarios_app")
-    .insert({
-      nombre,
-      apellido,
-      documento,
-      contacto,
-      usuario,
-      rol: "veedor",
-      password_hash: password,
-      activo: true
-    })
-    .select("id,nombre,apellido,documento,contacto,usuario,rol,activo")
-    .single();
-
-  if (profileError) throw profileError;
-
-  const { data, error } = await getSupabaseClient()
-    .from("veedores")
-    .insert({ usuario_id: profile.id, activo: true })
-    .select(FRAME0_TABLES.veedores.select)
-    .single();
+  const admin = getAdminCredentials(body);
+  const { data, error } = await getSupabaseClient().rpc("guardar_veedor_admin", {
+    p_admin_usuario: admin.usuario,
+    p_admin_password: admin.password,
+    p_veedor_id: null,
+    p_nombre: nombre,
+    p_apellido: apellido,
+    p_documento: documento,
+    p_contacto: contacto,
+    p_usuario: usuario,
+    p_password: password
+  });
 
   if (error) throw error;
   return data;
@@ -189,101 +165,56 @@ async function createDelegate(body = {}) {
     throw new Error("Campos requeridos: nombre, apellido, documento, contacto, usuario, password y equipo_id");
   }
 
-  await ensureUniqueUsername(usuario);
-
-  const { data: profile, error: profileError } = await getSupabaseClient()
-    .from("usuarios_app")
-    .insert({ nombre, apellido, documento, contacto, usuario, rol: "delegado", password_hash: password, activo: true })
-    .select("id,nombre,apellido,documento,contacto,usuario,rol,activo")
-    .single();
-
-  if (profileError) throw profileError;
-
-  const { data, error } = await getSupabaseClient()
-    .from("delegados")
-    .insert({ usuario_id: profile.id, equipo_id: equipoId, activo: true })
-    .select(FRAME0_TABLES.delegados.select)
-    .single();
+  const admin = getAdminCredentials(body);
+  const { data, error } = await getSupabaseClient().rpc("guardar_delegado_admin", {
+    p_admin_usuario: admin.usuario,
+    p_admin_password: admin.password,
+    p_usuario_id: null,
+    p_nombre: nombre,
+    p_apellido: apellido,
+    p_documento: documento,
+    p_contacto: contacto,
+    p_usuario: usuario,
+    p_password: password,
+    p_equipo_id: equipoId
+  });
 
   if (error) throw error;
   return data;
 }
 
 async function updateDelegate(id, body = {}) {
-  const { data: delegate, error: delegateError } = await getSupabaseClient()
-    .from("delegados")
-    .select("id,usuario_id")
-    .eq("id", id)
-    .single();
-
-  if (delegateError) throw delegateError;
-
-  const usuario = body.usuario ? normalizeUsername(body.usuario) : undefined;
-  if (usuario) await ensureUniqueUsername(usuario, delegate.usuario_id);
-
-  const payload = cleanPayload({
-    nombre: body.nombre === undefined ? undefined : String(body.nombre).trim(),
-    apellido: body.apellido === undefined ? undefined : String(body.apellido).trim(),
-    documento: body.documento === undefined ? undefined : String(body.documento).trim(),
-    contacto: body.contacto === undefined ? undefined : String(body.contacto).trim(),
-    usuario,
-    password_hash: body.password ? String(body.password) : undefined,
-    rol: "delegado"
+  const admin = getAdminCredentials(body);
+  const { data, error } = await getSupabaseClient().rpc("guardar_delegado_admin", {
+    p_admin_usuario: admin.usuario,
+    p_admin_password: admin.password,
+    p_usuario_id: id,
+    p_nombre: String(body.nombre || "").trim(),
+    p_apellido: String(body.apellido || "").trim(),
+    p_documento: String(body.documento || "").trim(),
+    p_contacto: String(body.contacto || "").trim(),
+    p_usuario: normalizeUsername(body.usuario),
+    p_password: body.password ? String(body.password) : null,
+    p_equipo_id: String(body.equipo_id || "").trim()
   });
-
-  const { error: updateError } = await getSupabaseClient()
-    .from("usuarios_app")
-    .update(payload)
-    .eq("id", delegate.usuario_id);
-
-  if (updateError) throw updateError;
-
-  const { data, error } = await getSupabaseClient()
-    .from("delegados")
-    .select(FRAME0_TABLES.delegados.select)
-    .eq("id", id)
-    .single();
 
   if (error) throw error;
   return data;
 }
 
 async function updateObserver(id, body = {}) {
-  const { data: observer, error: observerError } = await getSupabaseClient()
-    .from("veedores")
-    .select("id,usuario_id")
-    .eq("id", id)
-    .single();
-
-  if (observerError) throw observerError;
-
-  const usuario = body.usuario ? normalizeUsername(body.usuario) : undefined;
-  if (usuario) {
-    await ensureUniqueUsername(usuario, observer.usuario_id);
-  }
-
-  const payload = cleanPayload({
-    nombre: body.nombre === undefined ? undefined : String(body.nombre).trim(),
-    apellido: body.apellido === undefined ? undefined : String(body.apellido).trim(),
-    documento: body.documento === undefined ? undefined : String(body.documento).trim(),
-    contacto: body.contacto === undefined ? undefined : String(body.contacto).trim(),
-    usuario,
-    password_hash: body.password ? String(body.password) : undefined,
-    rol: "veedor"
+  const admin = getAdminCredentials(body);
+  const { data, error } = await getSupabaseClient().rpc("guardar_veedor_admin", {
+    p_admin_usuario: admin.usuario,
+    p_admin_password: admin.password,
+    p_veedor_id: id,
+    p_nombre: String(body.nombre || "").trim(),
+    p_apellido: String(body.apellido || "").trim(),
+    p_documento: String(body.documento || "").trim(),
+    p_contacto: String(body.contacto || "").trim(),
+    p_usuario: normalizeUsername(body.usuario),
+    p_password: body.password ? String(body.password) : null
   });
-
-  const { error: updateError } = await getSupabaseClient()
-    .from("usuarios_app")
-    .update(payload)
-    .eq("id", observer.usuario_id);
-
-  if (updateError) throw updateError;
-
-  const { data, error } = await getSupabaseClient()
-    .from("veedores")
-    .select(FRAME0_TABLES.veedores.select)
-    .eq("id", id)
-    .single();
 
   if (error) throw error;
   return data;
@@ -374,12 +305,25 @@ async function apiPut(endpoint, body) {
   return data;
 }
 
-async function apiPatch(endpoint) {
+async function apiPatch(endpoint, body = {}) {
   const { resource, id, action } = parseDataEndpoint(endpoint);
   const config = getResourceConfig(resource);
 
   if (!id || !["activar", "desactivar"].includes(action)) {
     throw new Error(`Acción no soportada: ${endpoint}`);
+  }
+
+  if (["usuarios", "veedores"].includes(resource)) {
+    const admin = getAdminCredentials(body);
+    const { data, error } = await getSupabaseClient().rpc("cambiar_estado_usuario_admin", {
+      p_admin_usuario: admin.usuario,
+      p_admin_password: admin.password,
+      p_tipo: resource === "usuarios" ? "delegado" : "veedor",
+      p_registro_id: id,
+      p_activo: action === "activar"
+    });
+    if (error) throw error;
+    return data;
   }
 
   const { data, error } = await getSupabaseClient()

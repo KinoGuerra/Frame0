@@ -412,6 +412,7 @@ function openFulbitoChat() {
   fulbitoAssistant.querySelector("[data-fulbito-toggle]").setAttribute("aria-expanded", "false");
   renderFulbitoWelcome();
   fulbitoChat.classList.add("is-open");
+  fulbitoChat.removeAttribute("inert");
   fulbitoChat.setAttribute("aria-hidden", "false");
   window.setTimeout(() => fulbitoInput.focus(), 100);
 }
@@ -419,6 +420,23 @@ function openFulbitoChat() {
 function closeFulbitoChat() {
   fulbitoChat.classList.remove("is-open");
   fulbitoChat.setAttribute("aria-hidden", "true");
+  fulbitoChat.setAttribute("inert", "");
+}
+
+function configureModalAccessibility(modal) {
+  if (!modal || modal.dataset.accessibilityReady === "true") return;
+  modal.dataset.accessibilityReady = "true";
+  if (modal.classList.contains("show")) {
+    modal.removeAttribute("inert");
+  } else {
+    modal.setAttribute("inert", "");
+  }
+  modal.addEventListener("show.bs.modal", () => {
+    modal.removeAttribute("inert");
+  });
+  modal.addEventListener("hidden.bs.modal", () => {
+    modal.setAttribute("inert", "");
+  });
 }
 
 async function getEdgeFunctionErrorMessage(error, data, fallback) {
@@ -457,8 +475,9 @@ fulbitoAssistant?.addEventListener("click", (event) => {
   event.currentTarget.querySelector("[data-fulbito-toggle]").setAttribute("aria-expanded", String(isOpen));
 });
 
+document.querySelector("[data-fulbito-close]")?.addEventListener("click", closeFulbitoChat);
+
 fulbitoChat?.addEventListener("click", (event) => {
-  if (event.target.closest("[data-fulbito-close]")) return closeFulbitoChat();
   const prompt = event.target.closest("[data-fulbito-prompt]")?.dataset.fulbitoPrompt;
   if (prompt) { fulbitoInput.value = prompt; fulbitoForm.requestSubmit(); }
 });
@@ -3637,6 +3656,7 @@ function getConfirmationModalElement() {
   modal.tabIndex = -1;
   modal.setAttribute("aria-labelledby", "frameConfirmModalLabel");
   modal.setAttribute("aria-hidden", "true");
+  modal.setAttribute("inert", "");
   modal.innerHTML = `
     <div class="modal-dialog modal-dialog-centered modal-sm">
       <div class="modal-content login-modal frame-confirm-modal">
@@ -3666,6 +3686,7 @@ function getConfirmationModalElement() {
     </div>
   `;
   document.body.appendChild(modal);
+  configureModalAccessibility(modal);
   return modal;
 }
 
@@ -6620,6 +6641,8 @@ async function createDelegateInSupabase() {
     contacto: newDelegateContact.value.trim(),
     usuario: newDelegateUsername.value.trim(),
     password: newDelegatePassword.value,
+    admin_usuario: adminSettingsSession?.usuario || "",
+    admin_password: adminSettingsSession?.password || "",
     rol: "delegado",
     activo: true
   };
@@ -6636,10 +6659,13 @@ async function createDelegateInSupabase() {
     };
 
     if (payload.password) {
-      updatePayload.password_hash = payload.password;
+      updatePayload.password = payload.password;
     }
 
-    return apiPut(`/usuarios/${editingId}`, updatePayload);
+    updatePayload.equipo_id = newDelegateTeam.value;
+    updatePayload.admin_usuario = payload.admin_usuario;
+    updatePayload.admin_password = payload.admin_password;
+    return apiPut(`/delegados/${editingId}`, updatePayload);
   }
 
   return apiPost("/delegados", {
@@ -8149,7 +8175,10 @@ contentShell.addEventListener("click", async (event) => {
     if (!confirmed) return;
 
     try {
-      await apiPatch(`/veedores/${id}/${action}`);
+      await apiPatch(`/veedores/${id}/${action}`, {
+        admin_usuario: adminSettingsSession?.usuario || "",
+        admin_password: adminSettingsSession?.password || ""
+      });
       contentShell.innerHTML = await renderAdminObserversView(adminObserversState.searchTerm, 1);
     } catch (error) {
       console.error(`Error al ${action} el veedor:`, error);
@@ -8710,7 +8739,6 @@ contentShell.addEventListener("click", async (event) => {
     const isDeactivate = Boolean(deactivateAdminDelegateButton);
     const button = deactivateAdminDelegateButton || activateAdminDelegateButton;
     const userId = isDeactivate ? button.dataset.adminDelegateDeactivate : button.dataset.adminDelegateActivate;
-    const relationId = button.dataset.adminDelegateRelation || "";
     const confirmed = await requestConfirmation({
       title: isDeactivate ? "Dar de baja delegado" : "Reactivar delegado",
       message: isDeactivate
@@ -8722,14 +8750,10 @@ contentShell.addEventListener("click", async (event) => {
 
     try {
       const action = isDeactivate ? "desactivar" : "activar";
-      await apiPatch(`/usuarios/${userId}/${action}`);
-      if (relationId) {
-        try {
-          await apiPatch(`/delegados/${relationId}/${action}`);
-        } catch (relationError) {
-          console.warn(`No se pudo ${action} la relacion delegado-equipo:`, relationError);
-        }
-      }
+      await apiPatch(`/usuarios/${userId}/${action}`, {
+        admin_usuario: adminSettingsSession?.usuario || "",
+        admin_password: adminSettingsSession?.password || ""
+      });
       contentShell.innerHTML = await renderAdminDelegatesView(
         adminDelegatesState.selectedCategory,
         adminDelegatesState.selectedDivision,
@@ -9530,7 +9554,9 @@ adminObserverForm?.addEventListener("submit", async (event) => {
     documento: adminObserverDocument.value.trim(),
     contacto: adminObserverContact.value.trim(),
     usuario: adminObserverUsername.value.trim(),
-    password: adminObserverPassword.value
+    password: adminObserverPassword.value,
+    admin_usuario: adminSettingsSession?.usuario || "",
+    admin_password: adminSettingsSession?.password || ""
   };
 
   if (id && !payload.password) {
@@ -9794,7 +9820,9 @@ newObserverForm.addEventListener("submit", async (event) => {
       documento: newObserverDocument.value.trim(),
       contacto: newObserverContact.value.trim(),
       usuario: newObserverUsername.value.trim(),
-      password: newObserverPassword.value
+      password: newObserverPassword.value,
+      admin_usuario: adminSettingsSession?.usuario || "",
+      admin_password: adminSettingsSession?.password || ""
     });
     createObserverButton.classList.remove("is-saved");
     createObserverButton.classList.add("is-saved");
@@ -9994,6 +10022,7 @@ loginForm.addEventListener("submit", async (event) => {
 });
 
 syncRequiredFieldIndicators();
+document.querySelectorAll(".modal").forEach(configureModalAccessibility);
 document.querySelectorAll(".frame-form-modal").forEach((modal) => {
   modal.addEventListener("show.bs.modal", () => syncRequiredFieldIndicators(modal));
 });
