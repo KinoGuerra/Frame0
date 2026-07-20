@@ -31,7 +31,6 @@ const initialTournamentCarouselContent = tournamentCarousel?.innerHTML || "";
 const initialContentShell = contentShell.innerHTML;
 const passwordInput = document.querySelector("#password");
 const passwordToggle = document.querySelector("[data-password-toggle]");
-const darkModeToggle = document.querySelector("#darkModeToggle");
 const observationModalElement = document.querySelector("#observationModal");
 const observationModalBody = document.querySelector("#observationModalBody");
 const newTeamModalElement = document.querySelector("#newTeamModal");
@@ -185,7 +184,34 @@ const adminDelegatesState = {
 
 const ADMIN_PAGE_SIZE = 20;
 const DEFAULT_DRIVE_PHOTOS_LINK = "https://drive.google.com/drive/folders/1Rc5iI61AXuY-DjYL11cVGb7Wg3JTPLEj";
-const THEME_STORAGE_KEY = "frame0-dark-mode";
+const THEME_STORAGE_KEY = "frame0-theme";
+const LEGACY_THEME_STORAGE_KEY = "frame0-dark-mode";
+const THEME_OPTIONS = [
+  {
+    id: "light",
+    name: "Frame0",
+    description: "La identidad celeste, azul y blanca original.",
+    colors: ["#dff3fc", "#eff9fd", "#0b4ea2", "#1db7ff"]
+  },
+  {
+    id: "dark",
+    name: "Noche",
+    description: "Negros y grises profundos para reducir el brillo.",
+    colors: ["#050505", "#111317", "#3b3f46", "#f4f7fb"]
+  },
+  {
+    id: "slate",
+    name: "Tribuna",
+    description: "Grises de cemento y acero con contraste sereno.",
+    colors: ["#b8c0c8", "#dce1e5", "#f3f5f6", "#4c667a"]
+  },
+  {
+    id: "stadium",
+    name: "Estadio",
+    description: "Verdes nocturnos inspirados en la cancha iluminada.",
+    colors: ["#061b14", "#0d2b20", "#143a2b", "#39d98a"]
+  }
+];
 const LANDING_VIDEO_SEEN_KEY = "frame0-landing-video-seen";
 const HELP_URLS = {
   admin: "https://sites.google.com/view/frame0-principal/inicio",
@@ -281,31 +307,85 @@ const aboutMembers = [
   }
 ];
 
-function applyDarkMode(isDarkMode) {
-  document.body.classList.toggle("dark-mode", isDarkMode);
-  syncDarkModeControls(isDarkMode);
-  localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? "true" : "false");
+function getThemeOption(themeId = "") {
+  return THEME_OPTIONS.find((theme) => theme.id === themeId) || THEME_OPTIONS[0];
 }
 
-function syncDarkModeControls(isDarkMode) {
-  document.querySelectorAll("[data-dark-mode-control]").forEach((control) => {
-    control.checked = isDarkMode;
+function getStoredTheme() {
+  const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+  if (THEME_OPTIONS.some((theme) => theme.id === storedTheme)) return storedTheme;
+  return localStorage.getItem(LEGACY_THEME_STORAGE_KEY) === "true" ? "dark" : "light";
+}
+
+function getActiveTheme() {
+  return getThemeOption(document.body.dataset.theme || getStoredTheme());
+}
+
+function syncThemeUI() {
+  const activeTheme = getActiveTheme();
+  document.querySelectorAll("[data-theme-current-name]").forEach((label) => {
+    label.textContent = activeTheme.name;
+  });
+  document.querySelectorAll("[data-theme-option]").forEach((card) => {
+    const isActive = card.dataset.themeOption === activeTheme.id;
+    card.classList.toggle("is-active", isActive);
+    card.setAttribute("aria-pressed", String(isActive));
+    card.disabled = isActive;
+    const state = card.querySelector("[data-theme-card-state]");
+    if (state) state.textContent = isActive ? "En uso" : "Aplicar estilo";
   });
 }
 
-function renderDarkModeSwitcher() {
-  const isDarkMode = localStorage.getItem(THEME_STORAGE_KEY) === "true";
+function applyTheme(themeId, { persist = true } = {}) {
+  const theme = getThemeOption(themeId);
+  document.body.dataset.theme = theme.id;
+  document.body.classList.toggle("dark-mode", ["dark", "stadium"].includes(theme.id));
+  if (persist) {
+    localStorage.setItem(THEME_STORAGE_KEY, theme.id);
+    localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
+  }
+  syncThemeUI();
+}
+
+function renderThemeMenuButton() {
+  const theme = getActiveTheme();
+  return `
+    <button class="division-link" type="button" data-theme-page>
+      <i class="bi bi-palette-fill"></i>
+      <span>Estilo + <span data-theme-current-name>${theme.name}</span></span>
+    </button>
+  `;
+}
+
+function renderThemeGallery() {
+  const activeTheme = getActiveTheme();
+  const cards = THEME_OPTIONS.map((theme) => {
+    const isActive = theme.id === activeTheme.id;
+    return `
+      <button class="theme-card ${isActive ? "is-active" : ""}" type="button" data-theme-option="${theme.id}" aria-pressed="${isActive}" ${isActive ? "disabled" : ""}>
+        <span class="theme-card-preview" aria-hidden="true">
+          ${theme.colors.map((color) => `<span style="--theme-preview-color: ${color}"></span>`).join("")}
+        </span>
+        <span class="theme-card-copy">
+          <strong>${theme.name}</strong>
+          <small>${theme.description}</small>
+        </span>
+        <span class="theme-card-state" data-theme-card-state>${isActive ? "En uso" : "Aplicar estilo"}</span>
+      </button>
+    `;
+  }).join("");
 
   return `
-    <div class="theme-switcher profile-theme-switcher">
-      <div>
-        <span>DarkMode</span>
+    <section class="theme-gallery" data-theme-gallery>
+      <header class="theme-gallery-heading">
+        <p class="section-kicker mb-1">Apariencia</p>
+        <h2>Elegí el estilo de Frame0</h2>
+        <p>La selección cambia los colores de todo el sistema y queda guardada en este dispositivo.</p>
+      </header>
+      <div class="theme-card-grid" aria-label="Estilos disponibles">
+        ${cards}
       </div>
-      <label class="theme-switch">
-        <input type="checkbox" data-dark-mode-control aria-label="Activar modo oscuro" ${isDarkMode ? "checked" : ""}>
-        <span class="theme-slider"></span>
-      </label>
-    </div>
+    </section>
   `;
 }
 
@@ -3625,7 +3705,8 @@ async function showPublicInfo(page) {
     noticias: renderNewsContent,
     fotos: renderPhotosContent,
     reglamento: renderRegulationContent,
-    nosotros: renderAboutContent
+    nosotros: renderAboutContent,
+    estilos: renderThemeGallery
   };
 
   publicInfoContent.innerHTML = (publicPages[page] || renderAboutContent)();
@@ -7533,9 +7614,9 @@ async function enterDelegateView(team) {
             <i class="bi bi-question-circle-fill"></i>
             Ayuda
           </button>
+          ${renderThemeMenuButton()}
         </div>
       </div>
-      ${renderDarkModeSwitcher()}
       <button class="btn btn-ingreso w-100" type="button" data-admin-logout>
         <i class="bi bi-box-arrow-left"></i>
         Salir
@@ -7618,9 +7699,9 @@ async function enterAdminView() {
             <i class="bi bi-question-circle-fill"></i>
             Ayuda
           </button>
+          ${renderThemeMenuButton()}
         </div>
       </div>
-      ${renderDarkModeSwitcher()}
       <button class="btn btn-ingreso w-100" type="button" data-admin-logout>
         <i class="bi bi-box-arrow-left"></i>
         Salir
@@ -7651,9 +7732,9 @@ async function enterObserverView() {
             <i class="bi bi-question-circle-fill"></i>
             Ayuda
           </button>
+          ${renderThemeMenuButton()}
         </div>
       </div>
-      ${renderDarkModeSwitcher()}
       <button class="btn btn-ingreso w-100" type="button" data-admin-logout>
         <i class="bi bi-box-arrow-left"></i>
         Salir
@@ -7724,10 +7805,11 @@ sidebarContent.addEventListener("click", async (event) => {
   const observerMatchesButton = event.target.closest("[data-observer-matches]");
   const adminActionButton = event.target.closest("[data-admin-action]");
   const publicPageButton = event.target.closest("[data-public-page]");
+  const themePageButton = event.target.closest("[data-theme-page]");
   const helpButton = event.target.closest("[data-help-role]");
   const divisionButton = event.target.closest("[data-division]");
   const categoryToggleButton = event.target.closest("[data-category-toggle]");
-  const mobileNavigationButton = event.target.closest("[data-division], [data-public-page], [data-delegate-home], [data-delegate-team], [data-delegate-players], [data-observer-matches], [data-admin-action], [data-help-role], [data-admin-logout], [data-bs-target='#loginModal']");
+  const mobileNavigationButton = event.target.closest("[data-division], [data-public-page], [data-theme-page], [data-delegate-home], [data-delegate-team], [data-delegate-players], [data-observer-matches], [data-admin-action], [data-help-role], [data-admin-logout], [data-bs-target='#loginModal']");
 
   if (mobileNavigationButton && mobileMenuMedia.matches) {
     closeMobileMenu();
@@ -7764,6 +7846,17 @@ sidebarContent.addEventListener("click", async (event) => {
 
   if (publicPageButton) {
     await showPublicInfo(publicPageButton.dataset.publicPage);
+    return;
+  }
+
+  if (themePageButton) {
+    if (document.body.classList.contains("admin-view")) {
+      showContentLoader("Estilos", () => {
+        contentShell.innerHTML = renderThemeGallery();
+      });
+    } else {
+      await showPublicInfo("estilos");
+    }
     return;
   }
 
@@ -7872,15 +7965,8 @@ sidebarContent.addEventListener("click", async (event) => {
   if (!logoutButton) return;
 });
 
-sidebarContent.addEventListener("change", (event) => {
-  const themeControl = event.target.closest("[data-dark-mode-control]");
-
-  if (themeControl && sidebarContent.contains(themeControl)) {
-    applyDarkMode(themeControl.checked);
-  }
-});
-
 contentShell.addEventListener("click", async (event) => {
+  const themeOptionButton = event.target.closest("[data-theme-option]");
   const observerSheetTrigger = event.target.closest("[data-observer-sheet-trigger]");
   const editButton = event.target.closest("[data-observer-edit-match]");
   const observerBackButton = event.target.closest("[data-observer-back]");
@@ -7944,6 +8030,23 @@ contentShell.addEventListener("click", async (event) => {
   const saveNewsButton = event.target.closest("[data-admin-news-save]");
   const publishNewsButton = event.target.closest("[data-admin-news-publish]");
   const generateNewsButton = event.target.closest("[data-admin-news-generate]");
+
+  if (themeOptionButton) {
+    const nextTheme = getThemeOption(themeOptionButton.dataset.themeOption);
+    if (nextTheme.id === getActiveTheme().id) return;
+    const confirmed = await requestConfirmation({
+      kicker: "Apariencia",
+      title: "Cambiar estilo",
+      message: `¿Querés aplicar el estilo “${nextTheme.name}” en todo Frame0?`,
+      confirmLabel: "Aplicar estilo",
+      icon: "bi-palette-fill"
+    });
+    if (!confirmed) return;
+    applyTheme(nextTheme.id);
+    const galleryHost = themeOptionButton.closest("#publicInfoContent, #contentShell");
+    if (galleryHost) galleryHost.innerHTML = renderThemeGallery();
+    return;
+  }
 
   if (observerSheetTrigger) {
     const mode = observerSheetTrigger.dataset.observerSheetTrigger;
@@ -9884,13 +9987,7 @@ standingsBody.addEventListener("click", (event) => {
 
 fixtureDateSelect.addEventListener("change", renderFixture);
 
-if (darkModeToggle) {
-  applyDarkMode(localStorage.getItem(THEME_STORAGE_KEY) === "true");
-  darkModeToggle.addEventListener("change", () => {
-    applyDarkMode(darkModeToggle.checked);
-  });
-}
-
+applyTheme(getStoredTheme());
 applyPublicSettings();
 loadPublicSettingsFromSupabase().finally(showLandingVideoModal);
 loadTournamentSettingsFromSupabase();
