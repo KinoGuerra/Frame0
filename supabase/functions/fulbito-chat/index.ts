@@ -11,14 +11,7 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const geminiApiKey = Deno.env.get("GEMINI_API_KEY") || "";
 const geminiModel = Deno.env.get("GEMINI_MODEL") || "gemini-3.1-flash-lite";
-
-export function compactSettings(settings: Row[]) {
-  return settings.map((setting) => {
-    if (setting.clave !== "public_settings" || !setting.valor || typeof setting.valor !== "object") return setting;
-    const { landingPopupVideo: _video, sponsorImages: _sponsors, homeCarouselImages: _carousel, ...valor } = setting.valor as Row;
-    return { ...setting, valor };
-  });
-}
+export const PUBLIC_SETTINGS_CONTEXT_PATH = "configuraciones?select=clave,tournamentInfoText:valor->>tournamentInfoText,locationTitle:valor->>locationTitle,locationText:valor->>locationText,contactTitle:valor->>contactTitle,contactText:valor->>contactText,drivePhotosLink:valor->>drivePhotosLink,instagramUrl:valor->>instagramUrl,facebookUrl:valor->>facebookUrl,whatsappPhone:valor->>whatsappPhone,regulationText:valor->>regulationText&clave=eq.public_settings";
 
 function respond(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -34,14 +27,16 @@ async function db(path: string) {
 }
 
 async function publicContext() {
-  const [settings, categories, divisions, teams, matches] = await Promise.all([
-    db("configuraciones?select=clave,valor&clave=in.(public_settings,tournament_settings)"),
+  const [publicSettingRows, tournamentSettings, categories, divisions, teams, matches] = await Promise.all([
+    db(PUBLIC_SETTINGS_CONTEXT_PATH),
+    db("configuraciones?select=clave,valor&clave=eq.tournament_settings"),
     db("categorias?select=id,nombre,descripcion&activa=eq.true&order=nombre"),
     db("divisiones?select=id,categoria_id,nombre,descripcion&activa=eq.true&order=nombre"),
     db("equipos?select=id,division_id,nombre,nombre_corto,abreviatura&activo=eq.true&order=nombre"),
     db("partidos?select=division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones&order=fecha_hora.desc&limit=300")
   ]);
-  return { settings: compactSettings(settings), categories, divisions, teams, matches };
+  const publicSettings = publicSettingRows.map(({ clave, ...valor }: Row) => ({ clave, valor }));
+  return { settings: [...publicSettings, ...tournamentSettings], categories, divisions, teams, matches };
 }
 
 async function delegateContext(usuario: string, password: string) {
@@ -75,7 +70,7 @@ async function askGemini(question: string, profile: string, context: Row) {
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: `Tu nombre es Fulbito y sos el asistente virtual del torneo amateur Frame0. La interfaz ya saludó y te presentó: no vuelvas a saludar, dar la bienvenida ni presentarte. Respondé directamente la consulta en español rioplatense, de forma clara, breve y en texto plano sin Markdown, asteriscos ni encabezados. No inventes datos. Si el contexto no alcanza, decilo. ${scope}` }] },
       contents: [{ role: "user", parts: [{ text: `Contexto actualizado:\n${JSON.stringify(context)}\n\nPregunta: ${question}` }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 600 }
+      generationConfig: { temperature: 0.2, maxOutputTokens: 600, thinkingConfig: { thinkingLevel: "minimal" } }
     })
   });
   await ensureAiResponse(response, {

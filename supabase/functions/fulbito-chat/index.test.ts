@@ -1,12 +1,7 @@
-import { compactSettings } from "./index.ts";
+import { PUBLIC_SETTINGS_CONTEXT_PATH } from "./index.ts";
 
-Deno.test("excludes media from the Gemini context", () => {
-  const [settings] = compactSettings([{
-    clave: "public_settings",
-    valor: { regulationText: "Reglamento", landingPopupVideo: {}, sponsorImages: ["image"], homeCarouselImages: ["image"] }
-  }]);
-
-  if (JSON.stringify(settings.valor) !== JSON.stringify({ regulationText: "Reglamento" })) {
-    throw new Error("El contexto público todavía contiene multimedia.");
+Deno.test("does not fetch public media for the Gemini context", () => {
+  if (/landingPopupVideo|sponsorImages|homeCarouselImages/.test(PUBLIC_SETTINGS_CONTEXT_PATH)) {
+    throw new Error("La consulta pública todavía descarga multimedia.");
   }
 });
