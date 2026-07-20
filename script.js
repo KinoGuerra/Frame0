@@ -352,7 +352,7 @@ function renderThemeMenuButton() {
   return `
     <button class="division-link" type="button" data-theme-page>
       <i class="bi bi-palette-fill"></i>
-      <span>Estilo + <span data-theme-current-name>${theme.name}</span></span>
+      <span>Estilo <span data-theme-current-name>${theme.name}</span></span>
     </button>
   `;
 }
