@@ -100,6 +100,16 @@ export function hasValidFileSignature(mimeType: string, bytes: Uint8Array) {
   return false;
 }
 
+export function encodeBase64(bytes: Uint8Array) {
+  const chunkSize = 0x6000;
+  const chunks: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize);
+    chunks.push(btoa(String.fromCharCode(...chunk)));
+  }
+  return chunks.join("");
+}
+
 export function normalizeOcrResult(raw: Row, players: Row[], homeTeamId: string, awayTeamId: string) {
   const playerById = new Map(players.map((player) => [String(player.id || ""), player]));
   const warnings = Array.isArray(raw.warnings) ? raw.warnings.map(String).filter(Boolean) : [];
@@ -188,7 +198,7 @@ async function askGemini(file: File, context: Row) {
       contents: [{ role: "user", parts: [
         { text: `Partido y planteles oficiales:\n${JSON.stringify(context)}\n\nLeé únicamente lo visible en esta página: marcador, goles, casillas TA/TR y observaciones disciplinarias. Las cruces o tildes dentro de una casilla cuentan como marca. Ignorá firmas.` },
         {
-          inlineData: { mimeType: file.type, data: bytes.toBase64() },
+          inlineData: { mimeType: file.type, data: encodeBase64(bytes) },
           mediaResolution: { level: file.type === "application/pdf" ? "MEDIA_RESOLUTION_MEDIUM" : "MEDIA_RESOLUTION_HIGH" }
         }
       ] }],

@@ -1,4 +1,4 @@
-import { hasValidFileSignature, normalizeOcrResult } from "./index.ts";
+import { encodeBase64, hasValidFileSignature, normalizeOcrResult } from "./index.ts";
 
 Deno.test("normalizes OCR incidences and rejects unknown players", () => {
   const result = normalizeOcrResult({
@@ -36,5 +36,13 @@ Deno.test("validates file signatures instead of trusting only the MIME type", ()
   const renamedText = new TextEncoder().encode("not a pdf");
   if (!hasValidFileSignature("application/pdf", validPdf) || hasValidFileSignature("application/pdf", renamedText)) {
     throw new Error("La validación de firma de archivo no funcionó.");
+  }
+});
+
+Deno.test("encodes binary files as base64 without Uint8Array.toBase64", () => {
+  const bytes = new Uint8Array(70_001).map((_, index) => index % 256);
+  const decoded = Uint8Array.from(atob(encodeBase64(bytes)), (character) => character.charCodeAt(0));
+  if (decoded.length !== bytes.length || decoded.some((value, index) => value !== bytes[index])) {
+    throw new Error("La codificación Base64 alteró el archivo.");
   }
 });
