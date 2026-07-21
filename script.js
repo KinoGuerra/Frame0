@@ -5256,9 +5256,9 @@ function renderObserverEditMatch(matchId) {
       <input class="observer-file-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" data-observer-sheet-input="camera" data-observer-sheet-file="${escapeHtml(match.id)}">
       <button class="btn btn-outline-light admin-secondary-btn observer-scan-btn" type="button" data-observer-sheet-trigger="file">
         <i class="bi bi-upload"></i>
-        Elegir archivo
+        Elegir páginas
       </button>
-      <input class="observer-file-input" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-observer-sheet-input="file" data-observer-sheet-file="${escapeHtml(match.id)}">
+      <input class="observer-file-input" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple data-observer-sheet-input="file" data-observer-sheet-file="${escapeHtml(match.id)}">
       <button class="btn btn-ingreso observer-save-btn" type="button" data-observer-save="${escapeHtml(match.id)}">
         <i class="bi bi-save-fill"></i>
         Guardar
@@ -5312,25 +5312,29 @@ function setObserverOcrPanel(state, icon, title, message, warnings = []) {
   panel.innerHTML = renderObserverOcrMessage(state, icon, title, message, warnings);
 }
 
-function applyObserverOcrDraft(result) {
+function applyObserverOcrDraft(result, { merge = false } = {}) {
   const rows = [...contentShell.querySelectorAll("[data-observer-player-row]")];
-  rows.forEach((row) => {
-    row.classList.remove("ocr-filled", "ocr-review");
-    row.querySelector("[data-goal-value]").textContent = "0";
-    row.querySelector(".yellow-card")?.classList.remove("is-selected");
-    row.querySelector(".red-card")?.classList.remove("is-selected");
-    const observationButton = row.querySelector("[data-observation]");
-    if (observationButton) {
-      observationButton.dataset.observationText = "";
-      observationButton.classList.remove("has-observation");
-    }
-    delete playerObservations[row.dataset.observationKey || ""];
-  });
+  if (!merge) {
+    rows.forEach((row) => {
+      row.classList.remove("ocr-filled", "ocr-review");
+      row.querySelector("[data-goal-value]").textContent = "0";
+      row.querySelector(".yellow-card")?.classList.remove("is-selected");
+      row.querySelector(".red-card")?.classList.remove("is-selected");
+      const observationButton = row.querySelector("[data-observation]");
+      if (observationButton) {
+        observationButton.dataset.observationText = "";
+        observationButton.classList.remove("has-observation");
+      }
+      delete playerObservations[row.dataset.observationKey || ""];
+    });
+  }
 
   const score = result?.score || {};
-  contentShell.querySelector('[data-score-value="home"]').textContent = String(Math.max(Number(score.home) || 0, 0));
-  contentShell.querySelector('[data-score-value="away"]').textContent = String(Math.max(Number(score.away) || 0, 0));
-  contentShell.querySelector(".observer-scoreboard")?.classList.toggle("ocr-review", Number(score.confidence) < 0.8);
+  if (score.detected !== false) {
+    contentShell.querySelector('[data-score-value="home"]').textContent = String(Math.max(Number(score.home) || 0, 0));
+    contentShell.querySelector('[data-score-value="away"]').textContent = String(Math.max(Number(score.away) || 0, 0));
+    contentShell.querySelector(".observer-scoreboard")?.classList.toggle("ocr-review", Number(score.confidence) < 0.8);
+  }
 
   (result?.incidences || []).forEach((incidence) => {
     const row = rows.find((candidate) => candidate.dataset.playerId === String(incidence.jugador_id || ""));
@@ -8948,12 +8952,13 @@ contentShell.addEventListener("change", async (event) => {
   const newsEditionSelect = event.target.closest("[data-news-edition]");
 
   if (observerSheetInput) {
-    const file = observerSheetInput.files?.[0];
-    if (!file) return;
+    const files = [...(observerSheetInput.files || [])];
+    if (!files.length) return;
     const matchId = observerSheetInput.dataset.observerSheetFile || "";
+    const pagesLabel = files.length === 1 ? "la página seleccionada" : `las ${files.length} páginas seleccionadas`;
     const confirmed = await requestConfirmation({
       title: "Analizar planilla",
-      message: "La imagen o el PDF se enviará al servicio de IA para preparar un borrador. Revisá todos los datos antes de guardar. ¿Querés continuar?",
+      message: `Se enviará ${pagesLabel} al servicio de IA para preparar un borrador acumulativo. Revisá todos los datos antes de guardar. ¿Querés continuar?`,
       confirmLabel: "Analizar"
     });
     if (!confirmed) {
@@ -8963,16 +8968,34 @@ contentShell.addEventListener("change", async (event) => {
 
     const uploadControls = [...contentShell.querySelectorAll("[data-observer-sheet-file], [data-observer-sheet-trigger]")];
     uploadControls.forEach((control) => { control.disabled = true; });
-    setObserverOcrPanel("processing", "bi-stars", "Leyendo planilla", `Procesando ${file.name}. Puede demorar unos segundos.`);
     try {
-      const result = await analyzeObserverMatchSheet(matchId, file);
-      applyObserverOcrDraft(result);
+      const results = [];
+      const failures = [];
+      for (const [index, file] of files.entries()) {
+        setObserverOcrPanel("processing", "bi-stars", "Leyendo planilla", `Procesando página ${index + 1} de ${files.length}: ${file.name}. Puede demorar unos segundos.`);
+        try {
+          const result = await analyzeObserverMatchSheet(matchId, file);
+          applyObserverOcrDraft(result, { merge: true });
+          results.push(result);
+        } catch (error) {
+          failures.push(`${file.name}: ${error.message || "no se pudo leer"}`);
+        }
+      }
+
+      if (!results.length) throw new Error(failures.join(" ") || "No se pudo leer ninguna página.");
+      const warnings = [...new Set([
+        ...results.flatMap((result) => Array.isArray(result.warnings) ? result.warnings : []),
+        ...failures
+      ])];
+      const needsReview = failures.length > 0 || results.some((result) => result.needs_review);
       setObserverOcrPanel(
-        result.needs_review ? "review" : "ready",
-        result.needs_review ? "bi-exclamation-triangle-fill" : "bi-check-circle-fill",
-        result.needs_review ? "Borrador para revisar" : "Borrador aplicado",
-        "Compará el resultado con la planilla y, cuando esté correcto, presioná Guardar.",
-        Array.isArray(result.warnings) ? result.warnings : []
+        needsReview ? "review" : "ready",
+        needsReview ? "bi-exclamation-triangle-fill" : "bi-check-circle-fill",
+        needsReview ? "Borrador para revisar" : "Página incorporada",
+        files.length === 1
+          ? "Esta página se sumó al borrador. Si la planilla continúa en otra hoja, tomá otra foto antes de revisar y guardar."
+          : `${results.length} de ${files.length} páginas se incorporaron al borrador. Compará el resultado y, cuando esté correcto, presioná Guardar.`,
+        warnings
       );
     } catch (error) {
       setObserverOcrPanel("error", "bi-x-circle-fill", "No se pudo leer la planilla", error.message || "Intentá nuevamente con una foto más nítida.");

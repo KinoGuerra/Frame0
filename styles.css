@@ -7178,6 +7178,14 @@ body.dark-mode .about-carousel-control:focus {
   border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
+.frame-confirm-modal .login-brand .section-kicker {
+  color: #9edfff;
+}
+
+.frame-confirm-modal .login-brand .modal-title {
+  color: #ffffff;
+}
+
 .frame-confirm-modal .modal-body {
   display: grid;
   gap: 0.75rem;
@@ -8255,6 +8263,51 @@ body[data-theme="stadium"] :is(.theme-gallery-heading h2, .theme-card-copy stron
 
 body[data-theme="stadium"] :is(.theme-gallery-heading > p:last-child, .theme-card-copy small) {
   color: #a9c8b7;
+}
+
+/* Mantiene legibles las confirmaciones cuando un tema claro redefine el modal compartido. */
+body[data-theme="slate"] .modal-content.frame-confirm-modal {
+  border-color: rgba(184, 213, 232, 0.5);
+  background: linear-gradient(155deg, #202a33 0%, #344654 100%);
+  color: #f5f8fa;
+}
+
+body[data-theme="slate"] .frame-confirm-modal .modal-header {
+  border-bottom-color: rgba(255, 255, 255, 0.16);
+  background: linear-gradient(135deg, #18222b, #435866);
+}
+
+body[data-theme="slate"] .frame-confirm-modal .modal-body {
+  background: linear-gradient(180deg, #2b3a46 0%, #18232c 100%);
+  color: #f5f8fa;
+}
+
+body[data-theme="slate"] .frame-confirm-modal [data-confirm-message] {
+  color: #e8f0f5;
+}
+
+body[data-theme="slate"] .frame-confirm-modal .login-brand .section-kicker {
+  color: #c7dce8;
+}
+
+body[data-theme="slate"] .frame-confirm-modal .frame-confirm-symbol {
+  border-color: rgba(215, 231, 240, 0.72);
+  background: #d7e7f0;
+  color: #26323d;
+  box-shadow: 0 0 0 7px rgba(215, 231, 240, 0.1);
+}
+
+body[data-theme="slate"] .frame-confirm-modal .admin-secondary-btn {
+  border-color: rgba(232, 240, 245, 0.56);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5f8fa;
+}
+
+body[data-theme="slate"] .frame-confirm-modal .admin-secondary-btn:hover,
+body[data-theme="slate"] .frame-confirm-modal .admin-secondary-btn:focus {
+  border-color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
 }
 
 @media (max-width: 767.98px) {

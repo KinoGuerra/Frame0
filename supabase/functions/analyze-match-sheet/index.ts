@@ -22,11 +22,12 @@ const responseSchema = {
     score: {
       type: "OBJECT",
       properties: {
+        detected: { type: "BOOLEAN" },
         home: { type: "INTEGER", minimum: 0, maximum: 99 },
         away: { type: "INTEGER", minimum: 0, maximum: 99 },
         confidence: { type: "NUMBER", minimum: 0, maximum: 1 }
       },
-      required: ["home", "away", "confidence"]
+      required: ["detected", "home", "away", "confidence"]
     },
     players: {
       type: "ARRAY",
@@ -43,9 +44,10 @@ const responseSchema = {
         required: ["player_id", "goals", "yellow_cards", "red_cards", "observation", "confidence"]
       }
     },
-    warnings: { type: "ARRAY", items: { type: "STRING" } }
+    warnings: { type: "ARRAY", items: { type: "STRING" } },
+    complete_sheet: { type: "BOOLEAN" }
   },
-  required: ["score", "players", "warnings"]
+  required: ["score", "players", "warnings", "complete_sheet"]
 };
 
 function respond(body: unknown, status = 200) {
@@ -125,16 +127,18 @@ export function normalizeOcrResult(raw: Row, players: Row[], homeTeamId: string,
 
   const rawScore = raw.score && typeof raw.score === "object" ? raw.score as Row : {};
   const score = {
+    detected: rawScore.detected === true,
     home: boundedInteger(rawScore.home),
     away: boundedInteger(rawScore.away),
     confidence: boundedConfidence(rawScore.confidence)
   };
+  const completeSheet = raw.complete_sheet === true;
   const goalsByTeam = incidences.reduce((totals, item) => {
     totals[String(item.equipo_id)] = Number(totals[String(item.equipo_id)] || 0) + Number(item.goles || 0);
     return totals;
   }, {} as Record<string, number>);
 
-  if ((goalsByTeam[homeTeamId] || 0) !== score.home || (goalsByTeam[awayTeamId] || 0) !== score.away) {
+  if (completeSheet && score.detected && ((goalsByTeam[homeTeamId] || 0) !== score.home || (goalsByTeam[awayTeamId] || 0) !== score.away)) {
     warnings.push("El marcador no coincide con la suma de goles asignados a jugadores.");
   }
 
@@ -142,7 +146,8 @@ export function normalizeOcrResult(raw: Row, players: Row[], homeTeamId: string,
     score,
     incidences,
     warnings: [...new Set(warnings)],
-    needs_review: score.confidence < 0.8 || incidences.some((item) => Number(item.confianza) < 0.8) || warnings.length > 0
+    complete_sheet: completeSheet,
+    needs_review: !score.detected || score.confidence < 0.8 || incidences.some((item) => Number(item.confianza) < 0.8) || warnings.length > 0
   };
 }
 
@@ -179,10 +184,13 @@ async function askGemini(file: File, context: Row) {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": geminiApiKey },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: "Extraé únicamente los datos escritos o marcados en la planilla de fútbol. No inventes incidencias. Usá exclusivamente los player_id provistos. Si una marca es ambigua, reducí confidence y agregá una advertencia. TA y TR valen como máximo 1 por jugador." }] },
+      systemInstruction: { parts: [{ text: "Extraé únicamente los datos escritos o marcados en la planilla de fútbol. La entrada puede ser una sola página de una planilla de varias hojas: no exijas que aparezcan ambos equipos ni el marcador. Para asociar jugadores, priorizá DNI; después nombre y dorsal. Usá exclusivamente los player_id provistos. Incluí en players solo filas con goles, tarjetas u observaciones visibles; omití jugadores sin incidencias. Marcá score.detected=true solo si el marcador se ve en esta página; si no se ve, usá false y valores 0. Marcá complete_sheet=true solo si la entrada incluye el marcador y las tablas de ambos equipos. No inventes incidencias. Si una marca es ambigua, reducí confidence y agregá una advertencia. TA y TR valen como máximo 1 por jugador." }] },
       contents: [{ role: "user", parts: [
-        { text: `Partido y planteles oficiales:\n${JSON.stringify(context)}\n\nLeé marcador final, goles, tarjetas y observaciones disciplinarias. Ignorá firmas.` },
-        { inlineData: { mimeType: file.type, data: bytes.toBase64() } }
+        { text: `Partido y planteles oficiales:\n${JSON.stringify(context)}\n\nLeé únicamente lo visible en esta página: marcador, goles, casillas TA/TR y observaciones disciplinarias. Las cruces o tildes dentro de una casilla cuentan como marca. Ignorá firmas.` },
+        {
+          inlineData: { mimeType: file.type, data: bytes.toBase64() },
+          mediaResolution: { level: file.type === "application/pdf" ? "MEDIA_RESOLUTION_MEDIUM" : "MEDIA_RESOLUTION_HIGH" }
+        }
       ] }],
       generationConfig: {
         temperature: 0,
