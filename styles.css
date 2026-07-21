@@ -2243,6 +2243,64 @@ select {
   margin-bottom: 0.18rem;
 }
 
+.observer-ocr-progress-copy {
+  min-width: 0;
+}
+
+.observer-ocr-progress-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.observer-ocr-progress-heading span {
+  color: var(--frame-blue);
+  font-family: "Yusei Magic", sans-serif;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+}
+
+.observer-ocr-progress-track {
+  position: relative;
+  height: 10px;
+  margin: 0.75rem 0 0.4rem;
+  overflow: hidden;
+  border: 1px solid rgba(9, 93, 206, 0.18);
+  border-radius: 999px;
+  background: rgba(9, 93, 206, 0.1);
+}
+
+.observer-ocr-progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--frame-blue), var(--frame-sky));
+  box-shadow: 0 0 12px rgba(29, 183, 255, 0.3);
+  transition: width 260ms ease-out;
+}
+
+.observer-ocr-progress-bar::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 20%, rgba(255, 255, 255, 0.62) 48%, transparent 76%);
+  content: "";
+  transform: translateX(-100%);
+  animation: observer-progress-scan 1.35s linear infinite;
+}
+
+.observer-ocr-progress-copy small {
+  color: #5b6b7e;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+@keyframes observer-progress-scan {
+  to { transform: translateX(100%); }
+}
+
 .observer-ocr-state p,
 .observer-ocr-state ul {
   margin: 0;
@@ -6071,6 +6129,19 @@ body.dark-mode .observer-ocr-state {
   color: #ffffff;
 }
 
+body.dark-mode .observer-ocr-progress-heading span {
+  color: var(--frame-sky);
+}
+
+body.dark-mode .observer-ocr-progress-track {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .observer-ocr-progress-copy small {
+  color: #c7d0dc;
+}
+
 body.dark-mode .observer-player-table tr.ocr-review td {
   background: rgba(194, 120, 3, 0.16);
 }
@@ -8327,5 +8398,13 @@ body[data-theme="slate"] .frame-confirm-modal .admin-secondary-btn:focus {
 @media (prefers-reduced-motion: reduce) {
   .theme-card {
     transition: none;
+  }
+
+  .observer-ocr-progress-bar {
+    transition: none;
+  }
+
+  .observer-ocr-progress-bar::after {
+    animation: none;
   }
 }

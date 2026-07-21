@@ -5312,6 +5312,39 @@ function setObserverOcrPanel(state, icon, title, message, warnings = []) {
   panel.innerHTML = renderObserverOcrMessage(state, icon, title, message, warnings);
 }
 
+function setObserverOcrProgress({ percent = 0, phase = "upload", fileName = "", pageIndex = 0, totalPages = 1 } = {}) {
+  const panel = contentShell.querySelector("[data-observer-ocr-panel]");
+  if (!panel) return;
+  const safePercent = Math.min(Math.max(Math.round(Number(percent) || 0), 0), 100);
+  const isProcessing = phase === "processing";
+  const phaseLabel = isProcessing ? "Analizando con IA" : "Subiendo archivo";
+  const icon = isProcessing ? "bi-stars" : "bi-cloud-arrow-up-fill";
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="observer-ocr-state is-processing">
+      <i class="bi ${icon}" aria-hidden="true"></i>
+      <div class="observer-ocr-progress-copy">
+        <div class="observer-ocr-progress-heading">
+          <strong>${phaseLabel}</strong>
+          <span>${safePercent}%</span>
+        </div>
+        <p>Página ${pageIndex + 1} de ${totalPages}: ${escapeHtml(fileName)}</p>
+        <div
+          class="observer-ocr-progress-track"
+          role="progressbar"
+          aria-label="${phaseLabel}"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="${safePercent}"
+        >
+          <span class="observer-ocr-progress-bar" style="width: ${safePercent}%"></span>
+        </div>
+        <small>${isProcessing ? "Reconociendo marcador, jugadores e incidencias" : "Enviando la imagen de forma segura"}</small>
+      </div>
+    </div>
+  `;
+}
+
 function applyObserverOcrDraft(result, { merge = false } = {}) {
   const rows = [...contentShell.querySelectorAll("[data-observer-player-row]")];
   if (!merge) {
@@ -5353,7 +5386,7 @@ function applyObserverOcrDraft(result, { merge = false } = {}) {
   });
 }
 
-async function analyzeObserverMatchSheet(matchId, file) {
+async function analyzeObserverMatchSheet(matchId, file, { onUploadProgress, onProcessing } = {}) {
   const allowedTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
   if (!allowedTypes.includes(file.type)) throw new Error("Usá una imagen JPG, PNG, WebP o un PDF.");
   if (file.size > 8 * 1024 * 1024) throw new Error("El archivo supera el máximo de 8 MB.");
@@ -5366,8 +5399,39 @@ async function analyzeObserverMatchSheet(matchId, file) {
   formData.append("password", observerSettingsSession.password);
   formData.append("partido_id", matchId);
   formData.append("archivo", file, file.name);
-  const { data, error } = await supabaseClient.functions.invoke("analyze-match-sheet", { body: formData });
-  if (error) throw new Error(await getEdgeFunctionErrorMessage(error, data, "No se pudo analizar la planilla."));
+
+  const data = await new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${SUPABASE_URL}/functions/v1/analyze-match-sheet`);
+    request.setRequestHeader("apikey", SUPABASE_ANON_KEY);
+    request.setRequestHeader("Authorization", `Bearer ${SUPABASE_ANON_KEY}`);
+    request.timeout = 180000;
+    request.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) onUploadProgress?.(event.loaded / event.total);
+    });
+    request.upload.addEventListener("load", () => {
+      onUploadProgress?.(1);
+      onProcessing?.();
+    });
+    request.addEventListener("load", () => {
+      let payload = null;
+      try {
+        payload = request.responseText ? JSON.parse(request.responseText) : null;
+      } catch (_error) {
+        reject(new Error("El servicio devolvió una respuesta inválida."));
+        return;
+      }
+      if (request.status < 200 || request.status >= 300) {
+        reject(new Error(payload?.error || "No se pudo analizar la planilla."));
+        return;
+      }
+      resolve(payload);
+    });
+    request.addEventListener("error", () => reject(new Error("No se pudo conectar con el servicio de lectura.")));
+    request.addEventListener("timeout", () => reject(new Error("La lectura demoró demasiado. Intentá nuevamente.")));
+    request.send(formData);
+  });
+
   if (!data?.score || !Array.isArray(data?.incidences)) throw new Error("La IA no devolvió una planilla válida.");
   return data;
 }
@@ -8972,12 +9036,38 @@ contentShell.addEventListener("change", async (event) => {
       const results = [];
       const failures = [];
       for (const [index, file] of files.entries()) {
-        setObserverOcrPanel("processing", "bi-stars", "Leyendo planilla", `Procesando página ${index + 1} de ${files.length}: ${file.name}. Puede demorar unos segundos.`);
+        const progressStart = index / files.length;
+        const progressShare = 1 / files.length;
+        let processingProgress = 0.62;
+        let processingTimer = null;
+        const updateProgress = (pageProgress, phase) => {
+          setObserverOcrProgress({
+            percent: (progressStart + (pageProgress * progressShare)) * 100,
+            phase,
+            fileName: file.name,
+            pageIndex: index,
+            totalPages: files.length
+          });
+        };
+
+        updateProgress(0, "upload");
         try {
-          const result = await analyzeObserverMatchSheet(matchId, file);
+          const result = await analyzeObserverMatchSheet(matchId, file, {
+            onUploadProgress: (uploadProgress) => updateProgress(uploadProgress * 0.58, "upload"),
+            onProcessing: () => {
+              updateProgress(processingProgress, "processing");
+              processingTimer = window.setInterval(() => {
+                processingProgress = Math.min(processingProgress + Math.max((0.94 - processingProgress) * 0.12, 0.004), 0.94);
+                updateProgress(processingProgress, "processing");
+              }, 450);
+            }
+          });
+          window.clearInterval(processingTimer);
+          updateProgress(1, "processing");
           applyObserverOcrDraft(result, { merge: true });
           results.push(result);
         } catch (error) {
+          window.clearInterval(processingTimer);
           failures.push(`${file.name}: ${error.message || "no se pudo leer"}`);
         }
       }
