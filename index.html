@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Coiny&family=Rubik+Dirt&family=Walter+Turncoat&family=Yusei+Magic&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-    <link href="styles.css?v=260720.loader1" rel="stylesheet">
+    <link href="styles.css?v=310826.1" rel="stylesheet">
   </head>
   <body>
     <header class="frame-header fixed-top">
@@ -55,6 +55,10 @@
 
                 <div class="sidebar-info-group">
                   <div class="sidebar-mini-title">Más información</div>
+                  <button class="division-link fortune-public-link" type="button" data-fortuna-open>
+                    <i class="bi bi-stars"></i>
+                    Fortuna
+                  </button>
                   <button class="division-link" type="button" data-public-page="noticias">
                     <i class="bi bi-newspaper"></i>
                     Noticias
@@ -78,11 +82,15 @@
                   </button>
                 </div>
 
+                <button class="btn btn-fortuna-access w-100" type="button" data-participant-auth>
+                  <i class="bi bi-ticket-perforated-fill"></i>
+                  Jugar a Fortuna
+                </button>
                 <button class="btn btn-ingreso w-100" type="button" data-bs-toggle="modal" data-bs-target="#loginModal">
                   <i class="bi bi-box-arrow-in-right"></i>
-                  Ingresar
+                  Acceso organizaci&oacute;n
                 </button>
-                <small class="sidebar-version">Versión 260720.1851</small>
+                <small class="sidebar-version">Versión 310826.1</small>
               </div>
             </div>
           </section>
@@ -322,6 +330,11 @@
                   Delegado
                 </button>
               </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="constatador-tab" data-bs-toggle="pill" data-bs-target="#constatador-pane" type="button" role="tab" aria-controls="constatador-pane" aria-selected="false" data-role="Constatador">
+                  Constatador
+                </button>
+              </li>
             </ul>
 
             <form id="loginForm" class="login-form">
@@ -334,6 +347,9 @@
                 </div>
                 <div class="tab-pane fade" id="veedor-pane" role="tabpanel" aria-labelledby="veedor-tab" tabindex="0">
                   <p>Acceso para cargar resultados, incidencias, goles, tarjetas y observaciones del partido.</p>
+                </div>
+                <div class="tab-pane fade" id="constatador-pane" role="tabpanel" aria-labelledby="constatador-tab" tabindex="0">
+                  <p>Acceso exclusivo para consultar vouchers y confirmar la entrega del producto.</p>
                 </div>
               </div>
 
@@ -367,6 +383,58 @@
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="participantAuthModal" tabindex="-1" aria-labelledby="participantAuthModalLabel" aria-hidden="true" inert>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content login-modal participant-auth-modal">
+          <div class="modal-header">
+            <div class="login-brand">
+              <img src="assets/frame0-logo.png" alt="Logo Frame0">
+              <div>
+                <p class="section-kicker mb-1">Fortuna Frame0</p>
+                <h2 class="modal-title fs-5" id="participantAuthModalLabel">Tu boleta de la fecha</h2>
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <div class="fortune-auth-switch" role="tablist" aria-label="Acceso a Fortuna">
+              <button class="is-active" type="button" role="tab" aria-selected="true" data-participant-mode="login">Ingresar</button>
+              <button type="button" role="tab" aria-selected="false" data-participant-mode="register">Crear cuenta</button>
+            </div>
+
+            <form class="fortune-auth-form" id="participantLoginForm" data-participant-panel="login">
+              <label class="form-label" for="participantLoginEmail">Email</label>
+              <input class="form-control" id="participantLoginEmail" type="email" autocomplete="email" required>
+              <label class="form-label mt-3" for="participantLoginPassword">Contrase&ntilde;a</label>
+              <input class="form-control" id="participantLoginPassword" type="password" autocomplete="current-password" minlength="8" required>
+              <button class="btn btn-login-submit w-100 mt-4" type="submit"><i class="bi bi-stars"></i> Entrar a Fortuna</button>
+              <button class="fortune-link-button" type="button" data-participant-mode="reset">Olvid&eacute; mi contrase&ntilde;a</button>
+            </form>
+
+            <form class="fortune-auth-form d-none" id="participantRegisterForm" data-participant-panel="register">
+              <div class="fortune-auth-grid">
+                <label><span>Nombre</span><input class="form-control" name="nombre" type="text" maxlength="80" autocomplete="given-name" required></label>
+                <label><span>Apellido</span><input class="form-control" name="apellido" type="text" maxlength="80" autocomplete="family-name" required></label>
+              </div>
+              <label class="mt-3"><span>Documento</span><input class="form-control" name="documento" type="text" minlength="5" maxlength="30" autocomplete="off" required><small>Se usar&aacute; para validar vouchers personales.</small></label>
+              <label class="mt-3"><span>Email</span><input class="form-control" name="email" type="email" autocomplete="email" required></label>
+              <label class="mt-3"><span>Contrase&ntilde;a</span><input class="form-control" name="password" type="password" minlength="8" autocomplete="new-password" required><small>M&iacute;nimo 8 caracteres.</small></label>
+              <button class="btn btn-login-submit w-100 mt-4" type="submit"><i class="bi bi-person-plus-fill"></i> Crear cuenta</button>
+            </form>
+
+            <form class="fortune-auth-form d-none" id="participantResetForm" data-participant-panel="reset">
+              <p>Ingres&aacute; tu email y te enviaremos un enlace para elegir una nueva contrase&ntilde;a.</p>
+              <label class="form-label" for="participantResetEmail">Email</label>
+              <input class="form-control" id="participantResetEmail" type="email" autocomplete="email" required>
+              <button class="btn btn-login-submit w-100 mt-4" type="submit"><i class="bi bi-envelope-fill"></i> Enviar enlace</button>
+              <button class="fortune-link-button" type="button" data-participant-mode="login">Volver al ingreso</button>
+            </form>
+            <p class="fortune-auth-feedback" data-participant-auth-feedback aria-live="polite"></p>
           </div>
         </div>
       </div>
@@ -865,11 +933,14 @@
       </form>
     </section>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4"></script>
     <script src="./supabaseClient.js?v=260720.1851"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="./apiClient.js?v=260720.1851"></script>
-    <script src="./script.js?v=260720.loader1"></script>
+    <script src="./script.js?v=310826.1"></script>
+    <script src="./fortune.js?v=310826.1"></script>
   </body>
 </html>
 

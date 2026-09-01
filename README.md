@@ -81,6 +81,23 @@ Administrador mantiene una sesion de Supabase Auth para las escrituras protegida
 RLS. Delegado y veedor usan exclusivamente el login propio de Frame0 y las RPCs que
 validan `p_usuario` y `p_password`; no intentan crear cuentas `@frame0.local`.
 
+## Fortuna, puntos y vouchers
+
+La migracion `supabase/migrations/031_fortuna_vouchers.sql` agrega las cuentas publicas,
+pronosticos, temporadas de puntos, vouchers y el rol `constatador`. Debe aplicarse antes
+de publicar el frontend que carga `fortune.js`.
+
+Las cuentas participantes usan Supabase Auth con email y contrasena. En el panel de
+Supabase configurar:
+
+- **Authentication > URL Configuration**: Site URL y Redirect URL de GitHub Pages.
+- **Authentication > Providers > Email**: habilitar `Confirm email`.
+- SMTP propio para confirmaciones y recuperacion de contrasena en produccion.
+
+Administrador, delegado, veedor y constatador conservan el login propio de Frame0. Los
+pronosticos cierran en PostgreSQL 30 minutos antes de `partidos.fecha_hora`; los puntos
+y canjes nunca se calculan en el navegador.
+
 ## Seguridad y RLS
 
 El frontend esta preparado para trabajar con RLS usando solo la anon key. En Supabase deben existir politicas que permitan:

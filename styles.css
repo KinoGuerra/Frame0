@@ -5498,7 +5498,7 @@ body.dark-mode .modal-content.login-modal {
 
 .login-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.35rem;
   margin-bottom: 1rem;
   padding: 0.25rem;
@@ -5511,7 +5511,7 @@ body.dark-mode .modal-content.login-modal {
   min-height: 38px;
   padding: 0.45rem 0.35rem;
   color: var(--frame-blue);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 900;
   white-space: nowrap;
 }
@@ -5630,6 +5630,12 @@ body.dark-mode .modal-content.login-modal {
 .login-socials a:hover,
 .login-socials a:focus {
   background: #e6f7ff;
+}
+
+@media (max-width: 575.98px) {
+  .login-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .login-error-content {
@@ -8406,5 +8412,787 @@ body[data-theme="slate"] .frame-confirm-modal .admin-secondary-btn:focus {
 
   .observer-ocr-progress-bar::after {
     animation: none;
+  }
+}
+
+/* ============================================================
+   FORTUNA
+   Una boleta de cancha: precisa, recortada y sin estética de casino.
+   ============================================================ */
+
+.btn-fortuna-access {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  margin-bottom: 0.65rem;
+  border: 1px solid rgba(255, 209, 102, 0.72);
+  background: linear-gradient(135deg, #ffd166, #ffb703);
+  color: #172033;
+  font-weight: 900;
+  box-shadow: 0 9px 20px rgba(180, 112, 0, 0.2);
+}
+
+.btn-fortuna-access:hover,
+.btn-fortuna-access:focus-visible {
+  border-color: #ffe29a;
+  background: linear-gradient(135deg, #ffe29a, #ffc128);
+  color: #0d1727;
+}
+
+.fortune-public-link i,
+.fortune-sidebar .sidebar-heading i {
+  color: #ffca3a;
+}
+
+.participant-auth-modal .modal-body {
+  padding: 1.35rem;
+}
+
+.fortune-auth-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  margin-bottom: 1.25rem;
+  padding: 0.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.8rem;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.fortune-auth-switch button {
+  border: 0;
+  border-radius: 0.58rem;
+  padding: 0.7rem 0.8rem;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 800;
+}
+
+.fortune-auth-switch button.is-active {
+  background: #ffca3a;
+  color: #172033;
+}
+
+.fortune-auth-form label,
+.fortune-auth-form label > span {
+  display: block;
+  color: #203248;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.fortune-auth-form small {
+  display: block;
+  margin-top: 0.28rem;
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.fortune-auth-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+.fortune-link-button {
+  display: block;
+  margin: 0.8rem auto 0;
+  border: 0;
+  background: transparent;
+  color: #9de3ff;
+  font-size: 0.82rem;
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+}
+
+.fortune-auth-feedback {
+  min-height: 1.25rem;
+  margin: 0.85rem 0 0;
+  color: #31516e;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.fortune-auth-feedback[data-state="error"] {
+  color: #ffb4b4;
+}
+
+.fortune-auth-feedback[data-state="success"] {
+  color: #9bf6c3;
+}
+
+body.dark-mode .fortune-auth-form label,
+body.dark-mode .fortune-auth-form label > span {
+  color: #edf8ff;
+}
+
+body.dark-mode .fortune-auth-form small {
+  color: #b6c9d8;
+}
+
+body.dark-mode .fortune-auth-feedback {
+  color: #d8efff;
+}
+
+.fortune-toolbar {
+  align-items: center;
+}
+
+.fortune-toolbar-copy {
+  max-width: 700px;
+  margin: 0.45rem 0 0;
+  color: var(--theme-muted);
+  font-size: 0.85rem;
+}
+
+.fortune-balance-chip {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  min-width: 145px;
+  padding: 0.62rem 0.82rem;
+  border: 1px solid rgba(255, 193, 7, 0.5);
+  border-radius: 0.8rem;
+  background: linear-gradient(145deg, rgba(255, 209, 102, 0.22), rgba(255, 183, 3, 0.08));
+  color: var(--theme-text);
+}
+
+.fortune-balance-chip span {
+  grid-column: 1 / -1;
+  color: var(--theme-muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.fortune-balance-chip strong {
+  font-family: "Coiny", system-ui, sans-serif;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.fortune-balance-chip small {
+  margin-left: 0.28rem;
+  color: var(--theme-muted);
+}
+
+.fortune-rule-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.fortune-rule-strip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.48rem 0.65rem;
+  border: 1px solid var(--theme-border);
+  border-radius: 999px;
+  background: var(--theme-surface-raised);
+  color: var(--theme-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.fortune-rule-strip strong {
+  color: #b57400;
+  font-family: "Coiny", system-ui, sans-serif;
+  font-size: 1rem;
+}
+
+.fortune-slip-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.fortune-slip {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--theme-border);
+  border-radius: 0.9rem;
+  background:
+    linear-gradient(90deg, transparent 0 19px, rgba(29, 183, 255, 0.08) 20px, transparent 21px),
+    var(--theme-surface-raised);
+  color: var(--theme-text);
+  box-shadow: 0 12px 26px rgba(18, 32, 51, 0.08);
+}
+
+.fortune-slip-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 8px;
+  background: repeating-linear-gradient(180deg, #ffca3a 0 10px, #1db7ff 10px 20px);
+}
+
+.fortune-slip > header,
+.fortune-slip > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-left: 8px;
+  padding: 0.72rem 0.9rem;
+}
+
+.fortune-slip > header {
+  border-bottom: 1px dashed var(--theme-border);
+}
+
+.fortune-slip > footer {
+  border-top: 1px dashed var(--theme-border);
+  color: var(--theme-muted);
+  font-size: 0.73rem;
+}
+
+.fortune-slip header > div {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.fortune-slip header span,
+.fortune-team small {
+  color: var(--theme-muted);
+  font-size: 0.68rem;
+}
+
+.fortune-lock-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 800;
+}
+
+.fortune-score-line {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) 64px 18px 64px minmax(130px, 1fr);
+  align-items: center;
+  gap: 0.55rem;
+  padding: 1.15rem 1rem 1.15rem 1.5rem;
+}
+
+.fortune-score-line input {
+  width: 64px;
+  height: 58px;
+  border: 1px solid rgba(11, 78, 162, 0.3);
+  border-radius: 0.7rem;
+  background: var(--theme-surface);
+  color: var(--theme-text);
+  font-family: "Coiny", system-ui, sans-serif;
+  font-size: 1.55rem;
+  text-align: center;
+}
+
+.fortune-score-divider {
+  color: var(--theme-muted);
+  font-family: "Coiny", system-ui, sans-serif;
+  font-size: 1.45rem;
+  text-align: center;
+}
+
+.fortune-team {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.fortune-team strong {
+  font-size: 1rem;
+}
+
+.fortune-team-away {
+  text-align: right;
+}
+
+.fortune-slip.is-locked {
+  opacity: 0.7;
+}
+
+.btn-fortuna-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1px solid #0866c6;
+  border-radius: 0.65rem;
+  background: linear-gradient(135deg, #0b63ce, #0b4ea2);
+  color: #ffffff;
+  font-weight: 850;
+}
+
+.btn-fortuna-action:hover,
+.btn-fortuna-action:focus-visible {
+  border-color: #36c7ff;
+  background: linear-gradient(135deg, #1383e8, #0b63ce);
+  color: #ffffff;
+}
+
+.fortune-section-block,
+.fortune-admin-panel {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--theme-border);
+  border-radius: 0.9rem;
+  background: var(--theme-surface-raised);
+  color: var(--theme-text);
+}
+
+.fortune-section-heading {
+  margin-bottom: 0.85rem;
+}
+
+.fortune-section-heading h3 {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 900;
+}
+
+.fortune-reward-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.8rem;
+}
+
+.fortune-reward-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.9rem;
+  border: 1px solid var(--theme-border);
+  border-radius: 0.8rem;
+  background: var(--theme-surface);
+}
+
+.fortune-reward-card .btn {
+  grid-column: 1 / -1;
+}
+
+.fortune-reward-card h3,
+.fortune-reward-card p {
+  margin: 0 0 0.25rem;
+}
+
+.fortune-reward-card p,
+.fortune-reward-card small {
+  color: var(--theme-muted);
+  font-size: 0.76rem;
+}
+
+.fortune-reward-cost {
+  display: grid;
+  min-width: 58px;
+  padding: 0.5rem;
+  border-radius: 0.65rem;
+  background: rgba(255, 202, 58, 0.2);
+  text-align: center;
+}
+
+.fortune-reward-cost strong {
+  color: #b57400;
+  font-family: "Coiny", system-ui, sans-serif;
+  font-size: 1.25rem;
+}
+
+.fortune-reward-cost span {
+  color: var(--theme-muted);
+  font-size: 0.62rem;
+}
+
+.fortune-ticket-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  gap: 0.85rem;
+}
+
+.fortune-ticket {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  overflow: hidden;
+  border: 1px solid rgba(11, 78, 162, 0.28);
+  border-radius: 0.8rem;
+  background: var(--theme-surface);
+}
+
+.fortune-ticket::before,
+.fortune-ticket::after {
+  position: absolute;
+  left: calc(100% - 139px);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--theme-surface-raised);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.fortune-ticket::before { top: 0; }
+.fortune-ticket::after { top: 100%; }
+
+.fortune-ticket-main {
+  padding: 0.9rem 1rem;
+}
+
+.fortune-ticket-main h3 {
+  margin: 0.25rem 0;
+  font-size: 1.08rem;
+  font-weight: 900;
+}
+
+.fortune-ticket-label {
+  color: var(--theme-muted);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.fortune-ticket-code,
+.fortune-code-input {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+}
+
+.fortune-ticket-main dl,
+.constatador-result dl,
+.fortune-profile-card dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  margin: 0.7rem 0;
+}
+
+.fortune-ticket-main dl div,
+.constatador-result dl div,
+.fortune-profile-card dl div {
+  display: grid;
+}
+
+.fortune-ticket-main dt,
+.constatador-result dt,
+.fortune-profile-card dt {
+  color: var(--theme-muted);
+  font-size: 0.64rem;
+  text-transform: uppercase;
+}
+
+.fortune-ticket-main dd,
+.constatador-result dd,
+.fortune-profile-card dd {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.fortune-ticket-qr {
+  display: grid;
+  place-items: center;
+  min-width: 138px;
+  padding: 0.65rem;
+  border-left: 1px dashed var(--theme-border);
+  background: #ffffff;
+}
+
+.fortune-ticket-qr img,
+.fortune-ticket-qr canvas {
+  max-width: 116px;
+  height: auto !important;
+}
+
+.fortune-ticket-status,
+.fortune-status {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0.22rem 0.48rem;
+  border-radius: 999px;
+  background: rgba(33, 196, 107, 0.14);
+  color: #08743c;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.fortune-ticket.is-vencido,
+.fortune-ticket.is-anulado,
+.fortune-ticket.is-usado {
+  filter: saturate(0.45);
+  opacity: 0.78;
+}
+
+.fortune-ticket.is-vencido .fortune-ticket-status,
+.fortune-status.is-vencido,
+.fortune-status.is-cerrada {
+  background: rgba(100, 116, 139, 0.16);
+  color: var(--theme-muted);
+}
+
+.fortune-ticket.is-anulado .fortune-ticket-status,
+.fortune-status.is-anulado {
+  background: rgba(220, 53, 69, 0.14);
+  color: #b42331;
+}
+
+.fortune-ledger-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.fortune-ledger-summary > div {
+  display: grid;
+  padding: 0.9rem;
+  border: 1px solid var(--theme-border);
+  border-radius: 0.8rem;
+  background: var(--theme-surface-raised);
+}
+
+.fortune-ledger-summary span {
+  color: var(--theme-muted);
+  font-size: 0.7rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.fortune-ledger-summary strong {
+  font-family: "Coiny", system-ui, sans-serif;
+  font-size: 1.6rem;
+}
+
+.fortune-ledger-summary .is-balance {
+  border-color: rgba(255, 193, 7, 0.5);
+  background: linear-gradient(145deg, rgba(255, 209, 102, 0.2), var(--theme-surface-raised));
+}
+
+.fortune-profile-grid,
+.constatador-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.fortune-profile-card {
+  padding: 1rem;
+  border: 1px solid var(--theme-border);
+  border-radius: 0.9rem;
+  background: var(--theme-surface-raised);
+  color: var(--theme-text);
+}
+
+.fortune-profile-card h3 {
+  margin: 0.25rem 0 0.7rem;
+}
+
+.fortune-profile-card > small,
+.fortune-helper {
+  color: var(--theme-muted);
+  font-size: 0.72rem;
+}
+
+.fortune-player-link-form,
+.fortune-admin-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 0.7rem;
+  align-items: end;
+  margin: 0.85rem 0 1rem;
+}
+
+.fortune-player-link-form {
+  grid-template-columns: 1fr 1fr;
+}
+
+.fortune-player-link-form .btn {
+  grid-column: 1 / -1;
+}
+
+.fortune-admin-form label,
+.fortune-player-link-form label {
+  display: grid;
+  gap: 0.28rem;
+  color: var(--theme-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.fortune-admin-wide {
+  grid-column: span 2;
+}
+
+.fortune-empty {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  padding: 1.25rem;
+  border: 1px dashed var(--theme-border);
+  border-radius: 0.9rem;
+  background: var(--theme-surface-raised);
+  color: var(--theme-muted);
+  text-align: center;
+}
+
+.fortune-empty i {
+  color: #d99a00;
+  font-size: 2rem;
+}
+
+.fortune-empty h3,
+.fortune-empty p {
+  margin: 0.35rem 0 0;
+}
+
+.fortune-qr-reader {
+  min-height: 260px;
+  margin-bottom: 0.8rem;
+  overflow: hidden;
+  border: 1px dashed var(--theme-border);
+  border-radius: 0.8rem;
+  background: #07111d;
+}
+
+.fortune-qr-reader video {
+  border-radius: 0.75rem;
+}
+
+.constatador-result {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--theme-border);
+  border-radius: 0.8rem;
+  background: var(--theme-surface);
+  color: var(--theme-text);
+}
+
+.constatador-result > i {
+  color: var(--frame-green);
+  font-size: 2rem;
+}
+
+.constatador-result h3 {
+  margin: 0.4rem 0;
+}
+
+.fortune-result-warning {
+  margin: 0.8rem 0 0;
+  color: #b42331;
+  font-weight: 850;
+}
+
+.fortune-inline-loader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  color: var(--theme-muted);
+}
+
+.table-action-btn.is-success {
+  color: #0c8749;
+}
+
+.table-action-btn.is-danger {
+  color: #c32f3d;
+}
+
+@media (max-width: 991.98px) {
+  .fortune-admin-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fortune-score-line {
+    grid-template-columns: minmax(90px, 1fr) 58px 14px 58px minmax(90px, 1fr);
+  }
+
+  .fortune-score-line input {
+    width: 58px;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .fortune-toolbar {
+    align-items: stretch;
+  }
+
+  .fortune-balance-chip {
+    width: 100%;
+  }
+
+  .fortune-profile-grid,
+  .constatador-layout,
+  .fortune-auth-grid,
+  .fortune-player-link-form {
+    grid-template-columns: 1fr;
+  }
+
+  .fortune-score-line {
+    grid-template-columns: 1fr 52px 12px 52px 1fr;
+    gap: 0.35rem;
+    padding: 1rem 0.65rem 1rem 1rem;
+  }
+
+  .fortune-score-line input {
+    width: 52px;
+    height: 52px;
+    font-size: 1.3rem;
+  }
+
+  .fortune-team strong {
+    font-size: 0.8rem;
+  }
+
+  .fortune-slip > header,
+  .fortune-slip > footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fortune-slip > footer .btn {
+    width: 100%;
+  }
+
+  .fortune-ledger-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .fortune-admin-form {
+    grid-template-columns: 1fr;
+  }
+
+  .fortune-admin-wide {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 440px) {
+  .fortune-ticket-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fortune-ticket {
+    grid-template-columns: 1fr;
+  }
+
+  .fortune-ticket::before,
+  .fortune-ticket::after {
+    display: none;
+  }
+
+  .fortune-ticket-qr {
+    border-top: 1px dashed var(--theme-border);
+    border-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fortune-slip,
+  .fortune-ticket,
+  .btn-fortuna-action {
+    transition: none;
   }
 }

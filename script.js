@@ -245,6 +245,7 @@ const TOURNAMENT_SETTINGS_CONFIG_KEY = "tournament_settings";
 let adminSettingsSession = null;
 let observerSettingsSession = null;
 let delegateSettingsSession = null;
+let constatadorSettingsSession = null;
 let currentAppUser = null;
 let tournamentCatalog = [];
 let activeDivisionId = "";
@@ -3132,14 +3133,18 @@ async function exitProfileToPublicHome() {
   adminSettingsSession = null;
   observerSettingsSession = null;
   delegateSettingsSession = null;
+  constatadorSettingsSession = null;
   currentAppUser = null;
   currentAiReport = null;
-  document.body.classList.remove("delegate-view");
+  document.body.classList.remove("delegate-view", "fortune-view", "constatador-view");
   closeFulbitoChat();
+  if (typeof stopFortunaQrScanner === "function") await stopFortunaQrScanner();
 
-  supabaseClient?.auth?.signOut?.().catch((error) => {
+  try {
+    await supabaseClient?.auth?.signOut?.();
+  } catch (error) {
     console.error("Error al cerrar sesión de Supabase:", error);
-  });
+  }
 
   const homeUrl = new URL("index.html", window.location.href);
   homeUrl.searchParams.set("logout", Date.now());
@@ -7678,6 +7683,10 @@ async function enterDelegateView(team) {
             Jugadores
             ${renderDelegatePlayersBadge(team)}
           </button>
+          <button class="division-link" type="button" data-delegate-fortuna-requests>
+            <i class="bi bi-person-check-fill"></i>
+            Solicitudes Fortuna
+          </button>
           <button class="division-link" type="button" data-help-role="delegate">
             <i class="bi bi-question-circle-fill"></i>
             Ayuda
@@ -7743,6 +7752,14 @@ async function enterAdminView() {
           <button class="division-link" type="button" data-admin-action="Diario Noticias">
             <i class="bi bi-newspaper"></i>
             Diario Noticias
+          </button>
+          <button class="division-link" type="button" data-admin-action="Fortuna">
+            <i class="bi bi-stars"></i>
+            Fortuna y vouchers
+          </button>
+          <button class="division-link" type="button" data-admin-action="Constatadores">
+            <i class="bi bi-qr-code-scan"></i>
+            Constatadores
           </button>
           <div class="admin-menu-accordion">
             <button class="division-link admin-menu-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#adminTournamentMenu" aria-expanded="false" aria-controls="adminTournamentMenu">
@@ -7868,6 +7885,7 @@ passwordToggle.addEventListener("click", () => {
 sidebarContent.addEventListener("click", async (event) => {
   const logoutButton = event.target.closest("[data-admin-logout]");
   const delegatePlayersButton = event.target.closest("[data-delegate-players]");
+  const delegateFortunaRequestsButton = event.target.closest("[data-delegate-fortuna-requests]");
   const delegateHomeButton = event.target.closest("[data-delegate-home]");
   const delegateTeamButton = event.target.closest("[data-delegate-team]");
   const observerMatchesButton = event.target.closest("[data-observer-matches]");
@@ -7877,7 +7895,7 @@ sidebarContent.addEventListener("click", async (event) => {
   const helpButton = event.target.closest("[data-help-role]");
   const divisionButton = event.target.closest("[data-division]");
   const categoryToggleButton = event.target.closest("[data-category-toggle]");
-  const mobileNavigationButton = event.target.closest("[data-division], [data-public-page], [data-theme-page], [data-delegate-home], [data-delegate-team], [data-delegate-players], [data-observer-matches], [data-admin-action], [data-help-role], [data-admin-logout], [data-bs-target='#loginModal']");
+  const mobileNavigationButton = event.target.closest("[data-division], [data-public-page], [data-theme-page], [data-delegate-home], [data-delegate-team], [data-delegate-players], [data-delegate-fortuna-requests], [data-observer-matches], [data-admin-action], [data-help-role], [data-admin-logout], [data-fortuna-open], [data-participant-auth], [data-bs-target='#loginModal']");
 
   if (mobileNavigationButton && mobileMenuMedia.matches) {
     closeMobileMenu();
@@ -7953,6 +7971,13 @@ sidebarContent.addEventListener("click", async (event) => {
     return;
   }
 
+  if (delegateFortunaRequestsButton) {
+    showContentLoader("Solicitudes Fortuna", async () => {
+      contentShell.innerHTML = await renderDelegateFortunaRequestsView();
+    });
+    return;
+  }
+
   if (observerMatchesButton) {
     showContentLoader("Partidos", () => {
       contentShell.innerHTML = renderObserverMatches();
@@ -8003,6 +8028,16 @@ sidebarContent.addEventListener("click", async (event) => {
         editingNewsPageIndex = 0;
         adminNewsDraft = null;
         contentShell.innerHTML = renderAdminNewsView();
+        return;
+      }
+
+      if (actionName === "Fortuna") {
+        contentShell.innerHTML = await renderAdminFortunaView();
+        return;
+      }
+
+      if (actionName === "Constatadores") {
+        contentShell.innerHTML = await renderAdminConstatadoresView();
         return;
       }
 
@@ -10130,6 +10165,7 @@ loginForm.addEventListener("submit", async (event) => {
   adminSettingsSession = null;
   observerSettingsSession = null;
   delegateSettingsSession = null;
+  constatadorSettingsSession = null;
   currentAppUser = null;
   currentAiReport = null;
 
@@ -10226,6 +10262,25 @@ loginForm.addEventListener("submit", async (event) => {
     }
 
     showLoginError(`El delegado "${usuarioApp.usuario}" no tiene un equipo activo asociado.`);
+    return;
+  }
+  if (role === "Constatador") {
+    const usuarioApp = await loginUsuariosApp(username, password);
+    if (!usuarioApp) return;
+
+    if (usuarioApp.rol !== "constatador") {
+      showLoginError(`El rol "${usuarioApp.rol}" no está autorizado para este ingreso.`);
+      return;
+    }
+
+    constatadorSettingsSession = {
+      usuario: usuarioApp.usuario || username.trim(),
+      password: password.trim()
+    };
+    currentAppUser = usuarioApp;
+    bootstrap.Modal.getInstance(document.querySelector("#loginModal"))?.hide();
+    showProfileLoader("Constatador", enterConstatadorView);
+    loginForm.reset();
     return;
   }
   showLoginError("Usuario o contraseña incorrectos.");
