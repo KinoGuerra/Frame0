@@ -4999,8 +4999,8 @@ function renderDelegatePlayers(team, includeInactive = false) {
               <tr>
                 <td>${index + 1}</td>
                 <td>${escapeHtml(player.name)}</td>
-                <td>${getDemoPlayerBirthDate(player, index)}</td>
-                <td>${getDemoPlayerDni(player, index)}</td>
+                <td>${escapeHtml(getDemoPlayerBirthDate(player, index))}</td>
+                <td>${escapeHtml(getDemoPlayerDni(player, index))}</td>
                 <td><span class="player-status ${status.toLowerCase().replace(/\s+/g, "-")}">${status}</span></td>
                 <td>${player.number}</td>
                 <td>${renderObservationNotificationSummary(playerWithTeam)}</td>
@@ -5205,11 +5205,11 @@ function renderScoreCounter(label, value, key) {
   const score = value === null ? 0 : value;
 
   return `
-    <div class="score-control" aria-label="${label}">
+    <div class="score-control" aria-label="${escapeHtml(label)}">
       <button type="button" data-score-dec="${key}" aria-label="Restar gol"><i class="bi bi-dash-lg"></i></button>
       <strong data-score-value="${key}">${score}</strong>
       <button type="button" data-score-inc="${key}" aria-label="Sumar gol"><i class="bi bi-plus-lg"></i></button>
-      <span>${label}</span>
+      <span>${escapeHtml(label)}</span>
     </div>
   `;
 }
@@ -7177,7 +7177,7 @@ function renderAdminDelegateRows(hasCompletedFilters, searchTerm = "", page = 1)
       </td>
       <td>${escapeHtml(team.delegateDocument || "-")}</td>
       <td>${escapeHtml(team.contact)}</td>
-      <td>${team.delegateUsername || "-"}</td>
+      <td>${escapeHtml(team.delegateUsername || "-")}</td>
       <td>
         <div class="table-actions">
           ${adminDelegatesState.includeInactive
@@ -7605,9 +7605,9 @@ function renderAdminPlayerRows(hasCompletedFilters, selectedTeamId = "", searchT
       <td>${escapeHtml(player.name)}</td>
       <td>${escapeHtml(player.dni || "-")}</td>
       <td>
-        <span class="fixture-team">${renderTeamBadge(player.team, "small")} ${player.team.shortName}</span>
+        <span class="fixture-team">${renderTeamBadge(player.team, "small")} ${escapeHtml(player.team.shortName)}</span>
       </td>
-      <td>${player.team.contact}</td>
+      <td>${escapeHtml(player.team.contact)}</td>
       <td>
         <span class="player-status ${playerStatus.toLowerCase()}">${playerStatus}</span>
       </td>
