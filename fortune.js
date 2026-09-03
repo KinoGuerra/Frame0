@@ -265,7 +265,7 @@ function renderFortunePoints() {
 
 async function loadFortunePlayerOptions() {
   const [{ data: players, error: playersError }, { data: teams, error: teamsError }] = await Promise.all([
-    supabaseClient.from("jugadores").select("id,equipo_id,nombre,apellido,dorsal,activo").eq("activo", true).order("apellido"),
+    supabaseClient.rpc("listar_jugadores_publicos", { p_equipo_ids: null }),
     supabaseClient.from("equipos").select("id,nombre,nombre_corto,activo").eq("activo", true).order("nombre")
   ]);
   if (playersError) throw playersError;
@@ -528,12 +528,19 @@ async function consultConstatadorVoucher(code) {
   if (!constatadorSettingsSession?.usuario || !constatadorSettingsSession?.password) throw new Error("La sesión de constatador expiró.");
   const result = document.querySelector("[data-constatador-result]");
   if (result) result.innerHTML = `<div class="fortune-inline-loader"><span class="spinner-border spinner-border-sm"></span> Consultando...</div>`;
-  const { data, error } = await supabaseClient.rpc("consultar_voucher_constatador", {
-    p_usuario: constatadorSettingsSession.usuario,
-    p_password: constatadorSettingsSession.password,
-    p_codigo: code
-  });
-  if (error) throw error;
+  let data;
+  try {
+    const response = await supabaseClient.rpc("consultar_voucher_constatador", {
+      p_usuario: constatadorSettingsSession.usuario,
+      p_password: constatadorSettingsSession.password,
+      p_codigo: code
+    });
+    if (response.error) throw response.error;
+    data = response.data;
+  } catch (error) {
+    if (result) result.innerHTML = `<div class="fortune-result-warning"><i class="bi bi-exclamation-triangle-fill"></i> ${fortuneEscape(fortuneErrorMessage(error))}</div>`;
+    throw error;
+  }
   fortuneLastVoucher = data;
   if (result) result.innerHTML = `
     <article class="constatador-result is-${fortuneEscape(data.estado)}">

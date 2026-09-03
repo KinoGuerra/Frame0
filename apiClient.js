@@ -253,9 +253,9 @@ async function loginObserver(body = {}) {
 }
 
 async function apiPost(endpoint, body) {
-  const { resource, action } = parseDataEndpoint(endpoint);
+  const { resource, id, action } = parseDataEndpoint(endpoint);
 
-  if (resource === "veedores" && action === "login") {
+  if (resource === "veedores" && (action === "login" || id === "login")) {
     return loginObserver(body);
   }
 
