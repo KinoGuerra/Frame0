@@ -249,6 +249,9 @@ let constatadorSettingsSession = null;
 let currentAppUser = null;
 let tournamentCatalog = [];
 let activeDivisionId = "";
+let previousTournament = null;
+let previousTournamentError = false;
+let archiveColumnAvailable = true;
 let adminTeamsForView = [];
 let adminTeamsIncludeInactive = false;
 let adminMetricsState = null;
@@ -281,7 +284,7 @@ const MATCH_DAY_OPTIONS = [
   { value: "0", label: "Domingo" }
 ];
 const DEFAULT_FIXTURE_MATCH_DAY = "0";
-const DEFAULT_FIXTURE_START_DATE = "2026-07-01";
+const DEFAULT_FIXTURE_START_DATE = formatLocalDate(new Date());
 const aboutMembers = [
   {
     name: "Ignacio Cerutti",
@@ -1045,14 +1048,46 @@ async function saveFixtureMatchesToSupabase(fixture) {
     }))
   );
 
+  const divisionKey = getTournamentDivisionKey(fixture.category, fixture.division);
+  const settings = getTournamentSettingsPayload();
+  settings.divisions = {
+    ...settings.divisions,
+    [divisionKey]: { ...settings.divisions[divisionKey], datesCount: fixture.datesCount, fixture }
+  };
   const { error } = await supabaseClient.rpc("guardar_fixture_partidos", {
     p_usuario: adminSettingsSession.usuario,
     p_password: adminSettingsSession.password,
     p_division_id: fixture.divisionId,
-    p_partidos: matches
+    p_partidos: { matches, settings }
   });
 
   if (error) throw error;
+}
+
+async function archiveCurrentTournament(name) {
+  if (!adminSettingsSession?.usuario || !adminSettingsSession?.password) {
+    throw new Error("La sesión de administrador no está disponible. Cerrá sesión e ingresá nuevamente.");
+  }
+  const { error } = await supabaseClient.rpc("archivar_torneo_actual", {
+    p_usuario: adminSettingsSession.usuario,
+    p_password: adminSettingsSession.password,
+    p_nombre: name.trim()
+  });
+  if (error) throw error;
+  Object.values(tournamentSettings.divisions).forEach((config) => {
+    config.fixture = null;
+    delete config.startDate;
+  });
+  await loadTournamentSettingsFromSupabase();
+}
+
+async function queryCurrentMatches(buildQuery) {
+  let result = await buildQuery(archiveColumnAvailable);
+  if (archiveColumnAvailable && result.error?.code === "42703") {
+    archiveColumnAvailable = false;
+    result = await buildQuery(false);
+  }
+  return result;
 }
 
 function requireDelegateSettingsSession() {
@@ -1117,10 +1152,11 @@ async function changeDelegatePlayerStatusInSupabase(playerId, active) {
 async function hasExistingFixtureForDivision(divisionId = "") {
   if (!divisionId || typeof supabaseClient === "undefined") return false;
 
-  const { count, error } = await supabaseClient
-    .from("partidos")
-    .select("id", { count: "exact", head: true })
-    .eq("division_id", divisionId);
+  const { count, error } = await queryCurrentMatches((hasArchiveColumn) => {
+    let query = supabaseClient.from("partidos").select("id", { count: "exact", head: true }).eq("division_id", divisionId);
+    if (hasArchiveColumn) query = query.eq("archivado", false);
+    return query;
+  });
 
   if (error) {
     console.warn("No se pudo verificar si ya existe fixture para la división:", error);
@@ -2455,6 +2491,7 @@ function filterDuplicateProgrammedMatches(matches = []) {
 }
 
 function calculateStandingsFromMatches(teamList = [], groupedFixtures = {}) {
+  const teamNames = new Map(teamList.map((team) => [team.id, team.name || team.legalName || ""]));
   const table = new Map(teamList.map((team) => [team.id, {
     teamId: team.id,
     pts: 0,
@@ -2503,7 +2540,7 @@ function calculateStandingsFromMatches(teamList = [], groupedFixtures = {}) {
       b.pts - a.pts ||
       b.dg - a.dg ||
       b.gf - a.gf ||
-      getTeam(a.teamId)?.name.localeCompare(getTeam(b.teamId)?.name || "", "es")
+      (teamNames.get(a.teamId) || "").localeCompare(teamNames.get(b.teamId) || "", "es")
     );
 }
 
@@ -2567,11 +2604,15 @@ async function loadDivisionDataFromSupabase(divisionId) {
 
   const teamIds = (equipos || []).map((team) => team.id).filter(Boolean);
   const [{ data: partidos, error: partidosError }, jugadores] = await Promise.all([
-    supabaseClient
-      .from("partidos")
-      .select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones")
-      .eq("division_id", divisionId)
-      .order("fecha_hora", { ascending: true }),
+    queryCurrentMatches((hasArchiveColumn) => {
+      let query = supabaseClient
+        .from("partidos")
+        .select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones")
+        .eq("division_id", divisionId)
+        .order("fecha_hora", { ascending: true });
+      if (hasArchiveColumn) query = query.eq("archivado", false);
+      return query;
+    }),
     loadPlayersForTeams(teamIds)
   ]);
   if (partidosError) throw partidosError;
@@ -3511,7 +3552,11 @@ async function fetchAiReportDatasetFromSupabase() {
     supabaseClient.from("divisiones").select("id,nombre,categoria_id,activa"),
     supabaseClient.from("equipos").select("id,nombre,division_id,activo"),
     supabaseClient.from("jugadores").select("id,equipo_id,nombre,apellido,activo,dorsal"),
-    supabaseClient.from("partidos").select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones"),
+    queryCurrentMatches((hasArchiveColumn) => {
+      let query = supabaseClient.from("partidos").select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones");
+      if (hasArchiveColumn) query = query.eq("archivado", false);
+      return query;
+    }),
     supabaseClient.from("goles").select("id,partido_id,jugador_id,equipo_id,tipo"),
     supabaseClient.from("tarjetas").select("id,partido_id,jugador_id,equipo_id,tipo"),
     selectSanctionsForAiReport()
@@ -3520,6 +3565,7 @@ async function fetchAiReportDatasetFromSupabase() {
   const results = [categoriasResult, divisionesResult, equiposResult, jugadoresResult, partidosResult, golesResult, tarjetasResult];
   const firstError = results.find((result) => result.error)?.error;
   if (firstError) throw firstError;
+  const currentMatchIds = new Set((partidosResult.data || []).map((match) => match.id));
 
   return {
     categorias: categoriasResult.data || [],
@@ -3527,9 +3573,9 @@ async function fetchAiReportDatasetFromSupabase() {
     equipos: equiposResult.data || [],
     jugadores: jugadoresResult.data || [],
     partidos: partidosResult.data || [],
-    goles: golesResult.data || [],
-    tarjetas: tarjetasResult.data || [],
-    sanciones
+    goles: (golesResult.data || []).filter((goal) => currentMatchIds.has(goal.partido_id)),
+    tarjetas: (tarjetasResult.data || []).filter((card) => currentMatchIds.has(card.partido_id)),
+    sanciones: sanciones.filter((sanction) => !sanction.partido_id || currentMatchIds.has(sanction.partido_id))
   };
 }
 
@@ -3762,6 +3808,78 @@ function updateAboutCarousel(direction) {
   });
 }
 
+async function loadPreviousTournament() {
+  previousTournamentError = false;
+  const { data, error } = await supabaseClient
+    .from("torneo_anterior")
+    .select("nombre,archivado_en,datos")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error) {
+    previousTournamentError = true;
+    previousTournament = null;
+    console.error("No se pudo cargar el torneo anterior:", error);
+    return;
+  }
+  previousTournament = data;
+}
+
+function renderPreviousTournamentContent() {
+  if (previousTournamentError) {
+    return `<section class="public-info-panel"><h2>Torneo anterior</h2><p>El historial no está disponible. Verificá que la migración del archivo esté aplicada.</p></section>`;
+  }
+  if (!previousTournament) {
+    return `<section class="public-info-panel"><h2>Torneo anterior</h2><p>Aún no se archivó ningún torneo.</p></section>`;
+  }
+
+  const data = previousTournament.datos || {};
+  const categories = Array.isArray(data.categorias) ? data.categorias : [];
+  const divisions = Array.isArray(data.divisiones) ? data.divisiones : [];
+  const allTeams = Array.isArray(data.equipos) ? data.equipos : [];
+  const allMatches = Array.isArray(data.partidos) ? data.partidos : [];
+  const archivedAt = new Date(previousTournament.archivado_en);
+  const archiveDate = Number.isNaN(archivedAt.getTime()) ? "" : archivedAt.toLocaleDateString("es-AR");
+  const divisionCards = divisions.filter((division) => allMatches.some((match) => match.division_id === division.id)).map((division) => {
+    const category = categories.find((item) => item.id === division.categoria_id);
+    const divisionTeams = allTeams.filter((team) => team.division_id === division.id).map(normalizeSupabaseTeam);
+    const teamNames = new Map(divisionTeams.map((team) => [team.id, team.shortName || team.name]));
+    const matches = allMatches.filter((match) => match.division_id === division.id);
+    const standingsRows = calculateStandingsFromMatches(divisionTeams, {
+      all: matches.map(normalizeSupabaseMatch)
+    });
+    const standingsHtml = standingsRows.map((row, index) => `
+      <tr><td>${index + 1}</td><td>${escapeHtml(teamNames.get(row.teamId) || "Equipo")}</td>
+      <td>${row.pts}</td><td>${row.pj}</td><td>${row.g}</td><td>${row.e}</td><td>${row.p}</td><td>${row.dg}</td></tr>
+    `).join("");
+    const matchesHtml = matches.map((match, index) => {
+      const date = match.fecha_hora ? new Date(match.fecha_hora) : null;
+      const dateLabel = date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("es-AR") : "Sin fecha";
+      const score = match.estado === "finalizado" ? `${match.goles_local} - ${match.goles_visitante}` : "—";
+      return `<tr><td>Fecha ${escapeHtml(getFixtureRound(match, index))}</td><td>${dateLabel}</td>
+        <td>${escapeHtml(teamNames.get(match.equipo_local_id) || "Equipo")}</td><td>${score}</td>
+        <td>${escapeHtml(teamNames.get(match.equipo_visitante_id) || "Equipo")}</td><td>${escapeHtml(match.estado || "-")}</td></tr>`;
+    }).join("");
+
+    return `<details class="archive-division">
+      <summary>${escapeHtml(category?.nombre || "Categoría")} · ${escapeHtml(division.nombre || "División")} <span>${matches.length} ${matches.length === 1 ? "partido" : "partidos"}</span></summary>
+      <div class="archive-division-body">
+        <p class="archive-scroll-hint">Deslizá las tablas hacia los lados para ver todas las columnas.</p>
+        <h3>Posiciones</h3>
+        <div class="table-responsive" tabindex="0" aria-label="Posiciones: desplazamiento horizontal"><table class="table frame-table mb-0"><thead><tr><th>POS</th><th>Equipo</th><th>PTS</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th>DG</th></tr></thead><tbody>${standingsHtml}</tbody></table></div>
+        <h3>Fixture y resultados</h3>
+        <div class="table-responsive" tabindex="0" aria-label="Fixture y resultados: desplazamiento horizontal"><table class="table frame-table mb-0"><thead><tr><th>Fecha</th><th>Día</th><th>Local</th><th>Resultado</th><th>Visitante</th><th>Estado</th></tr></thead><tbody>${matchesHtml}</tbody></table></div>
+      </div>
+    </details>`;
+  }).join("");
+
+  return `<section class="public-info-panel archive-panel">
+    <p class="section-kicker mb-1">Historial · Solo lectura</p>
+    <h2>${escapeHtml(previousTournament.nombre)}</h2>
+    <p>${archiveDate ? `Archivado el ${archiveDate}. ` : ""}Consultá las posiciones, el fixture y los resultados del torneo inmediato anterior.</p>
+    ${divisionCards || `<p>No hay partidos registrados en este archivo.</p>`}
+  </section>`;
+}
+
 async function showPublicInfo(page) {
   limpiarSeleccionDivisiones();
   selectedDivision.classList.add("d-none");
@@ -3772,9 +3890,11 @@ async function showPublicInfo(page) {
   window.clearTimeout(divisionLoadTimer);
 
   if (page === "noticias") await loadPublishedNews();
+  if (page === "torneo-anterior") await loadPreviousTournament();
 
   const publicPages = {
     noticias: renderNewsContent,
+    "torneo-anterior": renderPreviousTournamentContent,
     fotos: renderPhotosContent,
     reglamento: renderRegulationContent,
     nosotros: renderAboutContent,
@@ -4456,10 +4576,11 @@ async function getFixtureTeamsByDivision(divisionId = "") {
 
 function buildRoundRobinRounds(teamItems, requestedDates, startDate = DEFAULT_FIXTURE_START_DATE, matchDay = DEFAULT_FIXTURE_MATCH_DAY) {
   const teamsList = shuffleItems(teamItems);
+  if (teamsList.length < 2) return [];
   const hasBye = teamsList.length % 2 !== 0;
   const rotation = hasBye ? [...teamsList, null] : [...teamsList];
   const baseRoundCount = rotation.length - 1;
-  const totalRoundCount = Math.max(baseRoundCount, Math.ceil((Number(requestedDates) || baseRoundCount) / baseRoundCount) * baseRoundCount);
+  const totalRoundCount = Math.max(baseRoundCount, Math.min(Math.trunc(Number(requestedDates)) || baseRoundCount, 60));
   const rounds = [];
 
   for (let roundIndex = 0; roundIndex < totalRoundCount; roundIndex += 1) {
@@ -4471,8 +4592,9 @@ function buildRoundRobinRounds(teamItems, requestedDates, startDate = DEFAULT_FI
       const away = rotation[rotation.length - 1 - index];
 
       if (home && away) {
-        const homeTeam = cycleRound % 2 === 0 ? home : away;
-        const awayTeam = cycleRound % 2 === 0 ? away : home;
+        const reverseHome = (cycleRound + Math.floor(roundIndex / baseRoundCount)) % 2 !== 0;
+        const homeTeam = reverseHome ? away : home;
+        const awayTeam = reverseHome ? home : away;
         matches.push({
           home: homeTeam,
           away: awayTeam,
@@ -4511,9 +4633,7 @@ async function generateFixturePlan(row) {
   const firstMatchDate = formatLocalDate(getNextMatchDate(startDate, matchDay));
   const rounds = buildRoundRobinRounds(fixtureTeams, config.datesCount, startDate, matchDay);
   const datesCount = rounds.length;
-  config.datesCount = datesCount;
-
-  config.fixture = {
+  return {
     generatedAt: new Date().toLocaleString("es-AR"),
     category: row.category,
     division: row.division,
@@ -4526,8 +4646,6 @@ async function generateFixturePlan(row) {
     rounds,
     cups: config.playoffEnabled ? buildPlayoffCups(teamsCount, Number(config.playoffTeams)) : []
   };
-
-  return config.fixture;
 }
 
 function renderFixtureDownloadDocument(fixture) {
@@ -5173,10 +5291,14 @@ async function loadObserverDataFromSupabase() {
 
   const teamIds = (equipos || []).map((team) => team.id).filter(Boolean);
   const [{ data: partidos, error: partidosError }, jugadores] = await Promise.all([
-    supabaseClient
-      .from("partidos")
-      .select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones")
-      .order("fecha_hora", { ascending: true }),
+    queryCurrentMatches((hasArchiveColumn) => {
+      let query = supabaseClient
+        .from("partidos")
+        .select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones")
+        .order("fecha_hora", { ascending: true });
+      if (hasArchiveColumn) query = query.eq("archivado", false);
+      return query;
+    }),
     loadPlayersForTeams(teamIds)
   ]);
   if (partidosError) throw partidosError;
@@ -5773,10 +5895,11 @@ async function loadAdminNews() {
 }
 
 async function loadCompletedNewsSportsDates() {
-  const { data, error } = await supabaseClient
-    .from("partidos")
-    .select("estado,observaciones,fecha_hora")
-    .not("observaciones", "is", null);
+  const { data, error } = await queryCurrentMatches((hasArchiveColumn) => {
+    let query = supabaseClient.from("partidos").select("estado,observaciones,fecha_hora").not("observaciones", "is", null);
+    if (hasArchiveColumn) query = query.eq("archivado", false);
+    return query;
+  });
   if (error) throw error;
 
   const rounds = new Map();
@@ -6245,6 +6368,15 @@ function renderTournamentGeneralSettings() {
         <i class="bi bi-save-fill"></i>
         Guardar generales torneo
       </button>
+      <div class="archive-admin-panel">
+        <h3>Cerrar torneo actual</h3>
+        <p>Guarda posiciones, fixture y resultados como historial de solo lectura. Los partidos actuales dejarán de aparecer en la temporada activa; después podrás generar el nuevo fixture. Cerrá primero las campañas Fortuna abiertas.</p>
+        <label for="archiveTournamentName">Nombre del torneo que termina</label>
+        <div class="archive-admin-actions">
+          <input id="archiveTournamentName" class="form-control" type="text" maxlength="80" placeholder="Ej.: Torneo 2026" data-archive-tournament-name>
+          <button class="btn btn-ingreso" type="button" data-archive-tournament>Archivar torneo</button>
+        </div>
+      </div>
     </form>
   `;
 }
@@ -6620,10 +6752,13 @@ async function loadAdminTeamsForFilters(selectedCategory = "", selectedDivision 
 
   if (error) throw error;
   adminTeamsForView = (data || []).map(normalizeSupabaseTeam);
-  const { data: partidos, error: partidosError } = await supabaseClient
-    .from("partidos")
-    .select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones")
-    .eq("division_id", divisionId);
+  const { data: partidos, error: partidosError } = await queryCurrentMatches((hasArchiveColumn) => {
+    let query = supabaseClient.from("partidos")
+      .select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones")
+      .eq("division_id", divisionId);
+    if (hasArchiveColumn) query = query.eq("archivado", false);
+    return query;
+  });
 
   if (partidosError) throw partidosError;
   rememberMatchDetails(partidos || []);
@@ -7948,7 +8083,7 @@ sidebarContent.addEventListener("click", async (event) => {
   const helpButton = event.target.closest("[data-help-role]");
   const divisionButton = event.target.closest("[data-division]");
   const categoryToggleButton = event.target.closest("[data-category-toggle]");
-  const mobileNavigationButton = event.target.closest("[data-division], [data-public-page], [data-theme-page], [data-delegate-home], [data-delegate-team], [data-delegate-players], [data-delegate-fortuna-requests], [data-observer-matches], [data-admin-action], [data-help-role], [data-admin-logout], [data-fortuna-open], [data-participant-auth], [data-bs-target='#loginModal']");
+  const mobileNavigationButton = event.target.closest("[data-division], [data-public-page], [data-theme-page], [data-delegate-home], [data-delegate-team], [data-delegate-players], [data-delegate-fortuna-requests], [data-observer-matches], [data-admin-action], [data-constatador-home], [data-constatador-deliveries-page], [data-help-role], [data-admin-logout], [data-fortuna-open], [data-participant-auth], [data-bs-target='#loginModal']");
 
   if (mobileNavigationButton && mobileMenuMedia.matches) {
     closeMobileMenu();
@@ -8141,6 +8276,7 @@ contentShell.addEventListener("click", async (event) => {
   const generateAiReportButton = event.target.closest("[data-generate-ai-report]");
   const downloadAiReportButton = event.target.closest("[data-download-ai-report]");
   const saveTournamentSettingsButton = event.target.closest("[data-save-tournament-settings]");
+  const archiveTournamentButton = event.target.closest("[data-archive-tournament]");
   const adminPageButton = event.target.closest("[data-admin-page]");
   const delegateTeamEditButton = event.target.closest("[data-delegate-team-edit]");
   const openDelegatePlayerButton = event.target.closest("[data-open-delegate-player-modal]");
@@ -8642,6 +8778,35 @@ contentShell.addEventListener("click", async (event) => {
     return;
   }
 
+  if (archiveTournamentButton) {
+    const name = contentShell.querySelector("[data-archive-tournament-name]")?.value.trim() || "";
+    if (!name) {
+      alert("Ingresá el nombre del torneo que termina.");
+      return;
+    }
+    const confirmed = await requestConfirmation({
+      title: "Archivar torneo",
+      message: `Se cerrará ${name}, sus partidos dejarán de aparecer en el torneo actual y se reemplazará el historial anterior. Esta acción no se puede deshacer. ¿Confirmás?`,
+      confirmLabel: "Archivar torneo"
+    });
+    if (!confirmed) return;
+
+    archiveTournamentButton.disabled = true;
+    try {
+      await archiveCurrentTournament(name);
+      archiveColumnAvailable = true;
+      previousTournament = null;
+      refreshTournamentGeneralRows();
+      alert("Torneo archivado. Ya podés generar el fixture de la nueva temporada.");
+    } catch (error) {
+      console.error("No se pudo archivar el torneo:", error);
+      alert(`No se pudo archivar el torneo: ${error.message || "error desconocido"}`);
+    } finally {
+      archiveTournamentButton.disabled = false;
+    }
+    return;
+  }
+
   if (savePublicSettingsButton) {
     const confirmed = await requestConfirmation({
       title: "Guardar cambios",
@@ -8722,7 +8887,7 @@ contentShell.addEventListener("click", async (event) => {
     const confirmed = await requestConfirmation({
       title: existingFixture ? "Reemplazar fixture" : "Generar fixture",
       message: existingFixture
-        ? `Ya existe un fixture para ${row.category} - ${row.division}. Si confirmás, se borrará y se creará uno nuevo.`
+        ? `Se reemplazarán los partidos programados de ${row.category} - ${row.division}. Si ya hay resultados, planillas o pronósticos, primero archivá el torneo.`
         : `Se generará el fixture para ${row.category} - ${row.division}. ¿Confirmás la acción?`,
       confirmLabel: existingFixture ? "Reemplazar fixture" : "Generar fixture"
     });
@@ -8737,7 +8902,8 @@ contentShell.addEventListener("click", async (event) => {
         return;
       }
       await saveFixtureMatchesToSupabase(fixture);
-      await saveTournamentSettingsToSupabase();
+      row.config.datesCount = fixture.datesCount;
+      row.config.fixture = fixture;
       if (activeDivisionId && String(activeDivisionId) === String(row.divisionId)) {
         await loadDivisionDataFromSupabase(activeDivisionId);
         renderFixtureDateOptions();

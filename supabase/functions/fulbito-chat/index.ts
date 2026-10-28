@@ -1,4 +1,5 @@
 import { ensureAiResponse, getFunctionFailure, missingAiKeyError } from "../_shared/ai-errors.ts";
+import { authenticateFrame0 } from "../_shared/frame0-auth.ts";
 
 type Row = Record<string, unknown>;
 
@@ -8,7 +9,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const serviceRoleKey = Deno.env.get("FRAME0_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const geminiApiKey = Deno.env.get("GEMINI_API_KEY") || "";
 const geminiModel = Deno.env.get("GEMINI_MODEL") || "gemini-3.1-flash-lite";
 export const PUBLIC_SETTINGS_CONTEXT_PATH = "configuraciones?select=clave,tournamentInfoText:valor->>tournamentInfoText,locationTitle:valor->>locationTitle,locationText:valor->>locationText,contactTitle:valor->>contactTitle,contactText:valor->>contactText,drivePhotosLink:valor->>drivePhotosLink,instagramUrl:valor->>instagramUrl,facebookUrl:valor->>facebookUrl,whatsappPhone:valor->>whatsappPhone,regulationText:valor->>regulationText&clave=eq.public_settings";
@@ -33,18 +34,14 @@ async function publicContext() {
     db("categorias?select=id,nombre,descripcion&activa=eq.true&order=nombre"),
     db("divisiones?select=id,categoria_id,nombre,descripcion&activa=eq.true&order=nombre"),
     db("equipos?select=id,division_id,nombre,nombre_corto,abreviatura&activo=eq.true&order=nombre"),
-    db("partidos?select=division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones&order=fecha_hora.desc&limit=300")
+    db("partidos?select=division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones&archivado=eq.false&order=fecha_hora.desc&limit=300")
   ]);
   const publicSettings = publicSettingRows.map(({ clave, ...valor }: Row) => ({ clave, valor }));
   return { settings: [...publicSettings, ...tournamentSettings], categories, divisions, teams, matches };
 }
 
 async function delegateContext(usuario: string, password: string) {
-  const users = await db(`usuarios_app?select=id,usuario,rol,password_hash,activo&usuario=ilike.${encodeURIComponent(usuario)}&activo=eq.true&limit=1`);
-  const user = users?.[0];
-  if (!user || user.rol !== "delegado" || String(user.password_hash || "") !== password) {
-    throw new Error("La sesión del delegado no es válida.");
-  }
+  const user = await authenticateFrame0(supabaseUrl, serviceRoleKey, usuario, password, ["delegado"]);
 
   const delegates = await db(`delegados?select=equipo_id&usuario_id=eq.${encodeURIComponent(String(user.id))}&activo=eq.true&limit=1`);
   const teamId = String(delegates?.[0]?.equipo_id || "");
@@ -54,7 +51,7 @@ async function delegateContext(usuario: string, password: string) {
     db("configuraciones?select=clave,valor&clave=eq.tournament_settings"),
     db(`equipos?select=id,division_id,nombre,nombre_corto,abreviatura,descripcion,activo&id=eq.${encodeURIComponent(teamId)}&limit=1`),
     db(`jugadores?select=id,nombre,apellido,posicion,dorsal,activo&equipo_id=eq.${encodeURIComponent(teamId)}&order=apellido`),
-    db(`partidos?select=division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones&or=(equipo_local_id.eq.${encodeURIComponent(teamId)},equipo_visitante_id.eq.${encodeURIComponent(teamId)})&order=fecha_hora`)
+    db(`partidos?select=division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado,observaciones&archivado=eq.false&or=(equipo_local_id.eq.${encodeURIComponent(teamId)},equipo_visitante_id.eq.${encodeURIComponent(teamId)})&order=fecha_hora`)
   ]);
   return { settings, team: teams?.[0], players, matches };
 }

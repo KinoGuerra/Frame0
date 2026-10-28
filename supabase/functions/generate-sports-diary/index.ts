@@ -1,4 +1,5 @@
 import { ensureAiResponse, getFunctionFailure, missingAiKeyError } from "../_shared/ai-errors.ts";
+import { authenticateFrame0 } from "../_shared/frame0-auth.ts";
 
 type Row = Record<string, unknown>;
 
@@ -8,7 +9,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const serviceRoleKey = Deno.env.get("FRAME0_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const groqApiKey = Deno.env.get("GROQ_API_KEY") || "";
 const groqModel = Deno.env.get("GROQ_MODEL") || "openai/gpt-oss-20b";
 
@@ -26,11 +27,7 @@ async function db(path: string) {
 }
 
 async function validateAdmin(usuario: string, password: string) {
-  const users = await db(`usuarios_app?select=*&usuario=ilike.${encodeURIComponent(usuario)}&activo=eq.true&limit=1`);
-  const user = users?.[0];
-  if (!user || !["admin", "superadmin"].includes(user.rol) || String(user.password_hash || "") !== password) {
-    throw new Error("Credenciales de administrador inválidas.");
-  }
+  await authenticateFrame0(supabaseUrl, serviceRoleKey, usuario, password, ["admin", "superadmin"]);
 }
 
 function standings(teams: Row[], matches: Row[]) {
@@ -125,7 +122,7 @@ Deno.serve(async (request) => {
     const numeroFecha = Number(body.numero_fecha);
     if (!Number.isInteger(numeroFecha) || numeroFecha < 1) throw new Error("Seleccioná una fecha deportiva realizada.");
 
-    const allMatches = await db("partidos?select=id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones&estado=eq.finalizado&observaciones=not.is.null");
+    const allMatches = await db("partidos?select=id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones&archivado=eq.false&estado=eq.finalizado&observaciones=not.is.null");
     const matches = allMatches.filter((match: Row) => matchRound(match) === numeroFecha);
     const cumulativeMatches = allMatches.filter((match: Row) => {
       const round = matchRound(match);

@@ -8,7 +8,8 @@ let fortuneParticipant = null;
 let fortuneData = null;
 let fortuneQrScanner = null;
 let fortuneLastVoucher = null;
-let adminFortunaState = { seasons: [], types: [], vouchers: [], participants: [], editingSeasonId: "", editingTypeId: "" };
+let constatadorDeliveryPage = 1;
+let adminFortunaState = { seasons: [], types: [], vouchers: [], participants: [], failedReceipts: [], editingSeasonId: "", editingTypeId: "" };
 let adminConstatadoresState = { items: [], editingId: "" };
 
 const fortuneDateFormatter = new Intl.DateTimeFormat("es-AR", {
@@ -83,6 +84,17 @@ async function getFortuneParticipantProfile() {
   return data?.activo ? data : null;
 }
 
+async function loadParticipantVouchers() {
+  const baseColumns = "id,tipo_voucher_id,temporada_id,codigo,producto_nombre,costo_puntos,emitido_at,vence_at,estado,usado_at,motivo_anulacion";
+  let result = await supabaseClient.from("vouchers_emitidos")
+    .select(`${baseColumns},producto_descripcion`).eq("participante_id", fortuneParticipant.id).order("emitido_at", { ascending: false });
+  if (["42703", "PGRST204"].includes(result.error?.code)) {
+    result = await supabaseClient.from("vouchers_emitidos")
+      .select(baseColumns).eq("participante_id", fortuneParticipant.id).order("emitido_at", { ascending: false });
+  }
+  return result;
+}
+
 async function loadFortuneData() {
   if (!fortuneParticipant?.id) throw new Error("La sesión de Fortuna no está disponible.");
 
@@ -90,10 +102,14 @@ async function loadFortuneData() {
     supabaseClient.from("temporadas_fortuna").select("id,nombre,inicia_at,finaliza_at,estado,created_at").order("inicia_at", { ascending: false }),
     supabaseClient.from("pronosticos_fortuna").select("id,temporada_id,partido_id,goles_local,goles_visitante,created_at,updated_at").eq("participante_id", fortuneParticipant.id).order("updated_at", { ascending: false }),
     supabaseClient.from("puntajes_fortuna").select("id,pronostico_id,temporada_id,puntos,goles_local_final,goles_visitante_final,evaluated_at").eq("participante_id", fortuneParticipant.id),
-    supabaseClient.from("vouchers_emitidos").select("id,tipo_voucher_id,temporada_id,codigo,producto_nombre,costo_puntos,emitido_at,vence_at,estado,usado_at,motivo_anulacion").eq("participante_id", fortuneParticipant.id).order("emitido_at", { ascending: false }),
+    loadParticipantVouchers(),
     supabaseClient.from("tipos_voucher").select("id,nombre,descripcion,costo_puntos,stock_total,vigencia_dias,activo").eq("activo", true).order("costo_puntos"),
     supabaseClient.from("solicitudes_vinculo_jugador").select("id,jugador_id,estado,motivo,created_at,reviewed_at").eq("participante_id", fortuneParticipant.id).order("created_at", { ascending: false }),
-    supabaseClient.from("partidos").select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado").order("fecha_hora", { ascending: true }),
+    queryCurrentMatches((hasArchiveColumn) => {
+      let query = supabaseClient.from("partidos").select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado").order("fecha_hora", { ascending: true });
+      if (hasArchiveColumn) query = query.eq("archivado", false);
+      return query;
+    }),
     supabaseClient.from("equipos").select("id,nombre,nombre_corto,abreviatura,activo").eq("activo", true).order("nombre")
   ]);
 
@@ -132,7 +148,7 @@ function fortuneBalance() {
   if (!seasonId) return { earned: 0, spent: 0, balance: 0 };
   const earned = fortuneData.points.filter((point) => point.temporada_id === seasonId).reduce((sum, point) => sum + Number(point.puntos || 0), 0);
   const spent = fortuneData.vouchers.filter((voucher) => voucher.temporada_id === seasonId).reduce((sum, voucher) => sum + Number(voucher.costo_puntos || 0), 0);
-  return { earned, spent, balance: Math.max(0, earned - spent) };
+  return { earned, spent, balance: earned - spent };
 }
 
 function renderFortuneShellHeader(title, subtitle = "") {
@@ -213,6 +229,7 @@ function renderFortuneVoucherCard(voucher, showQr = true) {
       <div class="fortune-ticket-main">
         <span class="fortune-ticket-label">Voucher personal</span>
         <h3>${fortuneEscape(voucher.producto_nombre)}</h3>
+        ${voucher.producto_descripcion ? `<p>${fortuneEscape(voucher.producto_descripcion)}</p>` : ""}
         <p class="fortune-ticket-code">${fortuneEscape(voucher.codigo)}</p>
         <dl><div><dt>Emitido</dt><dd>${fortuneFormatDate(voucher.emitido_at)}</dd></div><div><dt>Vence</dt><dd>${fortuneFormatDate(voucher.vence_at)}</dd></div></dl>
         <span class="fortune-ticket-status">${status}</span>
@@ -244,7 +261,7 @@ function renderFortunePoints() {
   const balance = fortuneBalance();
   const pointMap = new Map(fortuneData.points.map((point) => [point.pronostico_id, point]));
   const matchMap = new Map(fortuneData.matches.map((match) => [match.id, match]));
-  const rows = fortuneData.predictions.map((prediction) => {
+  const rows = fortuneData.predictions.filter((prediction) => prediction.temporada_id === fortuneData.activeSeason?.id).map((prediction) => {
     const point = pointMap.get(prediction.id);
     const match = matchMap.get(prediction.partido_id);
     return `
@@ -348,11 +365,13 @@ async function enterFortuneParticipantView(profile = fortuneParticipant) {
 
 async function saveFortunePrediction(matchId) {
   const card = document.querySelector(`[data-prediction-card="${CSS.escape(matchId)}"]`);
-  const home = Number(card?.querySelector("[data-prediction-home]")?.value);
-  const away = Number(card?.querySelector("[data-prediction-away]")?.value);
-  if (!card || !Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0) {
+  const homeValue = card?.querySelector("[data-prediction-home]")?.value.trim() || "";
+  const awayValue = card?.querySelector("[data-prediction-away]")?.value.trim() || "";
+  if (!card || !/^\d{1,2}$/.test(homeValue) || !/^\d{1,2}$/.test(awayValue)) {
     throw new Error("Ingresá un resultado válido para ambos equipos.");
   }
+  const home = Number(homeValue);
+  const away = Number(awayValue);
   const { error } = await supabaseClient.rpc("guardar_pronostico_fortuna", { p_partido_id: matchId, p_goles_local: home, p_goles_visitante: away });
   if (error) throw error;
   await showFortunePage("predictions");
@@ -371,6 +390,7 @@ async function redeemFortuneVoucher(typeId) {
   if (error) throw error;
   fortuneLastVoucher = data;
   await showFortunePage("vouchers");
+  alert("Voucher emitido. El comprobante quedó registrado para su envío por correo.");
 }
 
 // ----------------------------
@@ -414,18 +434,20 @@ async function resolveDelegatePlayerRequest(id, approve) {
 // ----------------------------
 
 async function loadAdminFortunaState() {
-  const [seasons, types, vouchers, participants] = await Promise.all([
+  const [seasons, types, vouchers, participants, failedReceipts] = await Promise.all([
     supabaseClient.from("temporadas_fortuna").select("*").order("inicia_at", { ascending: false }),
     supabaseClient.from("tipos_voucher").select("*").order("created_at", { ascending: false }),
     supabaseClient.from("vouchers_emitidos").select("*").order("emitido_at", { ascending: false }).limit(300),
-    supabaseClient.from("participantes").select("id,nombre,apellido,documento").order("apellido")
+    supabaseClient.from("participantes").select("id,nombre,apellido,documento").order("apellido"),
+    supabaseClient.from("comprobantes_fortuna").select("id,codigo,destino_email,tipo,intentos,ultimo_error,created_at").eq("estado", "fallido").order("created_at", { ascending: false }).limit(100)
   ]);
-  const failed = [seasons, types, vouchers, participants].find((result) => result.error);
+  const failed = [seasons, types, vouchers, participants, failedReceipts].find((result) => result.error);
   if (failed) throw failed.error;
   adminFortunaState.seasons = seasons.data || [];
   adminFortunaState.types = types.data || [];
   adminFortunaState.vouchers = vouchers.data || [];
   adminFortunaState.participants = participants.data || [];
+  adminFortunaState.failedReceipts = failedReceipts.data || [];
 }
 
 function renderAdminFortunaSeasonForm() {
@@ -444,11 +466,13 @@ async function renderAdminFortunaView() {
   const seasonRows = adminFortunaState.seasons.map((item) => `<tr><td>${fortuneEscape(item.nombre)}</td><td>${fortuneFormatDate(item.inicia_at)}</td><td>${fortuneFormatDate(item.finaliza_at)}</td><td><span class="fortune-status is-${item.estado}">${item.estado}</span></td><td><div class="table-actions">${item.estado !== "cerrada" ? `<button class="table-action-btn" type="button" data-edit-fortuna-season="${item.id}" title="Editar"><i class="bi bi-pencil-fill"></i></button><button class="table-action-btn is-danger" type="button" data-close-fortuna-season="${item.id}" title="Cerrar"><i class="bi bi-lock-fill"></i></button>` : ""}</div></td></tr>`).join("");
   const typeRows = adminFortunaState.types.map((item) => `<tr><td>${fortuneEscape(item.nombre)}</td><td>${item.costo_puntos}</td><td>${item.stock_total}</td><td>${item.vigencia_dias} días</td><td>${item.activo ? "Activo" : "Baja"}</td><td><div class="table-actions"><button class="table-action-btn" type="button" data-edit-voucher-type="${item.id}" title="Editar"><i class="bi bi-pencil-fill"></i></button><button class="table-action-btn ${item.activo ? "is-danger" : "is-success"}" type="button" data-toggle-voucher-type="${item.id}" data-active="${item.activo ? "false" : "true"}" title="${item.activo ? "Dar de baja" : "Reactivar"}"><i class="bi ${item.activo ? "bi-slash-circle" : "bi-arrow-counterclockwise"}"></i></button></div></td></tr>`).join("");
   const voucherRows = adminFortunaState.vouchers.map((item) => { const owner = participants.get(item.participante_id); const status = fortuneVoucherStatus(item); return `<tr><td>${fortuneEscape(item.codigo)}</td><td>${fortuneEscape(item.producto_nombre)}</td><td>${fortuneEscape(owner ? `${owner.apellido}, ${owner.nombre}` : item.participante_id)}</td><td>${item.costo_puntos}</td><td>${fortuneFormatDate(item.vence_at)}</td><td><span class="fortune-status is-${status}">${status}</span></td><td>${status === "vigente" ? `<button class="table-action-btn is-danger" type="button" data-annul-voucher="${item.id}" title="Anular"><i class="bi bi-x-octagon-fill"></i></button>` : ""}</td></tr>`; }).join("");
+  const failedRows = adminFortunaState.failedReceipts.map((item) => `<tr><td>${fortuneEscape(item.codigo)}</td><td>${item.tipo === "entrega" ? "Entrega" : "Canje"}</td><td>${fortuneEscape(item.destino_email || "Sin correo")}</td><td>${item.intentos}</td><td>${fortuneEscape(item.ultimo_error || "Error de envío")}</td><td><button class="btn btn-sm btn-fortuna-action" type="button" data-retry-fortuna-receipt="${item.id}" ${item.destino_email ? "" : "disabled"}>Reintentar</button></td></tr>`).join("");
   return `
     <div class="section-toolbar admin-toolbar"><div><p class="section-kicker section-brand mb-1">Administrador</p><h2 class="section-title mb-0">Fortuna y vouchers</h2></div></div>
     <section class="fortune-admin-panel"><div class="fortune-section-heading"><p class="section-kicker mb-1">Puntos</p><h3>Campañas Fortuna</h3></div>${renderAdminFortunaSeasonForm()}<div class="table-responsive"><table class="table frame-table mb-0"><thead><tr><th>Campaña</th><th>Inicio</th><th>Fin</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${seasonRows || `<tr><td colspan="5" class="admin-empty-row">No hay campañas.</td></tr>`}</tbody></table></div></section>
     <section class="fortune-admin-panel"><div class="fortune-section-heading"><p class="section-kicker mb-1">Catálogo</p><h3>Tipos de voucher</h3></div>${renderAdminFortunaTypeForm()}<div class="table-responsive"><table class="table frame-table mb-0"><thead><tr><th>Producto</th><th>Costo</th><th>Stock</th><th>Vigencia</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${typeRows || `<tr><td colspan="6" class="admin-empty-row">No hay tipos de voucher.</td></tr>`}</tbody></table></div></section>
-    <section class="fortune-admin-panel"><div class="fortune-section-heading"><p class="section-kicker mb-1">Trazabilidad</p><h3>Vouchers emitidos</h3></div><div class="table-responsive"><table class="table frame-table mb-0"><thead><tr><th>Código</th><th>Producto</th><th>Titular</th><th>PTS</th><th>Vence</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${voucherRows || `<tr><td colspan="7" class="admin-empty-row">No hay vouchers emitidos.</td></tr>`}</tbody></table></div></section>`;
+    <section class="fortune-admin-panel"><div class="fortune-section-heading"><p class="section-kicker mb-1">Trazabilidad</p><h3>Vouchers emitidos</h3></div><div class="table-responsive"><table class="table frame-table mb-0"><thead><tr><th>Código</th><th>Producto</th><th>Titular</th><th>PTS</th><th>Vence</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${voucherRows || `<tr><td colspan="7" class="admin-empty-row">No hay vouchers emitidos.</td></tr>`}</tbody></table></div></section>
+    ${failedRows ? `<section class="fortune-admin-panel"><div class="fortune-section-heading"><p class="section-kicker mb-1">Correo</p><h3>Comprobantes pendientes de revisión</h3></div><p>Verificá el estado en Resend antes de reintentar un envío fallido.</p><div class="table-responsive"><table class="table frame-table mb-0"><thead><tr><th>Voucher</th><th>Comprobante</th><th>Destino</th><th>Intentos</th><th>Error</th><th>Acción</th></tr></thead><tbody>${failedRows}</tbody></table></div></section>` : ""}`;
 }
 
 async function refreshAdminFortunaView() {
@@ -487,11 +511,32 @@ function renderConstatadorValidator() {
     </div>`;
 }
 
+async function showConstatadorDeliveryHistory(page = 1) {
+  if (!constatadorSettingsSession?.usuario || !constatadorSettingsSession?.password) throw new Error("La sesión de constatador expiró.");
+  const shell = document.querySelector("#contentShell");
+  shell.innerHTML = typeof renderProfileLoader === "function" ? renderProfileLoader("entregas") : "Cargando...";
+  const safePage = Math.max(1, Math.trunc(Number(page) || 1));
+  const { data, error } = await supabaseClient.rpc("listar_entregas_constatador", {
+    p_usuario: constatadorSettingsSession.usuario,
+    p_password: constatadorSettingsSession.password,
+    p_pagina: safePage
+  });
+  if (error) throw error;
+  constatadorDeliveryPage = safePage;
+  const total = Number(data?.[0]?.total || 0);
+  const rows = (data || []).map((item) => `<tr><td>${fortuneFormatDate(item.entregado_at)}</td><td>${fortuneEscape(item.codigo)}</td><td>${fortuneEscape(item.producto)}<small class="d-block">${fortuneEscape(item.descripcion || "")}</small></td><td>${fortuneEscape(item.titular)}<small class="d-block">${fortuneEscape(item.documento_parcial)}</small></td><td>${fortuneEscape(item.constatador)}</td><td>${fortuneEscape(item.correo_estado)}</td></tr>`).join("");
+  shell.innerHTML = `
+    <div class="section-toolbar admin-toolbar"><div><p class="section-kicker section-brand mb-1">Constatador</p><h2 class="section-title mb-0">Historial de entregas</h2></div></div>
+    <section class="fortune-admin-panel"><p>Entregas confirmadas por todos los constatadores. El documento completo solo aparece al validar un voucher.</p>
+    <p class="fortune-history-scroll-hint">Deslizá la tabla hacia los lados para ver todas las columnas.</p><div class="table-responsive" tabindex="0" aria-label="Historial de entregas, desplazamiento horizontal"><table class="table frame-table mb-0"><thead><tr><th>Fecha</th><th>Código</th><th>Premio y descripción</th><th>Titular</th><th>Constatador</th><th>Correo</th></tr></thead><tbody>${rows || `<tr><td colspan="6" class="admin-empty-row">No hay entregas registradas.</td></tr>`}</tbody></table></div>
+    <div class="fortune-history-pager"><button class="btn btn-sm btn-fortuna-action" type="button" data-constatador-deliveries-page="${safePage - 1}" ${safePage === 1 ? "disabled" : ""}>Anterior</button><span>Página ${safePage}${total ? ` de ${Math.ceil(total / 50)}` : ""}</span><button class="btn btn-sm btn-fortuna-action" type="button" data-constatador-deliveries-page="${safePage + 1}" ${safePage * 50 >= total ? "disabled" : ""}>Siguiente</button></div></section>`;
+}
+
 async function enterConstatadorView() {
   document.body.classList.add("admin-view", "constatador-view");
   document.body.classList.remove("delegate-view", "fortune-view");
   const sidebar = document.querySelector("#sidebarContent");
-  sidebar.innerHTML = `<div class="sidebar-main admin-sidebar-main"><div><div class="sidebar-heading"><i class="bi bi-qr-code-scan"></i><h2>Constatador</h2></div><div class="sidebar-role-label">Rol: Constatador</div><div class="admin-actions"><button class="division-link" type="button" data-constatador-home><i class="bi bi-upc-scan"></i> Validar voucher</button>${typeof renderThemeMenuButton === "function" ? renderThemeMenuButton() : ""}</div></div><button class="btn btn-ingreso w-100" type="button" data-admin-logout><i class="bi bi-box-arrow-left"></i> Salir</button></div>`;
+  sidebar.innerHTML = `<div class="sidebar-main admin-sidebar-main"><div><div class="sidebar-heading"><i class="bi bi-qr-code-scan"></i><h2>Constatador</h2></div><div class="sidebar-role-label">Rol: Constatador</div><div class="admin-actions"><button class="division-link" type="button" data-constatador-home><i class="bi bi-upc-scan"></i> Validar voucher</button><button class="division-link" type="button" data-constatador-deliveries-page="1"><i class="bi bi-clock-history"></i> Historial de entregas</button>${typeof renderThemeMenuButton === "function" ? renderThemeMenuButton() : ""}</div></div><button class="btn btn-ingreso w-100" type="button" data-admin-logout><i class="bi bi-box-arrow-left"></i> Salir</button></div>`;
   document.querySelector("#contentShell").innerHTML = renderConstatadorValidator();
 }
 
@@ -561,7 +606,7 @@ async function confirmConstatadorVoucher(id) {
   });
   if (error) throw error;
   const result = document.querySelector("[data-constatador-result]");
-  if (result) result.innerHTML = `<article class="constatador-result is-usado"><i class="bi bi-check-circle-fill"></i><h3>Entrega confirmada</h3><p>${fortuneEscape(data.producto)}</p><p class="fortune-ticket-code">${fortuneEscape(data.codigo)}</p><small>${fortuneFormatDate(data.usado_at)}</small></article>`;
+  if (result) result.innerHTML = `<article class="constatador-result is-usado"><i class="bi bi-check-circle-fill"></i><h3>Entrega confirmada</h3><p>${fortuneEscape(data.producto)}</p><p class="fortune-ticket-code">${fortuneEscape(data.codigo)}</p><small>${fortuneFormatDate(data.usado_at)}</small><p>El comprobante quedó registrado para su envío por correo.</p></article>`;
 }
 
 // ----------------------------
@@ -636,6 +681,7 @@ document.addEventListener("click", async (event) => {
   const scannerButton = target.closest("[data-start-voucher-scanner]");
   const deliveryButton = target.closest("[data-confirm-voucher-delivery]");
   const constatadorHome = target.closest("[data-constatador-home]");
+  const deliveryHistoryButton = target.closest("[data-constatador-deliveries-page]");
   try {
     if (authButton || publicFortuneButton) {
       const profile = await getFortuneParticipantProfile();
@@ -649,6 +695,7 @@ document.addEventListener("click", async (event) => {
     if (scannerButton) return await startFortunaQrScanner();
     if (deliveryButton) return await confirmConstatadorVoucher(deliveryButton.dataset.confirmVoucherDelivery);
     if (constatadorHome) { await stopFortunaQrScanner(); document.querySelector("#contentShell").innerHTML = renderConstatadorValidator(); return; }
+    if (deliveryHistoryButton) { await stopFortunaQrScanner(); return await showConstatadorDeliveryHistory(deliveryHistoryButton.dataset.constatadorDeliveriesPage); }
 
     const editSeason = target.closest("[data-edit-fortuna-season]");
     const closeSeason = target.closest("[data-close-fortuna-season]");
@@ -658,6 +705,15 @@ document.addEventListener("click", async (event) => {
     const cancelFortunaEdit = target.closest("[data-cancel-admin-fortuna-edit]");
     const editConstatador = target.closest("[data-edit-constatador]");
     const toggleConstatador = target.closest("[data-toggle-constatador]");
+    const retryReceipt = target.closest("[data-retry-fortuna-receipt]");
+
+    if (retryReceipt) {
+      const confirmed = await requestConfirmation({ kicker: "Administrador", title: "Reintentar comprobante", message: "Verificá antes en Resend que el correo no se haya entregado. ¿Reintentás el envío?", confirmLabel: "Reintentar" });
+      if (!confirmed) return;
+      const { error } = await supabaseClient.rpc("reintentar_comprobante_fortuna", { p_id: retryReceipt.dataset.retryFortunaReceipt });
+      if (error) throw error;
+      return await refreshAdminFortunaView();
+    }
 
     if (editSeason) { adminFortunaState.editingSeasonId = editSeason.dataset.editFortunaSeason; return await refreshAdminFortunaView(); }
     if (editType) { adminFortunaState.editingTypeId = editType.dataset.editVoucherType; return await refreshAdminFortunaView(); }

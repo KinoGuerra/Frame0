@@ -67,7 +67,6 @@ Las pantallas administrativas usan consultas directas a Supabase:
 
 - `supabase.from("categorias").select/insert/update`
 - `supabase.from("divisiones").select/insert/update`
-- `supabase.from("usuarios_app").select/insert/update`
 - `supabase.from("veedores").select/insert/update`
 
 Las bajas siguen siendo logicas mediante columnas `activa` o `activo`.
@@ -98,14 +97,36 @@ Administrador, delegado, veedor y constatador conservan el login propio de Frame
 pronosticos cierran en PostgreSQL 30 minutos antes de `partidos.fecha_hora`; los puntos
 y canjes nunca se calculan en el navegador.
 
+### Comprobantes de Fortuna
+
+La migracion `supabase/migrations/20261028000001_fortuna_receipts.sql` agrega una copia de la descripcion al voucher, una cola privada de correos y la consulta paginada de entregas para el constatador. Un comprobante se encola al canjear puntos y otro al confirmar la entrega. Los canjes y las entregas anteriores no generan correos retroactivos.
+
+Para activar el envio, en este orden:
+
+1. Aplicar las migraciones `20261028000000_archive_previous_tournament.sql` y `20261028000001_fortuna_receipts.sql`.
+2. Verificar un dominio remitente en Resend. Configurar `RESEND_API_KEY` y `RECEIPT_FROM_EMAIL` como secretos de la Edge Function; nunca en archivos del navegador.
+3. Desplegar `enviar-comprobantes-fortuna` con `supabase functions deploy enviar-comprobantes-fortuna --no-verify-jwt`. La funcion valida el bearer de la clave de servicio antes de procesar la cola. Si el secreto integrado `SUPABASE_SERVICE_ROLE_KEY` no coincide con la clave vigente, guardar esta ultima como secreto privado `FRAME0_SERVICE_ROLE_KEY`.
+4. Guardar en Supabase Vault los secretos `frame0_project_url` (URL base del proyecto) y `frame0_service_role_key` (clave secreta del servidor). Ejecutar `supabase/cron/fortuna_receipts.sql` para activar el envio cada minuto. No incluir valores secretos en el SQL versionado.
+5. Publicar el frontend actualizado. Probar un canje y una entrega con una casilla de correo propia; verificar ambos mensajes, la tabla del constatador y el estado de la cola.
+
+Los envios fallidos se reintentan hasta cinco veces y luego aparecen en `Administrador > Fortuna y vouchers` para revision. La tabla del constatador muestra todas las entregas y solo los ultimos cuatro caracteres del documento. Si un resultado oficial cambia despues de un canje, el voucher permanece valido y el saldo ajustado puede ser negativo; no se permiten nuevos canjes hasta recuperar puntos.
+
+El remitente de prueba `onboarding@resend.dev` solo permite verificar mensajes hacia la casilla de la cuenta Resend. Para envios reales, verificar un dominio propio, actualizar `RECEIPT_FROM_EMAIL` y recien entonces activar `supabase/cron/fortuna_receipts.sql`. Los comprobantes generados mientras el Cron esta desactivado permanecen pendientes en la cola.
+
+## Fixture e historial del torneo
+
+Aplicar `supabase/migrations/20261028000000_archive_previous_tournament.sql`, desplegar las Edge Functions modificadas y después publicar el frontend. El generador arma una rueda completa, invierte la localía en la siguiente y respeta la cantidad de fechas indicada. Solo permite reemplazar partidos programados sin resultados, planillas ni pronósticos vinculados.
+
+En `Administrador > Configuraciones > Generales Torneo`, **Archivar torneo** guarda el fixture, los resultados y los datos necesarios para calcular las posiciones. Los partidos archivados permanecen en Supabase con sus registros vinculados, pero salen de las vistas activas. `Torneo anterior` permite consultar el último archivo sin controles de edición. El archivo se reemplaza al cerrar el torneo siguiente.
+
 ## Seguridad y RLS
 
 El frontend esta preparado para trabajar con RLS usando solo la anon key. En Supabase deben existir politicas que permitan:
 
 - Lectura publica de datos visibles del torneo.
-- Escritura administrativa solo para usuarios autenticados con rol permitido.
-- Acciones de delegado limitadas al usuario autenticado y a su equipo asociado.
-- Acciones de veedor limitadas a partidos y registros que pueda gestionar.
+- Escritura administrativa mediante RPCs de Frame0 o políticas RLS con la sesión Auth vinculada.
+- Acciones de delegado limitadas mediante RPC a su equipo asociado.
+- Acciones de veedor limitadas mediante RPC a los partidos que puede gestionar.
 - Ninguna lectura anonima directa de `usuarios_app`.
 
 Para operaciones administrativas sensibles, como cambiar contrasenas de otros usuarios, usar el panel de Supabase Auth o una Edge Function segura. Esa operacion no debe hacerse con `service_role_key` desde el navegador.

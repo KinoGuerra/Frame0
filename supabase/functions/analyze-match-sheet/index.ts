@@ -8,7 +8,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const serviceRoleKey = Deno.env.get("FRAME0_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const geminiApiKey = Deno.env.get("GEMINI_OCR_API_KEY") || "";
 const geminiModel = Deno.env.get("GEMINI_OCR_MODEL") || "gemini-3.1-flash-lite";
 const bucketName = "match-sheets";
@@ -171,7 +171,7 @@ async function authenticate(usuario: string, password: string) {
 }
 
 async function loadMatchContext(matchId: string) {
-  const matches = await db(`partidos?select=id,fecha_hora,equipo_local_id,equipo_visitante_id&id=eq.${encodeURIComponent(matchId)}&limit=1`);
+  const matches = await db(`partidos?select=id,fecha_hora,equipo_local_id,equipo_visitante_id&id=eq.${encodeURIComponent(matchId)}&archivado=eq.false&limit=1`);
   const match = matches?.[0];
   if (!match) throw new Error("Partido no encontrado.");
   if (match.fecha_hora && new Date(match.fecha_hora).toISOString().slice(0, 10) > new Date().toISOString().slice(0, 10)) {

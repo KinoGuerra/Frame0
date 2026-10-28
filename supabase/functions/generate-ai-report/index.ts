@@ -1,4 +1,5 @@
 import { ensureAiResponse, getFunctionFailure, missingAiKeyError } from "../_shared/ai-errors.ts";
+import { authenticateFrame0 } from "../_shared/frame0-auth.ts";
 
 type Dataset = {
   categorias: Record<string, unknown>[];
@@ -31,7 +32,7 @@ const corsHeaders = {
 };
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const serviceRoleKey = Deno.env.get("FRAME0_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const groqApiKey = Deno.env.get("GROQ_API_KEY") || "";
 const groqModel = Deno.env.get("GROQ_MODEL") || "openai/gpt-oss-20b";
 
@@ -70,19 +71,7 @@ async function supabaseGet(path: string) {
 }
 
 async function getActiveAdminUser(usuario: string, password: string) {
-  const encodedUser = encodeURIComponent(usuario);
-  const users = await supabaseGet(`usuarios_app?select=*&usuario=ilike.${encodedUser}&activo=eq.true&limit=1`);
-  const user = Array.isArray(users) ? users[0] : null;
-
-  if (!user) throw new Error("Usuario administrador no encontrado o inactivo.");
-  if (!["admin", "superadmin"].includes(String(user.rol || ""))) {
-    throw new Error("Rol no autorizado para generar reporteria IA.");
-  }
-  if (String(user.password_hash || "") !== password) {
-    throw new Error("Contrasena incorrecta.");
-  }
-
-  return user;
+  return authenticateFrame0(supabaseUrl, serviceRoleKey, usuario, password, ["admin", "superadmin"]);
 }
 
 async function getSanctions() {
@@ -99,21 +88,22 @@ async function getDataset(): Promise<Dataset> {
     supabaseGet("divisiones?select=id,nombre,categoria_id,activa"),
     supabaseGet("equipos?select=id,nombre,division_id,activo"),
     supabaseGet("jugadores?select=id,equipo_id,nombre,apellido,activo,dorsal"),
-    supabaseGet("partidos?select=id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones"),
+    supabaseGet("partidos?select=id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,goles_local,goles_visitante,estado,observaciones&archivado=eq.false"),
     supabaseGet("goles?select=id,partido_id,jugador_id,equipo_id,tipo"),
     supabaseGet("tarjetas?select=id,partido_id,jugador_id,equipo_id,tipo"),
     getSanctions()
   ]);
 
+  const currentIds = new Set(partidos.map((match: Record<string, unknown>) => String(match.id)));
   return {
     categorias,
     divisiones,
     equipos,
     jugadores,
     partidos,
-    goles,
-    tarjetas,
-    sanciones
+    goles: goles.filter((item: Record<string, unknown>) => currentIds.has(String(item.partido_id))),
+    tarjetas: tarjetas.filter((item: Record<string, unknown>) => currentIds.has(String(item.partido_id))),
+    sanciones: sanciones.filter((item: Record<string, unknown>) => !item.partido_id || currentIds.has(String(item.partido_id)))
   };
 }
 

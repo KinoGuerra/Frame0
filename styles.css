@@ -603,7 +603,7 @@ select {
 }
 
 .section-kicker {
-  color: var(--frame-green);
+  color: #087b43;
   font-size: 0.78rem;
   font-weight: 900;
   letter-spacing: 0;
@@ -2564,7 +2564,7 @@ select {
 }
 
 .event-btn.yellow-card {
-  color: #d5a500;
+  color: #765500;
 }
 
 .event-btn.red-card {
@@ -8070,7 +8070,7 @@ body.dark-mode .fulbito-form textarea { background: #102a40; border-color: #3653
   margin: 0 1rem 1rem;
   padding-top: 0.65rem;
   border-top: 1px solid var(--theme-border);
-  color: var(--frame-blue);
+  color: var(--theme-text);
   font-size: 0.76rem;
   font-weight: 950;
   letter-spacing: 0.04em;
@@ -8078,7 +8078,7 @@ body.dark-mode .fulbito-form textarea { background: #102a40; border-color: #3653
 }
 
 .theme-card.is-active .theme-card-state {
-  color: var(--theme-accent);
+  color: var(--theme-text);
 }
 
 body:has(.theme-gallery) :is(.floating-mascot, .landing-video-mini) {
@@ -8751,6 +8751,38 @@ body.dark-mode .fortune-auth-feedback {
   font-weight: 900;
 }
 
+.fortune-history-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  color: var(--theme-text);
+}
+
+.fortune-history-pager .btn:disabled {
+  opacity: 1;
+  border-color: var(--theme-border);
+  background: var(--theme-surface);
+  color: var(--theme-muted);
+}
+
+.fortune-history-scroll-hint {
+  display: none;
+  color: var(--theme-muted);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 767.98px) {
+  .fortune-history-scroll-hint {
+    display: block;
+  }
+}
+
+.fortune-admin-panel .table-responsive[aria-label="Historial de entregas, desplazamiento horizontal"] .frame-table {
+  min-width: 780px;
+}
+
 .fortune-reward-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -9111,6 +9143,117 @@ body.dark-mode .fortune-auth-feedback {
 
   .fortune-score-line input {
     width: 58px;
+  }
+}
+
+body:has(.archive-admin-panel, .archive-panel) .floating-mascot {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.archive-admin-panel {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--theme-border);
+  border-radius: 0.75rem;
+  background: var(--theme-surface-raised);
+  color: var(--theme-text);
+}
+
+.archive-admin-panel h3,
+.archive-division h3 {
+  font-size: 1.05rem;
+  font-weight: 850;
+}
+
+.archive-admin-panel p {
+  color: var(--theme-muted);
+}
+
+.archive-admin-panel label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 750;
+}
+
+.archive-admin-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.archive-admin-actions .form-control {
+  max-width: 360px;
+}
+
+.archive-admin-actions .btn {
+  white-space: nowrap;
+}
+
+.archive-division {
+  margin-top: 0.85rem;
+  border: 1px solid var(--theme-border);
+  border-radius: 0.75rem;
+  background: var(--theme-surface-raised);
+  color: var(--theme-text);
+}
+
+.archive-division summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.archive-division summary span {
+  color: var(--theme-muted);
+  font-size: 0.85rem;
+}
+
+.archive-division-body {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0 1rem 1rem;
+}
+
+.archive-division-body h3 {
+  margin: 0.9rem 0 0;
+}
+
+.archive-division .table-responsive {
+  overflow-x: auto;
+}
+
+.archive-division .frame-table {
+  min-width: 680px;
+}
+
+.archive-scroll-hint {
+  display: none;
+  margin: 0;
+  color: var(--theme-muted);
+  font-size: 0.8rem;
+}
+
+body.dark-mode input[type="date"]:not(.tournament-number-input) {
+  color-scheme: dark;
+}
+
+body.dark-mode .tournament-number-input[type="date"] {
+  color-scheme: light;
+}
+
+@media (max-width: 575.98px) {
+  .archive-scroll-hint {
+    display: block;
+  }
+  .archive-admin-actions {
+    flex-direction: column;
+  }
+  .archive-admin-actions .form-control {
+    max-width: none;
   }
 }
 
