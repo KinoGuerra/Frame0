@@ -3893,6 +3893,7 @@ async function showPublicInfo(page) {
   if (page === "torneo-anterior") await loadPreviousTournament();
 
   const publicPages = {
+    fortuna: renderPublicFortunaStore,
     noticias: renderNewsContent,
     "torneo-anterior": renderPreviousTournamentContent,
     fotos: renderPhotosContent,
@@ -10508,7 +10509,7 @@ loginForm.addEventListener("submit", async (event) => {
     const usuarioApp = await loginUsuariosApp(username, password);
     if (!usuarioApp) return;
 
-    if (usuarioApp.rol !== "constatador") {
+    if (!["constatador", "admin", "superadmin"].includes(usuarioApp.rol)) {
       showLoginError(`El rol "${usuarioApp.rol}" no está autorizado para este ingreso.`);
       return;
     }

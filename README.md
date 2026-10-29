@@ -94,8 +94,10 @@ Supabase configurar:
 - SMTP propio para confirmaciones y recuperacion de contrasena en produccion.
 
 Administrador, delegado, veedor y constatador conservan el login propio de Frame0. Los
-pronosticos cierran en PostgreSQL 30 minutos antes de `partidos.fecha_hora`; los puntos
+pronosticos cierran en PostgreSQL a las 00:00 del dia del partido en horario argentino; los puntos
 y canjes nunca se calculan en el navegador.
+
+`Fortuna` muestra el catalogo publico con stock disponible. `Jugar a Fortuna` abre el ingreso de participantes; al entrar se ve el fixture actual completo y el saldo de la campaña activa. Administradores y superadministradores tambien pueden ingresar en modo constatador con sus mismas credenciales.
 
 ### Comprobantes de Fortuna
 

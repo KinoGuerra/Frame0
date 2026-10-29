@@ -6,6 +6,7 @@
 
 let fortuneParticipant = null;
 let fortuneData = null;
+let publicFortunaCatalog = [];
 let fortuneQrScanner = null;
 let fortuneLastVoucher = null;
 let constatadorDeliveryPage = 1;
@@ -16,6 +17,12 @@ const fortuneDateFormatter = new Intl.DateTimeFormat("es-AR", {
   timeZone: "America/Argentina/Buenos_Aires",
   dateStyle: "short",
   timeStyle: "short"
+});
+const fortuneDayFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit"
+});
+const fortuneLongDayFormatter = new Intl.DateTimeFormat("es-AR", {
+  timeZone: "America/Argentina/Buenos_Aires", dateStyle: "full"
 });
 
 function fortuneEscape(value = "") {
@@ -28,6 +35,28 @@ function fortuneFormatDate(value) {
   if (!value) return "-";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "-" : fortuneDateFormatter.format(date);
+}
+
+function fortuneDayKey(value) {
+  if (value == null || value === "") return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = fortuneDayFormatter.formatToParts(date);
+  return ["year", "month", "day"].map((type) => parts.find((part) => part.type === type)?.value).join("-");
+}
+
+function fortunePreviousDayLabel(value) {
+  const day = fortuneDayKey(value);
+  if (!day) return "";
+  const [year, month, date] = day.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, date - 1)).toLocaleDateString("es-AR", { timeZone: "UTC" });
+}
+
+function fortunePredictionOpen(match, season, now = Date.now()) {
+  const time = Date.parse(match.fecha_hora);
+  return Boolean(match.estado === "programado" && Number.isFinite(time) && season
+    && time >= Date.parse(season.inicia_at) && time < Date.parse(season.finaliza_at)
+    && fortuneDayKey(now) < fortuneDayKey(time));
 }
 
 function fortuneToLocalInput(value) {
@@ -98,22 +127,24 @@ async function loadParticipantVouchers() {
 async function loadFortuneData() {
   if (!fortuneParticipant?.id) throw new Error("La sesión de Fortuna no está disponible.");
 
-  const [seasonsResult, predictionsResult, pointsResult, vouchersResult, typesResult, requestsResult, matchesResult, teamsResult] = await Promise.all([
+  const [seasonsResult, predictionsResult, pointsResult, vouchersResult, typesResult, requestsResult, matchesResult, teamsResult, divisionsResult, categoriesResult] = await Promise.all([
     supabaseClient.from("temporadas_fortuna").select("id,nombre,inicia_at,finaliza_at,estado,created_at").order("inicia_at", { ascending: false }),
     supabaseClient.from("pronosticos_fortuna").select("id,temporada_id,partido_id,goles_local,goles_visitante,created_at,updated_at").eq("participante_id", fortuneParticipant.id).order("updated_at", { ascending: false }),
     supabaseClient.from("puntajes_fortuna").select("id,pronostico_id,temporada_id,puntos,goles_local_final,goles_visitante_final,evaluated_at").eq("participante_id", fortuneParticipant.id),
     loadParticipantVouchers(),
-    supabaseClient.from("tipos_voucher").select("id,nombre,descripcion,costo_puntos,stock_total,vigencia_dias,activo").eq("activo", true).order("costo_puntos"),
+    supabaseClient.rpc("listar_catalogo_fortuna"),
     supabaseClient.from("solicitudes_vinculo_jugador").select("id,jugador_id,estado,motivo,created_at,reviewed_at").eq("participante_id", fortuneParticipant.id).order("created_at", { ascending: false }),
     queryCurrentMatches((hasArchiveColumn) => {
       let query = supabaseClient.from("partidos").select("id,division_id,equipo_local_id,equipo_visitante_id,fecha_hora,cancha,goles_local,goles_visitante,estado").order("fecha_hora", { ascending: true });
       if (hasArchiveColumn) query = query.eq("archivado", false);
       return query;
     }),
-    supabaseClient.from("equipos").select("id,nombre,nombre_corto,abreviatura,activo").eq("activo", true).order("nombre")
+    supabaseClient.from("equipos").select("id,nombre,nombre_corto,abreviatura,activo").order("nombre"),
+    supabaseClient.from("divisiones").select("id,nombre,categoria_id"),
+    supabaseClient.from("categorias").select("id,nombre")
   ]);
 
-  const results = [seasonsResult, predictionsResult, pointsResult, vouchersResult, typesResult, requestsResult, matchesResult, teamsResult];
+  const results = [seasonsResult, predictionsResult, pointsResult, vouchersResult, typesResult, requestsResult, matchesResult, teamsResult, divisionsResult, categoriesResult];
   const failed = results.find((result) => result.error);
   if (failed) throw failed.error;
 
@@ -133,7 +164,9 @@ async function loadFortuneData() {
     requests: requestsResult.data || [],
     matches: matchesResult.data || [],
     teams,
-    teamMap
+    teamMap,
+    divisionMap: new Map((divisionsResult.data || []).map((division) => [division.id, division])),
+    categoryMap: new Map((categoriesResult.data || []).map((category) => [category.id, category]))
   };
   return fortuneData;
 }
@@ -160,7 +193,7 @@ function renderFortuneShellHeader(title, subtitle = "") {
         <h2 class="section-title mb-0">${fortuneEscape(title)}</h2>
         ${subtitle ? `<p class="fortune-toolbar-copy">${fortuneEscape(subtitle)}</p>` : ""}
       </div>
-      <div class="fortune-balance-chip"><span>Saldo</span><strong>${balance.balance}</strong><small>puntos</small></div>
+      <div class="fortune-balance-chip" aria-label="${balance.balance} puntos disponibles"><span>Puntos disponibles</span><strong>${balance.balance}</strong><small>puntos</small></div>
     </div>
   `;
 }
@@ -169,49 +202,63 @@ function renderFortuneEmpty(icon, title, message) {
   return `<div class="fortune-empty"><i class="bi ${icon}" aria-hidden="true"></i><h3>${fortuneEscape(title)}</h3><p>${fortuneEscape(message)}</p></div>`;
 }
 
+function fortuneDivisionLabel(id) {
+  const division = fortuneData.divisionMap.get(id);
+  const category = fortuneData.categoryMap.get(division?.categoria_id);
+  return [category?.nombre, division?.nombre].filter(Boolean).join(" · ") || "Sin división";
+}
+
+function renderFortunePredictionCard(match, prediction, season, now) {
+  const open = fortunePredictionOpen(match, season, now);
+  const withinSeason = season && match.fecha_hora && Date.parse(match.fecha_hora) >= Date.parse(season.inicia_at)
+    && Date.parse(match.fecha_hora) < Date.parse(season.finaliza_at);
+  const finished = match.estado === "finalizado" && match.goles_local !== null && match.goles_visitante !== null;
+  const homeScore = finished ? match.goles_local : prediction?.goles_local ?? "—";
+  const awayScore = finished ? match.goles_visitante : prediction?.goles_visitante ?? "—";
+  const state = open ? `Apostá hasta el ${fortunePreviousDayLabel(match.fecha_hora)} a las 23:59` : finished ? "Resultado final"
+    : !match.fecha_hora ? "Fecha a confirmar" : !season ? "Sin campaña activa"
+    : !withinSeason ? "Fuera de campaña" : "Pronóstico cerrado";
+  return `
+    <article class="fortune-slip ${open ? "" : "is-locked"}" data-prediction-card="${match.id}">
+      <div class="fortune-slip-edge" aria-hidden="true"></div>
+      <header>
+        <div><span>${fortuneEscape(match.cancha || "Cancha a confirmar")}</span><strong>${match.fecha_hora ? fortuneFormatDate(match.fecha_hora) : "Horario a confirmar"}</strong></div>
+        <span class="fortune-lock-state"><i class="bi ${open ? "bi-clock" : "bi-lock-fill"}" aria-hidden="true"></i>${fortuneEscape(state)}</span>
+      </header>
+      <div class="fortune-score-line">
+        <div class="fortune-team fortune-team-home"><strong>${fortuneEscape(fortuneTeamName(match.equipo_local_id))}</strong><small>Local</small></div>
+        ${open ? `<label><span class="visually-hidden">Goles local</span><input type="number" min="0" max="99" inputmode="numeric" value="${prediction?.goles_local ?? ""}" data-prediction-home></label>` : `<strong class="fortune-score-display">${fortuneEscape(homeScore)}</strong>`}
+        <span class="fortune-score-divider">:</span>
+        ${open ? `<label><span class="visually-hidden">Goles visitante</span><input type="number" min="0" max="99" inputmode="numeric" value="${prediction?.goles_visitante ?? ""}" data-prediction-away></label>` : `<strong class="fortune-score-display">${fortuneEscape(awayScore)}</strong>`}
+        <div class="fortune-team fortune-team-away"><strong>${fortuneEscape(fortuneTeamName(match.equipo_visitante_id))}</strong><small>Visitante</small></div>
+      </div>
+      <footer>
+        <span>${prediction ? `Tu pronóstico: ${prediction.goles_local} - ${prediction.goles_visitante} · Guardado ${fortuneFormatDate(prediction.updated_at)}` : "Sin pronóstico guardado"}</span>
+        ${open ? `<button class="btn btn-sm btn-fortuna-action" type="button" data-save-prediction="${match.id}">${prediction ? "Actualizar" : "Guardar pronóstico"}</button>` : ""}
+      </footer>
+    </article>`;
+}
+
 function renderFortunePredictions() {
   const season = fortuneData.activeSeason;
-  if (!season) {
-    return `${renderFortuneShellHeader("Pronósticos")}${renderFortuneEmpty("bi-calendar-x", "No hay una campaña activa", "El administrador publicará la próxima temporada de Fortuna.")}`;
-  }
-
-  const predictions = new Map(fortuneData.predictions.filter((item) => item.temporada_id === season.id).map((item) => [item.partido_id, item]));
+  const predictions = new Map(fortuneData.predictions.filter((item) => item.temporada_id === season?.id).map((item) => [item.partido_id, item]));
   const now = Date.now();
-  const matches = fortuneData.matches.filter((match) => {
-    if (match.estado !== "programado" || !match.fecha_hora) return false;
-    return Date.parse(match.fecha_hora) < Date.parse(season.finaliza_at) && Date.parse(match.fecha_hora) > now;
-  });
-
-  const cards = matches.map((match) => {
-    const prediction = predictions.get(match.id);
-    const closesAt = Date.parse(match.fecha_hora) - 30 * 60 * 1000;
-    const open = now < closesAt;
-    return `
-      <article class="fortune-slip ${open ? "" : "is-locked"}" data-prediction-card="${match.id}">
-        <div class="fortune-slip-edge" aria-hidden="true"></div>
-        <header>
-          <div><span>${fortuneEscape(match.cancha || "Cancha a confirmar")}</span><strong>${fortuneFormatDate(match.fecha_hora)}</strong></div>
-          <span class="fortune-lock-state"><i class="bi ${open ? "bi-clock" : "bi-lock-fill"}"></i>${open ? `Cierra ${fortuneFormatDate(new Date(closesAt))}` : "Pronóstico cerrado"}</span>
-        </header>
-        <div class="fortune-score-line">
-          <div class="fortune-team fortune-team-home"><strong>${fortuneEscape(fortuneTeamName(match.equipo_local_id))}</strong><small>Local</small></div>
-          <label><span class="visually-hidden">Goles local</span><input type="number" min="0" max="99" inputmode="numeric" value="${prediction?.goles_local ?? ""}" data-prediction-home ${open ? "" : "disabled"}></label>
-          <span class="fortune-score-divider">:</span>
-          <label><span class="visually-hidden">Goles visitante</span><input type="number" min="0" max="99" inputmode="numeric" value="${prediction?.goles_visitante ?? ""}" data-prediction-away ${open ? "" : "disabled"}></label>
-          <div class="fortune-team fortune-team-away"><strong>${fortuneEscape(fortuneTeamName(match.equipo_visitante_id))}</strong><small>Visitante</small></div>
-        </div>
-        <footer>
-          <span>${prediction ? `Guardado ${fortuneFormatDate(prediction.updated_at)}` : "Todavía no jugaste esta boleta"}</span>
-          <button class="btn btn-sm btn-fortuna-action" type="button" data-save-prediction="${match.id}" ${open ? "" : "disabled"}>${prediction ? "Actualizar" : "Guardar pronóstico"}</button>
-        </footer>
-      </article>
-    `;
-  }).join("");
-
+  const grouped = new Map();
+  const matches = [...fortuneData.matches].sort((a, b) => fortuneDivisionLabel(a.division_id).localeCompare(fortuneDivisionLabel(b.division_id), "es")
+    || (a.fecha_hora ? Date.parse(a.fecha_hora) : Infinity) - (b.fecha_hora ? Date.parse(b.fecha_hora) : Infinity));
+  for (const match of matches) {
+    const division = fortuneDivisionLabel(match.division_id);
+    const day = fortuneDayKey(match.fecha_hora) || "sin-fecha";
+    if (!grouped.has(division)) grouped.set(division, new Map());
+    const days = grouped.get(division);
+    if (!days.has(day)) days.set(day, []);
+    days.get(day).push(match);
+  }
+  const fixture = [...grouped].map(([division, days]) => `<section class="fortune-fixture-division"><h3>${fortuneEscape(division)}</h3>${[...days].map(([day, items]) => `<div class="fortune-fixture-day"><h4>${day === "sin-fecha" ? "Fecha a confirmar" : fortuneEscape(fortuneLongDayFormatter.format(new Date(items[0].fecha_hora)))}</h4><div class="fortune-slip-list">${items.map((match) => renderFortunePredictionCard(match, predictions.get(match.id), season, now)).join("")}</div></div>`).join("")}</section>`).join("");
   return `
-    ${renderFortuneShellHeader("Pronósticos", `${season.nombre} · acertá la tendencia por 2 puntos o el resultado exacto por 5.`)}
-    <div class="fortune-rule-strip"><span><strong>2</strong> ganador o empate</span><span><strong>5</strong> resultado exacto</span><span><i class="bi bi-lock-fill"></i> cierre 30 minutos antes</span></div>
-    <section class="fortune-slip-list">${cards || renderFortuneEmpty("bi-calendar2-week", "No hay partidos disponibles", "Volvé cuando la organización publique nuevos horarios.")}</section>
+    ${renderFortuneShellHeader("Fixture y pronósticos", season ? `${season.nombre} · acertá la tendencia por 2 puntos o el resultado exacto por 5.` : "Consultá el fixture. Los pronósticos se habilitan con una campaña activa.")}
+    <div class="fortune-rule-strip"><span><strong>2</strong> ganador o empate</span><span><strong>5</strong> resultado exacto</span><span><i class="bi bi-lock-fill" aria-hidden="true"></i> apostar hasta las 23:59 del día anterior (Argentina)</span></div>
+    ${fixture || renderFortuneEmpty("bi-calendar2-week", "No hay partidos en el fixture", "Volvé cuando la organización publique nuevos encuentros.")}
   `;
 }
 
@@ -239,19 +286,41 @@ function renderFortuneVoucherCard(voucher, showQr = true) {
   `;
 }
 
+function renderFortuneRewardCard(type, balance = null) {
+  const available = Number(type.disponibles) > 0;
+  const canRedeem = balance !== null && available && fortuneData?.activeSeason && balance >= type.costo_puntos;
+  const action = balance === null
+    ? `<button class="btn btn-fortuna-action" type="button" data-participant-auth ${available ? "" : "disabled"}>${available ? "Ingresar para canjear" : "Agotado"}</button>`
+    : `<button class="btn btn-fortuna-action" type="button" data-redeem-voucher="${type.id}" ${canRedeem ? "" : "disabled"}>${available ? "Canjear" : "Agotado"}</button>`;
+  return `<article class="fortune-reward-card">
+    <div class="fortune-reward-cost"><strong>${type.costo_puntos}</strong><span>puntos</span></div>
+    <div><h3>${fortuneEscape(type.nombre)}</h3><p>${fortuneEscape(type.descripcion || "Premio disponible para canjear.")}</p><small>Válido ${type.vigencia_dias} días desde el canje</small><span class="fortune-stock-status ${available ? "" : "is-out"}">${available ? `${type.disponibles} disponibles` : "Sin stock"}</span></div>
+    ${action}
+  </article>`;
+}
+
+function renderPublicFortunaStore() {
+  return `<section class="public-info-panel fortune-public-store">
+    <p class="section-kicker mb-1">Fortuna Frame0</p><h2>Tienda de premios</h2>
+    <p>Conocé los premios que podés canjear con tus puntos. Para reclamar uno, ingresá con tu cuenta de participante.</p>
+    <div class="fortune-reward-grid">${publicFortunaCatalog.map((type) => renderFortuneRewardCard(type)).join("") || renderFortuneEmpty("bi-gift", "No hay premios activos", "La tienda se actualizará próximamente.")}</div>
+  </section>`;
+}
+
+async function showPublicFortunaStore() {
+  const { data, error } = await supabaseClient.rpc("listar_catalogo_fortuna");
+  if (error) throw error;
+  publicFortunaCatalog = data || [];
+  await showPublicInfo("fortuna");
+}
+
 function renderFortuneVouchers() {
   const balance = fortuneBalance();
-  const catalog = fortuneData.types.map((type) => `
-    <article class="fortune-reward-card">
-      <div class="fortune-reward-cost"><strong>${type.costo_puntos}</strong><span>puntos</span></div>
-      <div><h3>${fortuneEscape(type.nombre)}</h3><p>${fortuneEscape(type.descripcion || "Premio disponible para canjear.")}</p><small>Válido ${type.vigencia_dias} días desde el canje · stock sujeto a disponibilidad</small></div>
-      <button class="btn btn-fortuna-action" type="button" data-redeem-voucher="${type.id}" ${fortuneData.activeSeason && balance.balance >= type.costo_puntos ? "" : "disabled"}>Canjear</button>
-    </article>
-  `).join("");
+  const catalog = fortuneData.types.map((type) => renderFortuneRewardCard(type, balance.balance)).join("");
 
   const issued = fortuneData.vouchers.map((voucher) => renderFortuneVoucherCard(voucher)).join("");
   return `
-    ${renderFortuneShellHeader("Vouchers", "Canjeá tus puntos y presentá el código junto con tu documento.")}
+    ${renderFortuneShellHeader("Tienda y vouchers", "Canjeá tus puntos y presentá el código junto con tu documento.")}
     <section class="fortune-section-block"><div class="fortune-section-heading"><p class="section-kicker mb-1">Catálogo</p><h3>Premios disponibles</h3></div><div class="fortune-reward-grid">${catalog || renderFortuneEmpty("bi-gift", "No hay premios activos", "El catálogo se actualizará próximamente.")}</div></section>
     <section class="fortune-section-block"><div class="fortune-section-heading"><p class="section-kicker mb-1">Mis canjes</p><h3>Vouchers emitidos</h3></div><div class="fortune-ticket-grid">${issued || renderFortuneEmpty("bi-ticket-perforated", "Todavía no canjeaste", "Tus vouchers aparecerán aquí.")}</div></section>
   `;
@@ -351,9 +420,9 @@ async function enterFortuneParticipantView(profile = fortuneParticipant) {
         <div class="sidebar-heading"><i class="bi bi-stars"></i><h2>Fortuna</h2></div>
         <div class="sidebar-role-label">${fortuneEscape(fortuneParticipant.nombre)} · Participante</div>
         <div class="admin-actions">
-          <button class="division-link" type="button" data-fortune-page="predictions"><i class="bi bi-ui-checks-grid"></i> Pronósticos</button>
+          <button class="division-link" type="button" data-fortune-page="predictions"><i class="bi bi-ui-checks-grid"></i> Fixture y pronósticos</button>
           <button class="division-link" type="button" data-fortune-page="points"><i class="bi bi-coin"></i> Mis puntos</button>
-          <button class="division-link" type="button" data-fortune-page="vouchers"><i class="bi bi-ticket-perforated-fill"></i> Vouchers</button>
+          <button class="division-link" type="button" data-fortune-page="vouchers"><i class="bi bi-ticket-perforated-fill"></i> Tienda y vouchers</button>
           <button class="division-link" type="button" data-fortune-page="profile"><i class="bi bi-person-circle"></i> Mi cuenta</button>
           ${typeof renderThemeMenuButton === "function" ? renderThemeMenuButton() : ""}
         </div>
@@ -617,6 +686,7 @@ document.querySelectorAll("[data-participant-mode]").forEach((button) => button.
 
 document.querySelector("#participantLoginForm")?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const form = event.currentTarget;
   const email = document.querySelector("#participantLoginEmail").value.trim();
   const password = document.querySelector("#participantLoginPassword").value;
   fortuneSetAuthFeedback("Ingresando...", "loading");
@@ -626,7 +696,7 @@ document.querySelector("#participantLoginForm")?.addEventListener("submit", asyn
     const profile = await getFortuneParticipantProfile();
     if (!profile) throw new Error("Esta cuenta no es un participante de Fortuna.");
     bootstrap.Modal.getInstance(document.querySelector("#participantAuthModal"))?.hide();
-    event.currentTarget.reset();
+    form.reset();
     await enterFortuneParticipantView(profile);
   } catch (error) {
     await supabaseClient.auth.signOut();
@@ -636,7 +706,8 @@ document.querySelector("#participantLoginForm")?.addEventListener("submit", asyn
 
 document.querySelector("#participantRegisterForm")?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
+  const registrationForm = event.currentTarget;
+  const form = new FormData(registrationForm);
   const email = String(form.get("email") || "").trim();
   const password = String(form.get("password") || "");
   const metadata = { tipo_cuenta: "participante", nombre: String(form.get("nombre") || "").trim(), apellido: String(form.get("apellido") || "").trim(), documento: String(form.get("documento") || "").trim() };
@@ -644,7 +715,7 @@ document.querySelector("#participantRegisterForm")?.addEventListener("submit", a
   const redirectUrl = new URL("index.html", window.location.href).href.split("#")[0].split("?")[0];
   const { error } = await supabaseClient.auth.signUp({ email, password, options: { data: metadata, emailRedirectTo: redirectUrl } });
   if (error) return fortuneSetAuthFeedback(fortuneErrorMessage(error), "error");
-  event.currentTarget.reset();
+  registrationForm.reset();
   fortuneSetAuthFeedback("Cuenta creada. Revisá tu email para confirmar el ingreso.", "success");
 });
 
@@ -683,7 +754,8 @@ document.addEventListener("click", async (event) => {
   const constatadorHome = target.closest("[data-constatador-home]");
   const deliveryHistoryButton = target.closest("[data-constatador-deliveries-page]");
   try {
-    if (authButton || publicFortuneButton) {
+    if (publicFortuneButton) return await showPublicFortunaStore();
+    if (authButton) {
       const profile = await getFortuneParticipantProfile();
       if (profile) await enterFortuneParticipantView(profile); else showParticipantAuth();
       return;

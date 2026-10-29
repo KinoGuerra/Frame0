@@ -8550,7 +8550,7 @@ body.dark-mode .fortune-auth-feedback {
   display: grid;
   grid-template-columns: auto auto;
   align-items: baseline;
-  min-width: 145px;
+  min-width: 168px;
   padding: 0.62rem 0.82rem;
   border: 1px solid rgba(255, 193, 7, 0.5);
   border-radius: 0.8rem;
@@ -8599,7 +8599,7 @@ body.dark-mode .fortune-auth-feedback {
 }
 
 .fortune-rule-strip strong {
-  color: #b57400;
+  color: var(--theme-text);
   font-family: "Coiny", system-ui, sans-serif;
   font-size: 1rem;
 }
@@ -8607,6 +8607,28 @@ body.dark-mode .fortune-auth-feedback {
 .fortune-slip-list {
   display: grid;
   gap: 0.9rem;
+}
+
+.fortune-fixture-division {
+  margin-bottom: 1.5rem;
+}
+
+.fortune-fixture-division > h3 {
+  margin: 0 0 0.75rem;
+  color: var(--theme-text);
+  font-size: 1.15rem;
+}
+
+.fortune-fixture-day {
+  margin-bottom: 1rem;
+}
+
+.fortune-fixture-day > h4 {
+  margin: 0 0 0.55rem;
+  color: var(--theme-muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+  text-transform: capitalize;
 }
 
 .fortune-slip {
@@ -8688,6 +8710,16 @@ body.dark-mode .fortune-auth-feedback {
   text-align: center;
 }
 
+.fortune-score-display {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  min-height: 58px;
+  color: var(--theme-text);
+  font-family: "Coiny", system-ui, sans-serif;
+  font-size: 1.55rem;
+}
+
 .fortune-score-divider {
   color: var(--theme-muted);
   font-family: "Coiny", system-ui, sans-serif;
@@ -8698,6 +8730,8 @@ body.dark-mode .fortune-auth-feedback {
 .fortune-team {
   display: grid;
   gap: 0.15rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .fortune-team strong {
@@ -8709,7 +8743,7 @@ body.dark-mode .fortune-auth-feedback {
 }
 
 .fortune-slip.is-locked {
-  opacity: 0.7;
+  border-color: var(--theme-border);
 }
 
 .btn-fortuna-action {
@@ -8815,6 +8849,22 @@ body.dark-mode .fortune-auth-feedback {
   font-size: 0.76rem;
 }
 
+.fortune-stock-status {
+  display: block;
+  margin-top: 0.4rem;
+  color: var(--theme-text);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.fortune-stock-status.is-out {
+  color: #b42331;
+}
+
+.fortune-public-store .fortune-reward-grid {
+  margin-top: 1rem;
+}
+
 .fortune-reward-cost {
   display: grid;
   min-width: 58px;
@@ -8825,7 +8875,7 @@ body.dark-mode .fortune-auth-feedback {
 }
 
 .fortune-reward-cost strong {
-  color: #b57400;
+  color: var(--theme-text);
   font-family: "Coiny", system-ui, sans-serif;
   font-size: 1.25rem;
 }
@@ -9144,6 +9194,10 @@ body.dark-mode .fortune-auth-feedback {
   .fortune-score-line input {
     width: 58px;
   }
+
+  .fortune-score-display {
+    width: 58px;
+  }
 }
 
 body:has(.archive-admin-panel, .archive-panel) .floating-mascot {
@@ -9282,6 +9336,12 @@ body.dark-mode .tournament-number-input[type="date"] {
   .fortune-score-line input {
     width: 52px;
     height: 52px;
+    font-size: 1.3rem;
+  }
+
+  .fortune-score-display {
+    width: 52px;
+    min-height: 52px;
     font-size: 1.3rem;
   }
 
